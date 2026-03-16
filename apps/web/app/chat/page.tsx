@@ -1,0 +1,319 @@
+"use client";
+
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Send, Mic, Paperclip, Loader2, Wifi, WifiOff } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useChatStore, type ChatMessageUI, type ToolCallUI } from "@/lib/store";
+import { getWSClient } from "@/lib/ws";
+import { ChatMessage } from "@/components/ChatMessage";
+import { Badge } from "@/components/Badge";
+
+export default function ChatPage() {
+  const {
+    messages,
+    agentState,
+    wsState,
+    streamingContent,
+    addMessage,
+    updateMessage,
+    appendStreamDelta,
+    resetStream,
+    setAgentState,
+    setWSState,
+  } = useChatStore();
+
+  const [input, setInput] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const streamMessageIdRef = useRef<string | null>(null);
+
+  const scrollToBottom = useCallback(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  // Connect WebSocket
+  useEffect(() => {
+    const ws = getWSClient();
+    const unsubState = ws.onStateChange((state) => setWSState(state));
+    const unsubMsg = ws.onMessage((data) => {
+      const msg = data as Record<string, unknown>;
+      const type = msg.type as string;
+      const payload = msg.payload as Record<string, unknown>;
+
+      switch (type) {
+        case "connect.ack":
+          // Connected successfully
+          break;
+
+        case "agent.response": {
+          const id = (msg.id as string) ?? `msg-${Date.now()}`;
+          const chatMsg: ChatMessageUI = {
+            id,
+            role: "assistant",
+            content: payload.content as string,
+            timestamp: (msg.timestamp as number) ?? Date.now(),
+            metadata: {
+              finishReason: payload.finishReason as string,
+              ...(payload.usage as Record<string, number> | undefined),
+            },
+          };
+          addMessage(chatMsg);
+          setAgentState("idle");
+          break;
+        }
+
+        case "agent.response.stream": {
+          const delta = payload.delta as string;
+          if (!streamMessageIdRef.current) {
+            const id = `stream-${Date.now()}`;
+            streamMessageIdRef.current = id;
+            addMessage({
+              id,
+              role: "assistant",
+              content: "",
+              timestamp: Date.now(),
+              isStreaming: true,
+            });
+          }
+          appendStreamDelta(delta);
+          const currentContent = useChatStore.getState().streamingContent;
+          updateMessage(streamMessageIdRef.current, {
+            content: currentContent,
+          });
+
+          if (payload.finishReason) {
+            updateMessage(streamMessageIdRef.current, { isStreaming: false });
+            streamMessageIdRef.current = null;
+            resetStream();
+            setAgentState("idle");
+          }
+          break;
+        }
+
+        case "tool.approval.requested": {
+          const toolCall: ToolCallUI = {
+            id: payload.toolCallId as string,
+            toolName: payload.toolName as string,
+            arguments: payload.arguments as Record<string, unknown>,
+            status: "pending",
+          };
+          // Attach tool call to last assistant message or create new one
+          const msgs = useChatStore.getState().messages;
+          const lastAssistant = [...msgs].reverse().find((m) => m.role === "assistant");
+          if (lastAssistant) {
+            updateMessage(lastAssistant.id, {
+              toolCalls: [...(lastAssistant.toolCalls ?? []), toolCall],
+            });
+          }
+          setAgentState("tool_calling");
+          break;
+        }
+
+        case "tool.result": {
+          const msgs2 = useChatStore.getState().messages;
+          for (const m of msgs2) {
+            const tc = m.toolCalls?.find((t) => t.id === payload.toolCallId);
+            if (tc) {
+              useChatStore.getState().updateToolCall(m.id, tc.id, {
+                status: (payload.isError as boolean) ? "failed" : "completed",
+                result: payload.result,
+                durationMs: payload.durationMs as number | undefined,
+              });
+              break;
+            }
+          }
+          break;
+        }
+
+        case "status": {
+          const state = payload.state as ChatMessageUI["role"];
+          setAgentState(state as "idle" | "thinking" | "tool_calling" | "streaming" | "error");
+          break;
+        }
+
+        case "error": {
+          addMessage({
+            id: `err-${Date.now()}`,
+            role: "system",
+            content: `Error: ${payload.message as string}`,
+            timestamp: Date.now(),
+          });
+          setAgentState("error");
+          break;
+        }
+      }
+    });
+
+    ws.connect();
+
+    return () => {
+      unsubState();
+      unsubMsg();
+    };
+  }, [addMessage, appendStreamDelta, resetStream, setAgentState, setWSState, updateMessage]);
+
+  // Auto-scroll on new messages
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  const handleSend = () => {
+    const content = input.trim();
+    if (!content || agentState === "thinking" || agentState === "streaming") return;
+
+    const msg: ChatMessageUI = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content,
+      timestamp: Date.now(),
+    };
+    addMessage(msg);
+    setInput("");
+    setAgentState("thinking");
+
+    const ws = getWSClient();
+    ws.sendMessage(content);
+
+    // Auto-resize textarea
+    if (inputRef.current) {
+      inputRef.current.style.height = "auto";
+    }
+  };
+
+  const handleToolApproval = (toolCallId: string, approved: boolean) => {
+    const ws = getWSClient();
+    ws.sendToolApproval(toolCallId, approved);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSend();
+    }
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    // Auto-resize
+    const el = e.target;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 h-14 border-b border-dark-700 shrink-0">
+        <h1 className="text-base font-semibold text-white">Chat</h1>
+        <div className="flex items-center gap-2">
+          {agentState !== "idle" && agentState !== "error" && (
+            <Badge variant="accent">
+              <Loader2 size={12} className="animate-spin mr-1" />
+              {agentState === "thinking"
+                ? "Thinking..."
+                : agentState === "streaming"
+                  ? "Responding..."
+                  : agentState === "tool_calling"
+                    ? "Using tool..."
+                    : agentState}
+            </Badge>
+          )}
+          <Badge variant={wsState === "connected" ? "success" : "danger"}>
+            {wsState === "connected" ? (
+              <Wifi size={12} className="mr-1" />
+            ) : (
+              <WifiOff size={12} className="mr-1" />
+            )}
+            {wsState}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto">
+        {messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-dark-500">
+            <MessageSquareIcon />
+            <p className="mt-3 text-lg font-medium text-dark-300">Start a conversation</p>
+            <p className="text-sm mt-1">Send a message to begin chatting with Karna</p>
+          </div>
+        ) : (
+          <div className="py-4">
+            {messages.map((msg) => (
+              <ChatMessage
+                key={msg.id}
+                message={msg}
+                onToolApproval={handleToolApproval}
+              />
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Input area */}
+      <div className="border-t border-dark-700 px-4 py-3">
+        <div className="flex items-end gap-2 max-w-4xl mx-auto">
+          <button
+            className="p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0"
+            title="Attach file"
+          >
+            <Paperclip size={18} />
+          </button>
+          <div className="flex-1 relative">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message... (Shift+Enter for new line)"
+              rows={1}
+              className="w-full px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-sm text-dark-100 placeholder:text-dark-500 focus:outline-none focus:border-accent-500 resize-none"
+              style={{ maxHeight: "200px" }}
+            />
+          </div>
+          <button
+            className="p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0"
+            title="Voice input"
+          >
+            <Mic size={18} />
+          </button>
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || agentState === "thinking" || agentState === "streaming"}
+            className={cn(
+              "p-2.5 rounded-lg transition-colors shrink-0",
+              input.trim() && agentState !== "thinking" && agentState !== "streaming"
+                ? "bg-accent-600 text-white hover:bg-accent-500"
+                : "bg-dark-700 text-dark-500 cursor-not-allowed",
+            )}
+            title="Send message"
+          >
+            {agentState === "thinking" || agentState === "streaming" ? (
+              <Loader2 size={18} className="animate-spin" />
+            ) : (
+              <Send size={18} />
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MessageSquareIcon() {
+  return (
+    <svg
+      width="48"
+      height="48"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}

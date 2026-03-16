@@ -1,0 +1,87 @@
+{
+  "$schema": "./config-schema.json",
+  "gateway": {
+    "port": 18789,
+    "host": "0.0.0.0",
+    "auth": {
+      "token": "",
+      "challengeTtlMs": 30000
+    },
+    "rateLimit": {
+      "maxRequestsPerMinute": 60,
+      "maxConnectionsPerIp": 5
+    }
+  },
+  "agent": {
+    "name": "Karna",
+    "persona": "You are Karna, a loyal and capable AI assistant. Named after the legendary warrior from the Mahabharata, you are dedicated to serving your user with unwavering loyalty, extraordinary skill, and selfless dedication.",
+    "models": {
+      "primary": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-4-6"
+      },
+      "fallback": {
+        "provider": "anthropic",
+        "model": "claude-haiku-4-5"
+      },
+      "local": {
+        "provider": "ollama",
+        "model": "llama3.2"
+      }
+    },
+    "maxTokens": 4096,
+    "contextWindow": 200000,
+    "toolApproval": {
+      "lowRisk": "auto",
+      "mediumRisk": "auto",
+      "highRisk": "ask"
+    },
+    "sandboxMode": "standard"
+  },
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "botToken": ""
+    },
+    "whatsapp": {
+      "enabled": false
+    },
+    "discord": {
+      "enabled": false,
+      "botToken": "",
+      "applicationId": ""
+    },
+    "slack": {
+      "enabled": false,
+      "botToken": "",
+      "appToken": "",
+      "signingSecret": ""
+    },
+    "webchat": {
+      "enabled": true,
+      "port": 3001
+    }
+  },
+  "memory": {
+    "enabled": true,
+    "embeddingProvider": "openai",
+    "embeddingModel": "text-embedding-3-small",
+    "maxMemories": 1000,
+    "searchLimit": 5,
+    "importanceThreshold": 0.3
+  },
+  "heartbeat": {
+    "enabled": true,
+    "intervalSeconds": 1800,
+    "checklistPath": "HEARTBEAT.md"
+  },
+  "supabase": {
+    "url": "http://localhost:54321",
+    "anonKey": "",
+    "serviceRoleKey": ""
+  },
+  "logging": {
+    "level": "info",
+    "pretty": true
+  }
+}

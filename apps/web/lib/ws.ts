@@ -1,0 +1,197 @@
+/** WebSocket client for real-time Gateway communication */
+
+export type WSMessageHandler = (data: unknown) => void;
+export type WSStateHandler = (state: WSState) => void;
+
+export type WSState = "connecting" | "connected" | "disconnected" | "error";
+
+interface WSClientOptions {
+  url?: string;
+  reconnectInterval?: number;
+  maxReconnectAttempts?: number;
+  heartbeatInterval?: number;
+}
+
+export class WSClient {
+  private ws: WebSocket | null = null;
+  private url: string;
+  private reconnectInterval: number;
+  private maxReconnectAttempts: number;
+  private heartbeatInterval: number;
+  private reconnectAttempts = 0;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private messageHandlers = new Set<WSMessageHandler>();
+  private stateHandlers = new Set<WSStateHandler>();
+  private _state: WSState = "disconnected";
+  private sessionId: string | null = null;
+  private token: string | null = null;
+
+  constructor(options: WSClientOptions = {}) {
+    this.url = options.url ?? process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000/ws";
+    this.reconnectInterval = options.reconnectInterval ?? 3000;
+    this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
+    this.heartbeatInterval = options.heartbeatInterval ?? 30000;
+  }
+
+  get state(): WSState {
+    return this._state;
+  }
+
+  get currentSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  connect(channelId = "web-chat"): void {
+    if (this.ws?.readyState === WebSocket.OPEN) return;
+
+    this.setState("connecting");
+    this.ws = new WebSocket(this.url);
+
+    this.ws.onopen = () => {
+      this.reconnectAttempts = 0;
+      this.setState("connected");
+      this.send({
+        id: crypto.randomUUID(),
+        type: "connect",
+        timestamp: Date.now(),
+        payload: {
+          channelType: "web",
+          channelId,
+        },
+      });
+      this.startHeartbeat();
+    };
+
+    this.ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data as string);
+        // Handle connect.ack to store session info
+        if (data.type === "connect.ack") {
+          this.sessionId = data.payload.sessionId;
+          this.token = data.payload.token;
+        }
+        // Handle heartbeat checks
+        if (data.type === "heartbeat.check") {
+          this.send({
+            id: crypto.randomUUID(),
+            type: "heartbeat.ack",
+            timestamp: Date.now(),
+            payload: { clientTime: Date.now() },
+          });
+          return;
+        }
+        this.messageHandlers.forEach((handler) => handler(data));
+      } catch {
+        // Ignore parse errors
+      }
+    };
+
+    this.ws.onclose = () => {
+      this.stopHeartbeat();
+      this.setState("disconnected");
+      this.attemptReconnect();
+    };
+
+    this.ws.onerror = () => {
+      this.setState("error");
+    };
+  }
+
+  disconnect(): void {
+    this.reconnectAttempts = this.maxReconnectAttempts; // prevent reconnect
+    this.stopHeartbeat();
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.ws?.close();
+    this.ws = null;
+    this.sessionId = null;
+    this.token = null;
+    this.setState("disconnected");
+  }
+
+  send(data: unknown): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify(data));
+  }
+
+  sendMessage(content: string, attachments?: Array<{ type: string; data?: string; name?: string }>): void {
+    this.send({
+      id: crypto.randomUUID(),
+      type: "chat.message",
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+      payload: {
+        content,
+        role: "user",
+        attachments,
+      },
+    });
+  }
+
+  sendToolApproval(toolCallId: string, approved: boolean, reason?: string): void {
+    this.send({
+      id: crypto.randomUUID(),
+      type: "tool.approval.response",
+      timestamp: Date.now(),
+      sessionId: this.sessionId,
+      payload: { toolCallId, approved, reason },
+    });
+  }
+
+  onMessage(handler: WSMessageHandler): () => void {
+    this.messageHandlers.add(handler);
+    return () => this.messageHandlers.delete(handler);
+  }
+
+  onStateChange(handler: WSStateHandler): () => void {
+    this.stateHandlers.add(handler);
+    return () => this.stateHandlers.delete(handler);
+  }
+
+  private setState(state: WSState): void {
+    this._state = state;
+    this.stateHandlers.forEach((handler) => handler(state));
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.send({
+          id: crypto.randomUUID(),
+          type: "heartbeat.ack",
+          timestamp: Date.now(),
+          payload: { clientTime: Date.now() },
+        });
+      }
+    }, this.heartbeatInterval);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  private attemptReconnect(): void {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) return;
+    this.reconnectAttempts++;
+    this.reconnectTimer = setTimeout(() => {
+      this.connect();
+    }, this.reconnectInterval * Math.min(this.reconnectAttempts, 5));
+  }
+}
+
+/** Singleton instance */
+let clientInstance: WSClient | null = null;
+
+export function getWSClient(options?: WSClientOptions): WSClient {
+  if (!clientInstance) {
+    clientInstance = new WSClient(options);
+  }
+  return clientInstance;
+}

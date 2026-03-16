@@ -1,0 +1,25 @@
+{
+  "name": "@karna/channel-webchat",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@karna/shared": "workspace:*",
+    "ws": "^8.16.0",
+    "express": "^4.21.0",
+    "pino": "^9.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "@types/express": "^5.0.0"
+  }
+}

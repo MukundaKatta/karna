@@ -1,0 +1,7 @@
+packages:
+  - "gateway"
+  - "agent"
+  - "channels/*"
+  - "skills/*"
+  - "apps/*"
+  - "packages/*"

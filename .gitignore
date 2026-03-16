@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+*.log
+.turbo/
+.DS_Store
+coverage/
+.karna/
