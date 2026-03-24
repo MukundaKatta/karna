@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Karna — Your Loyal AI Agent Platform</title>
+  <meta name="description" content="Self-hosted personal AI assistant platform with multi-channel messaging, extensible skills, and semantic memory.">
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --border: #2a2d3a;
+      --text: #e4e4e7;
+      --muted: #9ca3af;
+      --accent: #6366f1;
+      --accent-glow: rgba(99, 102, 241, 0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 0 24px; }
+
+    /* Header */
+    header {
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--text);
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+    .logo span { color: var(--accent); }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      margin-left: 28px;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: var(--text); }
+
+    /* Hero */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero h1 {
+      font-size: 3.2rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--accent);
+    }
+    .hero p {
+      font-size: 1.15rem;
+      color: var(--muted);
+      max-width: 580px;
+      margin: 0 auto 36px;
+    }
+    .btn-group { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-primary:hover { filter: brightness(1.15); }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+
+    /* Features */
+    .features {
+      padding: 80px 0;
+    }
+    .features h2 {
+      text-align: center;
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 48px;
+      letter-spacing: -0.02em;
+    }
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      transition: border-color 0.2s;
+    }
+    .feature-card:hover { border-color: var(--accent); }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent-glow);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 16px;
+    }
+    .feature-card h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .feature-card p {
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+
+    /* Tech Stack */
+    .tech {
+      padding: 60px 0 80px;
+    }
+    .tech h2 {
+      text-align: center;
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 36px;
+      letter-spacing: -0.02em;
+    }
+    .tech-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+    }
+    .tech-tag {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 18px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    /* Quick Start */
+    .quickstart {
+      padding: 60px 0 80px;
+    }
+    .quickstart h2 {
+      text-align: center;
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 32px;
+      letter-spacing: -0.02em;
+    }
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      max-width: 540px;
+      margin: 0 auto;
+      font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.88rem;
+      overflow-x: auto;
+      line-height: 1.8;
+    }
+    .code-block .comment { color: #6b7280; }
+    .code-block .cmd { color: var(--accent); }
+
+    /* Architecture */
+    .architecture {
+      padding: 60px 0 80px;
+    }
+    .architecture h2 {
+      text-align: center;
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin-bottom: 36px;
+      letter-spacing: -0.02em;
+    }
+    .arch-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .arch-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px;
+      text-align: center;
+    }
+    .arch-item code {
+      display: block;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .arch-item span {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    /* Footer */
+    footer {
+      padding: 32px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+
+    @media (max-width: 600px) {
+      .hero h1 { font-size: 2.2rem; }
+      .hero { padding: 60px 0 50px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container">
+      <a href="#" class="logo"><span>K</span>arna</a>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#quickstart">Get Started</a>
+        <a href="https://github.com/MukundaKatta/karna">GitHub</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <h1>Your Loyal <em>AI Agent</em> Platform</h1>
+      <p>Self-hosted personal AI assistant with multi-channel messaging, extensible skills, and semantic memory. Full control, no vendor lock-in.</p>
+      <div class="btn-group">
+        <a href="#quickstart" class="btn btn-primary">Get Started</a>
+        <a href="https://github.com/MukundaKatta/karna" class="btn btn-secondary">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="features" id="features">
+    <div class="container">
+      <h2>Key Features</h2>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-icon">&#x1f4ac;</div>
+          <h3>Multi-Channel Messaging</h3>
+          <p>Slack, Discord, WhatsApp, SMS, email, and custom integrations from a single platform.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1f9e9;</div>
+          <h3>Extensible Skills</h3>
+          <p>Plugin architecture for adding new capabilities. Build and share custom skills.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1f9e0;</div>
+          <h3>Semantic Memory</h3>
+          <p>Long-term memory with vector search for contextual, personalized conversations.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1f512;</div>
+          <h3>Self-Hosted</h3>
+          <p>Deploy on your own infrastructure. Full data ownership, complete customization.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1f504;</div>
+          <h3>Conversation Threading</h3>
+          <p>Maintains context across multi-turn conversations for natural interactions.</p>
+        </div>
+        <div class="feature-card">
+          <div class="feature-icon">&#x1f510;</div>
+          <h3>Role-Based Access</h3>
+          <p>Fine-grained permissions for secure team deployments and collaboration.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tech">
+    <div class="container">
+      <h2>Tech Stack</h2>
+      <div class="tech-tags">
+        <span class="tech-tag">Python</span>
+        <span class="tech-tag">FastAPI</span>
+        <span class="tech-tag">Claude API</span>
+        <span class="tech-tag">OpenAI API</span>
+        <span class="tech-tag">Ollama</span>
+        <span class="tech-tag">PostgreSQL</span>
+        <span class="tech-tag">pgvector</span>
+        <span class="tech-tag">WebSocket</span>
+        <span class="tech-tag">Docker</span>
+        <span class="tech-tag">Kubernetes</span>
+        <span class="tech-tag">TypeScript</span>
+        <span class="tech-tag">Turborepo</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="quickstart" id="quickstart">
+    <div class="container">
+      <h2>Quick Start</h2>
+      <div class="code-block">
+        <span class="comment"># Clone the repository</span><br>
+        <span class="cmd">git clone</span> https://github.com/MukundaKatta/karna.git<br>
+        <span class="cmd">cd</span> karna<br><br>
+        <span class="comment"># Configure environment</span><br>
+        <span class="cmd">cp</span> .env.example .env<br><br>
+        <span class="comment"># Launch with Docker</span><br>
+        <span class="cmd">docker-compose</span> up -d
+      </div>
+    </div>
+  </section>
+
+  <section class="architecture">
+    <div class="container">
+      <h2>Architecture</h2>
+      <div class="arch-grid">
+        <div class="arch-item">
+          <code>agent/</code>
+          <span>Orchestration Engine</span>
+        </div>
+        <div class="arch-item">
+          <code>channels/</code>
+          <span>Multi-Channel Adapters</span>
+        </div>
+        <div class="arch-item">
+          <code>skills/</code>
+          <span>Extensible Plugins</span>
+        </div>
+        <div class="arch-item">
+          <code>gateway/</code>
+          <span>API Gateway</span>
+        </div>
+        <div class="arch-item">
+          <code>packages/</code>
+          <span>Shared Libraries</span>
+        </div>
+        <div class="arch-item">
+          <code>apps/</code>
+          <span>Applications</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p><strong>Mukunda Katta</strong> &middot; <a href="https://github.com/MukundaKatta/Office3">Officethree Technologies</a> &middot; 2026</p>
+    </div>
+  </footer>
+
+</body>
+</html>
