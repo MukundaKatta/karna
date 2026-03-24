@@ -1,0 +1,227 @@
+name: Auto GitHub Pages for All Repos
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (list repos only, no changes)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+permissions:
+  contents: write
+
+jobs:
+  generate-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate landing pages for all repos
+        env:
+          GH_TOKEN: ${{ secrets.PAGES_PAT }}
+        run: |
+          set -euo pipefail
+
+          echo "==> Listing all repos for MukundaKatta..."
+          REPOS=$(gh repo list MukundaKatta --limit 100 --json name,description,url,homepageUrl,isArchived,isFork --jq '.[] | select(.isArchived == false and .isFork == false)')
+
+          echo "$REPOS" | jq -r '.name' | while read -r REPO; do
+            DESC=$(echo "$REPOS" | jq -r "select(.name == \"$REPO\") | .description // \"\"")
+            URL=$(echo "$REPOS" | jq -r "select(.name == \"$REPO\") | .url")
+
+            echo ""
+            echo "========================================"
+            echo "Processing: $REPO"
+            echo "Description: $DESC"
+            echo "========================================"
+
+            # Check if docs/index.html already exists
+            if gh api "repos/MukundaKatta/$REPO/contents/docs/index.html" --silent 2>/dev/null; then
+              echo "  [SKIP] docs/index.html already exists"
+              continue
+            fi
+
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "  [DRY RUN] Would create landing page"
+              continue
+            fi
+
+            # Use repo name and description for the page
+            DISPLAY_NAME="$REPO"
+            PAGE_DESC="${DESC:-A project by Mukunda Katta}"
+
+            # Generate the landing page
+            cat > /tmp/index.html <<PAGEEOF
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>${DISPLAY_NAME}</title>
+            <meta name="description" content="${PAGE_DESC}">
+            <style>
+              :root {
+                --bg: #0f1117;
+                --surface: #1a1d27;
+                --border: #2a2d3a;
+                --text: #e4e4e7;
+                --muted: #9ca3af;
+                --accent: #6366f1;
+              }
+              * { margin: 0; padding: 0; box-sizing: border-box; }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                background: var(--bg);
+                color: var(--text);
+                line-height: 1.6;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+              }
+              .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+              header {
+                padding: 20px 0;
+                border-bottom: 1px solid var(--border);
+              }
+              header .container {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              }
+              .logo {
+                font-size: 1.4rem;
+                font-weight: 700;
+                color: var(--text);
+                text-decoration: none;
+              }
+              .logo span { color: var(--accent); }
+              nav a {
+                color: var(--muted);
+                text-decoration: none;
+                font-size: 0.9rem;
+                transition: color 0.2s;
+              }
+              nav a:hover { color: var(--text); }
+              .hero {
+                padding: 100px 0 80px;
+                text-align: center;
+                flex: 1;
+              }
+              .hero h1 {
+                font-size: 3rem;
+                font-weight: 800;
+                letter-spacing: -0.03em;
+                line-height: 1.1;
+                margin-bottom: 20px;
+              }
+              .hero h1 em {
+                font-style: normal;
+                color: var(--accent);
+              }
+              .hero p {
+                font-size: 1.1rem;
+                color: var(--muted);
+                max-width: 520px;
+                margin: 0 auto 36px;
+              }
+              .btn {
+                display: inline-block;
+                padding: 12px 28px;
+                border-radius: 8px;
+                text-decoration: none;
+                font-weight: 600;
+                font-size: 0.95rem;
+                background: var(--accent);
+                color: #fff;
+                transition: filter 0.2s;
+              }
+              .btn:hover { filter: brightness(1.15); }
+              .info-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                gap: 16px;
+                padding: 60px 0;
+              }
+              .info-card {
+                background: var(--surface);
+                border: 1px solid var(--border);
+                border-radius: 10px;
+                padding: 24px;
+                text-align: center;
+              }
+              .info-card h3 {
+                font-size: 0.95rem;
+                margin-bottom: 6px;
+              }
+              .info-card p {
+                font-size: 0.85rem;
+                color: var(--muted);
+              }
+              footer {
+                padding: 28px 0;
+                border-top: 1px solid var(--border);
+                text-align: center;
+                color: var(--muted);
+                font-size: 0.85rem;
+              }
+              footer a { color: var(--accent); text-decoration: none; }
+              @media (max-width: 600px) {
+                .hero h1 { font-size: 2rem; }
+                .hero { padding: 60px 0 50px; }
+              }
+            </style>
+          </head>
+          <body>
+            <header>
+              <div class="container">
+                <a href="#" class="logo"><span>${DISPLAY_NAME:0:1}</span>${DISPLAY_NAME:1}</a>
+                <nav>
+                  <a href="https://github.com/MukundaKatta/${REPO}">GitHub</a>
+                </nav>
+              </div>
+            </header>
+            <section class="hero">
+              <div class="container">
+                <h1><em>${DISPLAY_NAME}</em></h1>
+                <p>${PAGE_DESC}</p>
+                <a href="https://github.com/MukundaKatta/${REPO}" class="btn">View on GitHub</a>
+              </div>
+            </section>
+            <footer>
+              <div class="container">
+                <p><strong>Mukunda Katta</strong> &middot; <a href="https://github.com/MukundaKatta">GitHub</a></p>
+              </div>
+            </footer>
+          </body>
+          </html>
+          PAGEEOF
+
+            # Push the landing page
+            CONTENT_B64=$(base64 -w0 /tmp/index.html)
+            echo "  [PUSH] Creating docs/index.html..."
+            gh api --method PUT "repos/MukundaKatta/$REPO/contents/docs/index.html" \
+              -f message="Add GitHub Pages landing page" \
+              -f content="$CONTENT_B64" \
+              -f branch="main" || echo "  [WARN] Failed to push to $REPO (may need default branch check)"
+
+            # Enable GitHub Pages via API
+            echo "  [PAGES] Enabling GitHub Pages from docs/..."
+            gh api --method POST "repos/MukundaKatta/$REPO/pages" \
+              -f "source[branch]=main" \
+              -f "source[path]=/docs" 2>/dev/null \
+              || gh api --method PUT "repos/MukundaKatta/$REPO/pages" \
+                -f "source[branch]=main" \
+                -f "source[path]=/docs" 2>/dev/null \
+              || echo "  [INFO] Pages may already be enabled or requires manual setup"
+
+            echo "  [DONE] $REPO complete"
+          done
+
+          echo ""
+          echo "==> All repos processed!"
