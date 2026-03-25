@@ -1,12 +1,29 @@
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
 dist/
+build/
+.eggs/
+venv/
 .env
-.env.local
-.env.*.local
-*.log
-.turbo/
-.DS_Store
-coverage/
-.karna/
+
+# Node
+node_modules/
 .next/
-*.tsbuildinfo
+out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.log
+.coverage
+htmlcov/
