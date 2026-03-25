@@ -49,3 +49,9 @@ karna/
 ---
 
 **Mukunda Katta** · [Officethree Technologies](https://github.com/MukundaKatta/Office3) · 2026
+
+---
+
+## 🌐 Live Demo
+
+🔗 **[Visit Landing Page](https://MukundaKatta.github.io/karna)**
