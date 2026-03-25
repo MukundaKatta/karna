@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Karna — Content Generation Pipeline | Officethree Technologies</title>
+<meta name="description" content="Automated content generation pipeline — blog posts, social media, video scripts from research to publishing.">
+<meta name="author" content="MukundaKatta — Officethree Technologies">
+<meta property="og:title" content="Karna — Content Generation Pipeline">
+<meta property="og:description" content="Automated content generation pipeline — blog posts, social media, video scripts from research to publishing.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--p:#14b8a6;--s:#2dd4bf;--a:#0d9488;--bg:#0a1a18;--g1:#115e59;--g2:#14b8a6;--g3:#99f6e4}
+html{scroll-behavior:smooth}
+body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:#e2e8f0;overflow-x:hidden;line-height:1.6}
+code,pre{font-family:'JetBrains Mono',monospace}
+
+/* Canvas Background */
+#bgCanvas{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none}
+
+/* Animated gradient orbs */
+.orb{position:fixed;border-radius:50%;filter:blur(80px);opacity:0.15;pointer-events:none;z-index:0}
+.orb-1{width:600px;height:600px;background:var(--g2);top:-200px;left:-200px;animation:orbFloat1 20s ease-in-out infinite}
+.orb-2{width:500px;height:500px;background:var(--g3);bottom:-150px;right:-150px;animation:orbFloat2 25s ease-in-out infinite}
+.orb-3{width:400px;height:400px;background:var(--g1);top:50%;left:50%;transform:translate(-50%,-50%);animation:orbFloat3 30s ease-in-out infinite}
+@keyframes orbFloat1{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(100px,80px) scale(1.2)}}
+@keyframes orbFloat2{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-80px,-100px) scale(1.15)}}
+@keyframes orbFloat3{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-30%,-30%) scale(1.3)}}
+
+/* Grid pattern overlay */
+.grid-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px);background-size:60px 60px;z-index:0;pointer-events:none}
+
+/* Noise texture */
+.noise{position:fixed;top:0;left:0;width:100%;height:100%;opacity:0.03;z-index:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* Navigation */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 2rem;backdrop-filter:blur(20px);background:rgba(10,14,26,0.7);border-bottom:1px solid rgba(255,255,255,0.06);transition:all 0.3s}
+nav.scrolled{padding:0.6rem 2rem;background:rgba(10,14,26,0.9)}
+.nav-inner{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+.nav-brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:#fff}
+.nav-icon{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--p),var(--s));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700}
+.nav-name{font-weight:700;font-size:1.1rem;letter-spacing:-0.02em}
+.nav-links{display:flex;gap:2rem;align-items:center}
+.nav-links a{color:rgba(255,255,255,0.6);text-decoration:none;font-size:0.9rem;font-weight:500;transition:color 0.2s}
+.nav-links a:hover{color:#fff}
+.nav-btn{padding:8px 20px;border-radius:8px;background:linear-gradient(135deg,var(--p),var(--s));color:#fff;font-weight:600;font-size:0.85rem;border:none;cursor:pointer;transition:all 0.2s;text-decoration:none}
+.nav-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(20,184,166,0.4)}
+
+/* Hero Section */
+.hero{position:relative;z-index:1;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:120px 2rem 80px}
+.hero-content{max-width:900px;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 20px;border-radius:100px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);font-size:0.85rem;color:var(--s);margin-bottom:2rem;backdrop-filter:blur(10px)}
+.hero-badge .dot{width:8px;height:8px;border-radius:50%;background:var(--p);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.5;transform:scale(0.8)}}
+.hero-myth{font-size:0.95rem;color:rgba(255,255,255,0.5);margin-bottom:1rem;font-style:italic;letter-spacing:0.05em}
+.hero-title{font-size:clamp(3rem,8vw,5.5rem);font-weight:900;letter-spacing:-0.04em;line-height:1.05;margin-bottom:0.5rem;background:linear-gradient(135deg,#fff 0%,var(--s) 50%,var(--p) 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-tagline{font-size:clamp(1.2rem,3vw,1.8rem);color:var(--s);font-weight:600;margin-bottom:1.5rem;letter-spacing:-0.01em}
+.hero-desc{font-size:1.15rem;color:rgba(255,255,255,0.6);max-width:700px;margin:0 auto 2.5rem;line-height:1.7}
+.hero-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.btn-primary{padding:14px 32px;border-radius:12px;background:linear-gradient(135deg,var(--p),var(--s));color:#fff;font-weight:700;font-size:1rem;border:none;cursor:pointer;transition:all 0.3s;text-decoration:none;display:inline-flex;align-items:center;gap:8px}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(20,184,166,0.4)}
+.btn-secondary{padding:14px 32px;border-radius:12px;background:rgba(255,255,255,0.06);color:#fff;font-weight:600;font-size:1rem;border:1px solid rgba(255,255,255,0.12);cursor:pointer;transition:all 0.3s;text-decoration:none;display:inline-flex;align-items:center;gap:8px;backdrop-filter:blur(10px)}
+.btn-secondary:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2)}
+
+/* Stats bar */
+.stats-bar{display:flex;justify-content:center;gap:3rem;margin-top:4rem;padding-top:2rem;border-top:1px solid rgba(255,255,255,0.06)}
+.stat{text-align:center}
+.stat-val{font-size:1.8rem;font-weight:800;background:linear-gradient(135deg,var(--p),var(--s));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.stat-label{font-size:0.8rem;color:rgba(255,255,255,0.4);text-transform:uppercase;letter-spacing:0.1em;margin-top:4px}
+
+/* Sections */
+section{position:relative;z-index:1;padding:100px 2rem}
+.section-inner{max-width:1100px;margin:0 auto}
+.section-label{display:inline-flex;align-items:center;gap:8px;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.15em;color:var(--p);font-weight:600;margin-bottom:1rem}
+.section-title{font-size:clamp(2rem,4vw,3rem);font-weight:800;letter-spacing:-0.03em;margin-bottom:1.5rem;color:#fff}
+.section-desc{font-size:1.1rem;color:rgba(255,255,255,0.5);max-width:600px;line-height:1.7}
+
+/* Features Grid */
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1.5rem;margin-top:3rem}
+.feature-card{padding:2rem;border-radius:16px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);transition:all 0.3s;position:relative;overflow:hidden}
+.feature-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--p),transparent);opacity:0;transition:opacity 0.3s}
+.feature-card:hover{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.1);transform:translateY(-4px)}
+.feature-card:hover::before{opacity:1}
+.feature-icon{width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,rgba(20,184,166,0.15),rgba(45,212,191,0.05));display:flex;align-items:center;justify-content:center;font-size:1.4rem;margin-bottom:1rem}
+.feature-title{font-size:1.15rem;font-weight:700;margin-bottom:0.5rem;color:#fff}
+.feature-desc{font-size:0.9rem;color:rgba(255,255,255,0.5);line-height:1.6}
+
+/* Code Block */
+.code-section{margin-top:3rem}
+.code-window{border-radius:16px;overflow:hidden;background:#0d1117;border:1px solid rgba(255,255,255,0.08);box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.code-header{display:flex;align-items:center;gap:8px;padding:14px 20px;background:rgba(255,255,255,0.03);border-bottom:1px solid rgba(255,255,255,0.06)}
+.code-dot{width:12px;height:12px;border-radius:50%}
+.code-dot.red{background:#ff5f57}
+.code-dot.yellow{background:#febc2e}
+.code-dot.green{background:#28c840}
+.code-tab{margin-left:16px;font-size:0.8rem;color:rgba(255,255,255,0.4);font-family:'JetBrains Mono',monospace}
+.code-body{padding:24px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;line-height:1.8;overflow-x:auto}
+.code-line{display:flex;gap:16px}
+.code-num{color:rgba(255,255,255,0.15);user-select:none;min-width:24px;text-align:right}
+.code-text .kw{color:#14b8a6}
+.code-text .str{color:#2dd4bf}
+.code-text .fn{color:#e2e8f0}
+.code-text .cm{color:rgba(255,255,255,0.3);font-style:italic}
+.code-text .op{color:var(--a)}
+
+/* Tech Stack */
+.stack-grid{display:flex;flex-wrap:wrap;gap:12px;margin-top:2rem}
+.stack-tag{padding:10px 20px;border-radius:10px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);font-size:0.9rem;font-weight:500;color:rgba(255,255,255,0.7);transition:all 0.2s}
+.stack-tag:hover{border-color:var(--p);color:var(--p);background:rgba(20,184,166,0.08)}
+
+/* Architecture Diagram */
+.arch-diagram{margin-top:3rem;padding:3rem;border-radius:16px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);position:relative;overflow:hidden}
+.arch-flow{display:flex;align-items:center;justify-content:center;gap:1rem;flex-wrap:wrap}
+.arch-node{padding:16px 24px;border-radius:12px;background:linear-gradient(135deg,rgba(20,184,166,0.1),rgba(45,212,191,0.05));border:1px solid rgba(20,184,166,0.2);font-weight:600;font-size:0.9rem;color:var(--s);text-align:center}
+.arch-arrow{color:var(--p);font-size:1.5rem;opacity:0.5}
+
+/* Footer */
+footer{position:relative;z-index:1;padding:60px 2rem 40px;border-top:1px solid rgba(255,255,255,0.06)}
+.footer-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2rem}
+.footer-brand{display:flex;flex-direction:column;gap:8px}
+.footer-name{font-size:1.2rem;font-weight:700;color:#fff}
+.footer-org{font-size:0.85rem;color:rgba(255,255,255,0.4)}
+.footer-links{display:flex;gap:1.5rem}
+.footer-links a{color:rgba(255,255,255,0.4);text-decoration:none;font-size:0.85rem;transition:color 0.2s}
+.footer-links a:hover{color:var(--p)}
+.footer-copy{width:100%;text-align:center;font-size:0.8rem;color:rgba(255,255,255,0.25);margin-top:2rem;padding-top:2rem;border-top:1px solid rgba(255,255,255,0.04)}
+
+/* Animations */
+.fade-up{opacity:0;transform:translateY(30px);transition:all 0.8s cubic-bezier(0.16,1,0.3,1)}
+.fade-up.visible{opacity:1;transform:translateY(0)}
+
+/* Responsive */
+@media(max-width:768px){
+  .hero-title{font-size:2.5rem}
+  .stats-bar{gap:1.5rem;flex-wrap:wrap}
+  .features-grid{grid-template-columns:1fr}
+  .nav-links{display:none}
+  .footer-inner{flex-direction:column;text-align:center}
+  .arch-flow{flex-direction:column}
+  .arch-arrow{transform:rotate(90deg)}
+}
+</style>
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+<div class="orb orb-3"></div>
+<div class="grid-overlay"></div>
+<div class="noise"></div>
+
+<nav id="navbar">
+  <div class="nav-inner">
+    <a href="#" class="nav-brand">
+      <div class="nav-icon">📝</div>
+      <span class="nav-name">Karna</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#stack">Stack</a>
+      <a href="#architecture">Architecture</a>
+      <a href="https://github.com/MukundaKatta/karna" class="nav-btn">GitHub →</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge fade-up"><span class="dot"></span> Developer Tools — #41 of 100</div>
+    <div class="hero-myth fade-up">Hindu Mythology — Warrior of the Sun</div>
+    <h1 class="hero-title fade-up">Karna</h1>
+    <p class="hero-tagline fade-up">Content Generation Pipeline</p>
+    <p class="hero-desc fade-up">Automated content generation pipeline — blog posts, social media, video scripts from research to publishing.</p>
+    <div class="hero-actions fade-up">
+      <a href="https://github.com/MukundaKatta/karna" class="btn-primary">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        View on GitHub
+      </a>
+      <a href="#features" class="btn-secondary">
+        Explore Features ↓
+      </a>
+    </div>
+    <div class="stats-bar fade-up">
+      <div class="stat"><div class="stat-val">1</div><div class="stat-label">Technologies</div></div>
+      <div class="stat"><div class="stat-val">MIT</div><div class="stat-label">License</div></div>
+      <div class="stat"><div class="stat-val">Hindu</div><div class="stat-label">Mythology</div></div>
+      <div class="stat"><div class="stat-val">#41</div><div class="stat-label">In Portfolio</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="section-inner">
+    <div class="section-label fade-up">✦ Core Capabilities</div>
+    <h2 class="section-title fade-up">What Karna Does</h2>
+    <p class="section-desc fade-up">Automated content generation pipeline — blog posts, social media, video scripts from research to publishing.</p>
+    <div class="features-grid">
+      <div class="feature-card fade-up">
+        <div class="feature-icon">⚡</div>
+        <div class="feature-title">Lightning Fast</div>
+        <div class="feature-desc">Optimized for speed with minimal overhead and smart caching.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🎨</div>
+        <div class="feature-title">Beautiful UI</div>
+        <div class="feature-desc">Modern, responsive interface with dark mode and customizable themes.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🔌</div>
+        <div class="feature-title">Extensible</div>
+        <div class="feature-desc">Plugin system for adding custom functionality and integrations.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">📊</div>
+        <div class="feature-title">Analytics</div>
+        <div class="feature-desc">Built-in metrics, dashboards, and reporting capabilities.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🤖</div>
+        <div class="feature-title">AI-Powered</div>
+        <div class="feature-desc">Intelligent automation, suggestions, and code generation.</div>
+      </div>
+      <div class="feature-card fade-up">
+        <div class="feature-icon">🔒</div>
+        <div class="feature-title">Secure by Default</div>
+        <div class="feature-desc">Built-in security best practices, audit logging, and access control.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="section-inner">
+    <div class="section-label fade-up">✦ Quick Start</div>
+    <h2 class="section-title fade-up">Get Started in Seconds</h2>
+    <div class="code-section fade-up">
+      <div class="code-window">
+        <div class="code-header">
+          <span class="code-dot red"></span>
+          <span class="code-dot yellow"></span>
+          <span class="code-dot green"></span>
+          <span class="code-tab">terminal</span>
+        </div>
+        <div class="code-body">
+          <div class="code-line"><span class="code-num">1</span><span class="code-text"><span class="cm"># Install ${repo.display}</span></span></div>
+          <div class="code-line"><span class="code-num">2</span><span class="code-text"><span class="kw">$</span> <span class="fn">pip install</span> <span class="str">${repo.name}</span></span></div>
+          <div class="code-line"><span class="code-num">3</span><span class="code-text"></span></div>
+          <div class="code-line"><span class="code-num">4</span><span class="code-text"><span class="cm"># Quick start</span></span></div>
+          <div class="code-line"><span class="code-num">5</span><span class="code-text"><span class="kw">$</span> <span class="fn">python</span> <span class="str">-m ${repo.name}</span> <span class="op">--init</span></span></div>
+          <div class="code-line"><span class="code-num">6</span><span class="code-text"></span></div>
+          <div class="code-line"><span class="code-num">7</span><span class="code-text"><span class="cm"># Or clone from source</span></span></div>
+          <div class="code-line"><span class="code-num">8</span><span class="code-text"><span class="kw">$</span> <span class="fn">git clone</span> <span class="str">https://github.com/MukundaKatta/${repo.name}.git</span></span></div>
+          <div class="code-line"><span class="code-num">9</span><span class="code-text"><span class="kw">$</span> <span class="fn">cd</span> <span class="str">${repo.name}</span></span></div>
+          <div class="code-line"><span class="code-num">10</span><span class="code-text"><span class="kw">$</span> <span class="fn">pip install</span> <span class="op">-r</span> <span class="str">requirements.txt</span></span></div>
+          <div class="code-line"><span class="code-num">11</span><span class="code-text"><span class="kw">$</span> <span class="fn">python</span> <span class="str">src/main.py</span></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="stack">
+  <div class="section-inner">
+    <div class="section-label fade-up">✦ Technology Stack</div>
+    <h2 class="section-title fade-up">Built With Modern Tools</h2>
+    <div class="stack-grid fade-up">
+      <div class="stack-tag">Python</div>
+      <div class="stack-tag">GitHub Actions</div>
+      <div class="stack-tag">Docker</div>
+      <div class="stack-tag">MIT License</div>
+      <div class="stack-tag">REST API</div>
+      <div class="stack-tag">pytest</div>
+      <div class="stack-tag">pip</div>
+    </div>
+  </div>
+</section>
+
+<section id="architecture">
+  <div class="section-inner">
+    <div class="section-label fade-up">✦ Architecture</div>
+    <h2 class="section-title fade-up">System Overview</h2>
+    <div class="arch-diagram fade-up">
+      <div class="arch-flow">
+        <div class="arch-node">Input</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">Analysis</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">Processing</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">Output</div>
+        <div class="arch-arrow">→</div>
+        <div class="arch-node">Dashboard</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <div class="footer-name">📝 Karna</div>
+      <div class="footer-org">Officethree Technologies — MukundaKatta</div>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/MukundaKatta/karna">GitHub</a>
+      <a href="https://github.com/MukundaKatta">Profile</a>
+      <a href="#">Documentation</a>
+    </div>
+    <div class="footer-copy">© 2026 Officethree Technologies. All rights reserved. Part of the Mythological Portfolio — Project #41 of 100.</div>
+  </div>
+</footer>
+
+<script>
+// Canvas particle animation
+const canvas = document.getElementById('bgCanvas');
+const ctx = canvas.getContext('2d');
+let w, h, particles = [];
+
+function resize() {
+  w = canvas.width = window.innerWidth;
+  h = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+class Particle {
+  constructor() {
+    this.reset();
+  }
+  reset() {
+    this.x = Math.random() * w;
+    this.y = Math.random() * h;
+    this.size = Math.random() * 2 + 0.5;
+    this.speedX = (Math.random() - 0.5) * 0.3;
+    this.speedY = (Math.random() - 0.5) * 0.3;
+    this.opacity = Math.random() * 0.5 + 0.1;
+    this.pulse = Math.random() * Math.PI * 2;
+  }
+  update() {
+    this.x += this.speedX;
+    this.y += this.speedY;
+    this.pulse += 0.02;
+    if (this.x < 0 || this.x > w || this.y < 0 || this.y > h) this.reset();
+  }
+  draw() {
+    const o = this.opacity * (0.5 + Math.sin(this.pulse) * 0.5);
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(20,184,166,' + o + ')';
+    ctx.fill();
+  }
+}
+
+for (let i = 0; i < 80; i++) particles.push(new Particle());
+
+// Draw connecting lines between nearby particles
+function drawConnections() {
+  for (let i = 0; i < particles.length; i++) {
+    for (let j = i + 1; j < particles.length; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 150) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = 'rgba(20,184,166,' + (0.03 * (1 - dist / 150)) + ')';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function animate() {
+  ctx.clearRect(0, 0, w, h);
+  particles.forEach(p => { p.update(); p.draw(); });
+  drawConnections();
+  requestAnimationFrame(animate);
+}
+animate();
+
+// Scroll animations
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+}, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+
+// Navbar scroll effect
+window.addEventListener('scroll', () => {
+  document.getElementById('navbar').classList.toggle('scrolled', window.scrollY > 50);
+});
+</script>
+</body>
+</html>
