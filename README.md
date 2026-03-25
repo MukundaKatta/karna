@@ -1,57 +1,56 @@
-# Karna
+# 🔱 Karna — Content Generation Pipeline
 
-> Your Loyal AI Agent Platform
+> **Hindu Mythology**: Warrior of the Sun | Automated content generation pipeline
 
-## Overview
+[![GitHub Pages](https://img.shields.io/badge/🌐_Live_Demo-Visit_Site-blue?style=for-the-badge)](https://MukundaKatta.github.io/karna/)
+[![GitHub](https://img.shields.io/github/license/MukundaKatta/karna?style=flat-square)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/MukundaKatta/karna?style=flat-square)](https://github.com/MukundaKatta/karna/stargazers)
 
-Karna is a self-hosted personal AI assistant platform with multi-channel messaging, extensible skills, and semantic memory. Named after the legendary warrior known for his unwavering loyalty, Karna serves as your dedicated AI companion across all communication channels.
+## 🚀 Overview
 
-Built for developers and businesses who want full control over their AI assistant — no vendor lock-in, no data leaving your servers, complete customization.
+Automated content generation pipeline
 
-## Key Features
+**Tech Stack:** Python
 
-- **Multi-Channel Messaging** — Slack, Discord, WhatsApp, SMS, email, and custom integrations
-- **Extensible Skills** — Plugin architecture for adding new capabilities
-- **Semantic Memory** — Long-term memory with vector search for contextual conversations
-- **Self-Hosted** — Deploy on your own infrastructure with full data ownership
-- **Conversation Threading** — Maintains context across multi-turn conversations
-- **Role-Based Access** — Fine-grained permissions for team deployments
-- **API-First Design** — RESTful API for programmatic access
-
-## Tech Stack
-
-- **Backend:** Python, FastAPI
-- **AI:** Claude API, OpenAI API, local models via Ollama
-- **Memory:** PostgreSQL, pgvector
-- **Messaging:** WebSocket, webhooks
-- **Deployment:** Docker, Kubernetes
-
-## Getting Started
+## 📦 Quick Start
 
 ```bash
 git clone https://github.com/MukundaKatta/karna.git
 cd karna
-cp .env.example .env  # Configure API keys
-docker-compose up -d
+# Follow setup instructions below
 ```
 
-## Architecture
+## 🏗️ Project Structure
 
 ```
 karna/
-├── core/          # Agent orchestration engine
-├── channels/      # Multi-channel adapters
-├── skills/        # Extensible skill plugins
-├── memory/        # Semantic memory & vector store
-└── api/           # REST API layer
+├── README.md
+├── LICENSE
+├── CLAUDE.md
+├── .gitignore
+├── src/
+│   ├── main.py
+│   ├── config.py
+│   └── utils.py
+├── tests/
+│   └── test_main.py
+├── docs/
+│   └── architecture.md
+├── examples/
+│   └── basic_usage.py
+└── .github/
+    └── workflows/
+        └── static.yml
 ```
-
----
-
-**Mukunda Katta** · [Officethree Technologies](https://github.com/MukundaKatta/Office3) · 2026
-
----
 
 ## 🌐 Live Demo
 
-🔗 **[Visit Landing Page](https://MukundaKatta.github.io/karna)**
+Visit the landing page: **https://MukundaKatta.github.io/karna/**
+
+## 📄 License
+
+MIT License — © 2026 Officethree Technologies
+
+## 🔱 Part of the Mythological Portfolio
+
+This is project **#karna** in the [100-project Mythological Portfolio](https://github.com/MukundaKatta) by Officethree Technologies.
