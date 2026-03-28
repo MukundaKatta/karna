@@ -202,10 +202,10 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 h-14 border-b border-dark-700 shrink-0">
+      {/* Header — offset left on mobile for hamburger menu */}
+      <div className="flex items-center justify-between px-5 pl-14 md:pl-5 h-14 border-b border-dark-700 shrink-0">
         <h1 className="text-base font-semibold text-white">Chat</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {agentState !== "idle" && agentState !== "error" && (
             <Badge variant="accent">
               <Loader2 size={12} className="animate-spin mr-1" />
@@ -251,29 +251,29 @@ export default function ChatPage() {
         )}
       </div>
 
-      {/* Input area */}
-      <div className="border-t border-dark-700 px-4 py-3">
-        <div className="flex items-end gap-2 max-w-4xl mx-auto">
+      {/* Input area — safe area padding for notched phones */}
+      <div className="border-t border-dark-700 px-3 sm:px-4 py-2 sm:py-3 pb-safe">
+        <div className="flex items-end gap-1.5 sm:gap-2 max-w-4xl mx-auto">
           <button
-            className="p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0"
+            className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
             title="Attach file"
           >
             <Paperclip size={18} />
           </button>
-          <div className="flex-1 relative">
+          <div className="flex-1 relative min-w-0">
             <textarea
               ref={inputRef}
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Type a message... (Shift+Enter for new line)"
+              placeholder="Type a message..."
               rows={1}
-              className="w-full px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-sm text-dark-100 placeholder:text-dark-500 focus:outline-none focus:border-accent-500 resize-none"
-              style={{ maxHeight: "200px" }}
+              className="w-full px-3 sm:px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-sm text-dark-100 placeholder:text-dark-500 focus:outline-none focus:border-accent-500 resize-none"
+              style={{ maxHeight: "120px" }}
             />
           </div>
           <button
-            className="p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0"
+            className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
             title="Voice input"
           >
             <Mic size={18} />
@@ -284,7 +284,7 @@ export default function ChatPage() {
             className={cn(
               "p-2.5 rounded-lg transition-colors shrink-0",
               input.trim() && agentState !== "thinking" && agentState !== "streaming"
-                ? "bg-accent-600 text-white hover:bg-accent-500"
+                ? "bg-accent-600 text-white hover:bg-accent-500 active:scale-95"
                 : "bg-dark-700 text-dark-500 cursor-not-allowed",
             )}
             title="Send message"

@@ -17,8 +17,10 @@ import {
   PanelLeftClose,
   PanelLeft,
   Zap,
+  Menu,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { useDashboardStore } from "@/lib/store";
 
@@ -62,6 +64,31 @@ export function Sidebar() {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["Dashboard"]),
   );
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile sidebar on route change
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
+
+  // Close on escape key
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, []);
+
+  // Prevent body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (mobileOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [mobileOpen]);
 
   const toggleSection = (label: string) => {
     setExpandedSections((prev) => {
@@ -80,13 +107,8 @@ export function Sidebar() {
     return pathname.startsWith(href);
   };
 
-  return (
-    <aside
-      className={cn(
-        "flex flex-col h-screen bg-dark-800 border-r border-dark-700 transition-all duration-200",
-        sidebarCollapsed ? "w-16" : "w-60",
-      )}
-    >
+  const sidebarContent = (
+    <>
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-14 border-b border-dark-700 shrink-0">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent-600 text-white">
@@ -97,6 +119,13 @@ export function Sidebar() {
             Karna
           </span>
         )}
+        {/* Mobile close button */}
+        <button
+          onClick={() => setMobileOpen(false)}
+          className="ml-auto p-1.5 rounded-lg text-dark-400 hover:text-white md:hidden"
+        >
+          <X size={20} />
+        </button>
       </div>
 
       {/* Navigation */}
@@ -108,7 +137,7 @@ export function Sidebar() {
                 <button
                   onClick={() => toggleSection(item.label)}
                   className={cn(
-                    "flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                     pathname.startsWith("/dashboard") && item.label === "Dashboard"
                       ? "text-white bg-dark-700/50"
                       : "text-dark-300 hover:text-white hover:bg-dark-700/50",
@@ -133,7 +162,7 @@ export function Sidebar() {
                         key={child.href}
                         href={child.href}
                         className={cn(
-                          "flex items-center gap-2.5 px-3 py-1.5 rounded-md text-sm transition-colors",
+                          "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
                           isActive(child.href)
                             ? "text-accent-400 bg-accent-600/10"
                             : "text-dark-400 hover:text-white hover:bg-dark-700/40",
@@ -150,7 +179,7 @@ export function Sidebar() {
               <Link
                 href={item.href}
                 className={cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                   isActive(item.href)
                     ? "text-accent-400 bg-accent-600/10"
                     : "text-dark-300 hover:text-white hover:bg-dark-700/50",
@@ -164,8 +193,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Collapse toggle */}
-      <div className="border-t border-dark-700 p-2">
+      {/* Collapse toggle (desktop only) */}
+      <div className="border-t border-dark-700 p-2 hidden md:block">
         <button
           onClick={toggleSidebar}
           className="flex items-center justify-center w-full p-2 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700/50 transition-colors"
@@ -173,6 +202,50 @@ export function Sidebar() {
           {sidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
         </button>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile hamburger button — fixed top-left */}
+      <button
+        onClick={() => setMobileOpen(true)}
+        className={cn(
+          "fixed top-3 left-3 z-50 p-2 rounded-lg bg-dark-800 border border-dark-700 text-dark-300 hover:text-white md:hidden",
+          mobileOpen && "hidden",
+        )}
+        aria-label="Open menu"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile sidebar — slides in from left */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex flex-col bg-dark-800 border-r border-dark-700 w-72 transition-transform duration-200 ease-out md:hidden",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Desktop sidebar — always visible */}
+      <aside
+        className={cn(
+          "hidden md:flex flex-col h-screen bg-dark-800 border-r border-dark-700 transition-all duration-200",
+          sidebarCollapsed ? "w-16" : "w-60",
+        )}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

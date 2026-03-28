@@ -36,9 +36,35 @@ export default function SessionsPage() {
   const [channelFilter, setChannelFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [search, setSearch] = useState("");
+  const [sessions, setSessions] = useState<SessionRow[]>(demoSessions);
+
+  // Fetch live sessions from gateway
+  useState(() => {
+    fetch("/api/sessions", { cache: "no-store" })
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => {
+        if (data?.sessions?.length > 0) {
+          setSessions(
+            data.sessions.map((s: Record<string, unknown>) => ({
+              id: s.id as string,
+              channelType: s.channelType as string,
+              channelId: s.channelId as string,
+              status: s.status as string,
+              createdAt: s.createdAt as number,
+              updatedAt: s.updatedAt as number,
+              messageCount: (s.stats as Record<string, number>)?.messageCount ?? 0,
+              tokens: ((s.stats as Record<string, number>)?.totalInputTokens ?? 0) +
+                      ((s.stats as Record<string, number>)?.totalOutputTokens ?? 0),
+              cost: (s.stats as Record<string, number>)?.totalCostUsd ?? 0,
+            })),
+          );
+        }
+      })
+      .catch(() => { /* keep demo data */ });
+  });
 
   const filteredSessions = useMemo(() => {
-    return demoSessions.filter((s) => {
+    return sessions.filter((s) => {
       if (channelFilter && s.channelType !== channelFilter) return false;
       if (statusFilter && s.status !== statusFilter) return false;
       if (search && !s.id.includes(search) && !s.channelId.includes(search)) return false;
@@ -100,7 +126,7 @@ export default function SessionsPage() {
   ];
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
       <div>
         <h1 className="text-xl font-semibold text-white">Sessions</h1>
         <p className="text-sm text-dark-400 mt-1">Browse and manage conversation sessions</p>

@@ -65,10 +65,48 @@ function getDemoData(): DashboardData {
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
+  const [isDemo, setIsDemo] = useState(false);
 
   useEffect(() => {
-    // In production, fetch from gateway API
-    setData(getDemoData());
+    // Fetch live data from gateway, fall back to demo data
+    async function fetchData() {
+      try {
+        const res = await fetch("/api/analytics", { cache: "no-store" });
+        if (res.ok) {
+          const analytics = await res.json();
+          const overview = analytics.overview ?? {};
+          setIsDemo(false);
+          setData({
+            stats: {
+              totalMessages: overview.totalMessages ?? 0,
+              activeSessions: overview.activeSessions ?? 0,
+              tokensUsed: (overview.totalInputTokens ?? 0) + (overview.totalOutputTokens ?? 0),
+              totalCost: overview.totalCostUsd ?? 0,
+              messageTrend: 0,
+              sessionTrend: 0,
+              tokenTrend: 0,
+              costTrend: 0,
+            },
+            messageVolume: getDemoData().messageVolume, // Chart data still from local until history API is built
+            activeChannels: Object.entries(analytics.sessionsByChannel ?? {}).map(
+              ([type, count]) => ({
+                name: type.charAt(0).toUpperCase() + type.slice(1),
+                type,
+                status: "active",
+                sessions: count as number,
+              }),
+            ),
+            recentActivity: getDemoData().recentActivity,
+          });
+          return;
+        }
+      } catch {
+        // Gateway not available, use demo data
+      }
+      setIsDemo(true);
+      setData(getDemoData());
+    }
+    fetchData();
   }, []);
 
   if (!data) {
@@ -80,10 +118,19 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold text-white">Dashboard</h1>
-        <p className="text-sm text-dark-400 mt-1">Overview of your Karna instance</p>
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
+      {isDemo && (
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-3 sm:px-4 py-2.5 sm:py-3 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
+          <span className="text-yellow-400 text-sm font-medium">Demo Mode</span>
+          <span className="text-yellow-400/70 text-xs sm:text-sm">
+            Gateway not connected. Start with{" "}
+            <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">pnpm gateway:dev</code>
+          </span>
+        </div>
+      )}
+      <div className="pl-10 md:pl-0">
+        <h1 className="text-lg sm:text-xl font-semibold text-white">Dashboard</h1>
+        <p className="text-xs sm:text-sm text-dark-400 mt-1">Overview of your Karna instance</p>
       </div>
 
       {/* Stats cards */}
