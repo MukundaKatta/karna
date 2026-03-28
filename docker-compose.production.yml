@@ -1,0 +1,86 @@
+# ─── Karna Production Docker Compose ──────────────────────────────────────
+# Full production stack: gateway + web + database + redis + monitoring
+#
+# Usage:
+#   cp .env.example .env  # Edit with your API keys
+#   docker compose -f docker-compose.production.yml up -d
+#
+# ──────────────────────────────────────────────────────────────────────────
+
+services:
+  # ─── Gateway ─────────────────────────────────────────────────────────
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "18789:18789"
+    environment:
+      - NODE_ENV=production
+      - GATEWAY_AUTH_TOKEN=${GATEWAY_AUTH_TOKEN}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - SUPABASE_URL=http://supabase-kong:8000
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18789/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── Web Dashboard ──────────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - GATEWAY_URL=http://gateway:18789
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:18789
+      - NEXT_PUBLIC_WS_URL=ws://localhost:18789/ws
+    depends_on:
+      gateway:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─── Redis ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  # ─── PostgreSQL (Supabase) ──────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "54322:5432"
+    environment:
+      - POSTGRES_DB=karna
+      - POSTGRES_USER=karna
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-karna_dev_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U karna"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  postgres-data:
