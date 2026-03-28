@@ -6,6 +6,7 @@ export * from "./types/tool.js";
 export * from "./types/skill.js";
 export * from "./types/memory.js";
 export * from "./types/config.js";
+export * from "./types/orchestration.js";
 
 // ─── Utils ───────────────────────────────────────────────────────────────────
 

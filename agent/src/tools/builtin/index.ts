@@ -79,6 +79,31 @@ import {
   mcpDisconnectServerTool,
 } from "./mcp-client.js";
 
+// Image Generation
+import { imageGenerateTool } from "./image-generate.js";
+
+// Apply Patch
+import { applyPatchTool } from "./apply-patch.js";
+
+// Inter-Agent Sessions
+import {
+  sessionsListTool,
+  sessionsHistoryTool,
+  sessionsSendTool,
+} from "./sessions.js";
+
+// Memory Tools
+import { memorySearchTool, memoryGetTool } from "./memory-tools.js";
+
+// Cross-Channel Message
+import { messageTool } from "./message.js";
+
+// Gateway Control
+import { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gateway-control.js";
+
+// Delegation (Multi-Agent Orchestration)
+import { delegateToAgentTool } from "./delegate.js";
+
 // ─── All Tools ───────────────────────────────────────────────────────────
 
 export const allBuiltinTools = [
@@ -142,6 +167,32 @@ export const allBuiltinTools = [
   mcpListToolsTool,
   mcpCallToolTool,
   mcpDisconnectServerTool,
+
+  // Image Generation
+  imageGenerateTool,
+
+  // Apply Patch
+  applyPatchTool,
+
+  // Inter-Agent Sessions
+  sessionsListTool,
+  sessionsHistoryTool,
+  sessionsSendTool,
+
+  // Memory Tools
+  memorySearchTool,
+  memoryGetTool,
+
+  // Cross-Channel Message
+  messageTool,
+
+  // Gateway Control
+  gatewayRestartTool,
+  sessionStatusTool,
+  sessionSpawnTool,
+
+  // Delegation (Multi-Agent)
+  delegateToAgentTool,
 ] as const;
 
 // ─── Registration ────────────────────────────────────────────────────────
@@ -212,3 +263,15 @@ export {
   mcpCallToolTool,
   mcpDisconnectServerTool,
 } from "./mcp-client.js";
+export { imageGenerateTool } from "./image-generate.js";
+export { applyPatchTool } from "./apply-patch.js";
+export {
+  sessionsListTool,
+  sessionsHistoryTool,
+  sessionsSendTool,
+} from "./sessions.js";
+export { setElevatedMode } from "./shell.js";
+export { memorySearchTool, memoryGetTool } from "./memory-tools.js";
+export { messageTool } from "./message.js";
+export { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gateway-control.js";
+export { delegateToAgentTool, DELEGATE_TOOL_NAME } from "./delegate.js";
