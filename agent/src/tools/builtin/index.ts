@@ -104,6 +104,12 @@ import { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gatew
 // Delegation (Multi-Agent Orchestration)
 import { delegateToAgentTool } from "./delegate.js";
 
+// macOS Tools
+import { allMacOSTools } from "./macos/index.js";
+
+// Integrations (third-party apps)
+import { allIntegrationTools } from "./integrations/index.js";
+
 // ─── All Tools ───────────────────────────────────────────────────────────
 
 export const allBuiltinTools = [
@@ -193,6 +199,12 @@ export const allBuiltinTools = [
 
   // Delegation (Multi-Agent)
   delegateToAgentTool,
+
+  // macOS
+  ...allMacOSTools,
+
+  // Integrations (GitHub, Google Drive, Slack, Notion, Spotify)
+  ...allIntegrationTools,
 ] as const;
 
 // ─── Registration ────────────────────────────────────────────────────────
@@ -275,3 +287,5 @@ export { memorySearchTool, memoryGetTool } from "./memory-tools.js";
 export { messageTool } from "./message.js";
 export { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gateway-control.js";
 export { delegateToAgentTool, DELEGATE_TOOL_NAME } from "./delegate.js";
+export { allMacOSTools } from "./macos/index.js";
+export { allIntegrationTools } from "./integrations/index.js";
