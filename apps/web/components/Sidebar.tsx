@@ -12,6 +12,7 @@ import {
   Brain,
   BarChart3,
   Settings,
+  Store,
   ChevronDown,
   ChevronRight,
   PanelLeftClose,
@@ -19,6 +20,8 @@ import {
   Zap,
   Menu,
   X,
+  Activity,
+  GitBranch,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -50,6 +53,21 @@ const navItems: NavItem[] = [
       { label: "Memory", href: "/dashboard/memory", icon: <Brain size={16} /> },
       { label: "Analytics", href: "/dashboard/analytics", icon: <BarChart3 size={16} /> },
     ],
+  },
+  {
+    label: "Marketplace",
+    href: "/marketplace",
+    icon: <Store size={18} />,
+  },
+  {
+    label: "Observability",
+    href: "/observability",
+    icon: <Activity size={18} />,
+  },
+  {
+    label: "Workflows",
+    href: "/workflows",
+    icon: <GitBranch size={18} />,
   },
   {
     label: "Settings",
