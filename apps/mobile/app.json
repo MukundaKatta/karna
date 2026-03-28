@@ -2,6 +2,7 @@
   "expo": {
     "name": "Karna",
     "slug": "karna",
+    "owner": "mukundakatta",
     "version": "0.1.0",
     "scheme": "karna",
     "orientation": "portrait",
@@ -12,13 +13,17 @@
       "resizeMode": "contain",
       "backgroundColor": "#0A0A0F"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.karna.mobile",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Karna needs microphone access for voice input.",
-        "UIBackgroundModes": ["audio"]
+        "UIBackgroundModes": [
+          "audio"
+        ]
       }
     },
     "android": {
@@ -27,7 +32,9 @@
         "backgroundColor": "#0A0A0F"
       },
       "package": "com.karna.mobile",
-      "permissions": ["RECORD_AUDIO"]
+      "permissions": [
+        "RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -45,6 +52,14 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "40efdad2-8a97-4640-beb4-c1bbbfd9253a"
+      }
     }
   }
 }

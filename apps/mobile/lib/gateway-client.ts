@@ -1,5 +1,5 @@
 import { useAppStore } from './store';
-import type { ChatMessage, ToolCall } from './store';
+import type { ChatMessage, ToolCall, MemoryEntry, Skill, Reminder } from './store';
 
 // ── Protocol Types ───────────────────────────────────────────────────────────
 
@@ -268,6 +268,76 @@ class GatewayClient {
 
       case 'typing.stop': {
         store.setTyping(false);
+        break;
+      }
+
+      // ── Memory handlers ─────────────────────────────────────────────────
+
+      case 'memory.search.result': {
+        const results = payload.results as MemoryEntry[] | undefined;
+        if (results) {
+          store.setMemories(results);
+        }
+        break;
+      }
+
+      case 'memory.list': {
+        const memories = payload.memories as MemoryEntry[] | undefined;
+        if (memories) {
+          store.setMemories(memories);
+        }
+        break;
+      }
+
+      // ── Skill handlers ──────────────────────────────────────────────────
+
+      case 'skill.list': {
+        const skills = payload.skills as Skill[] | undefined;
+        if (skills) {
+          store.setSkills(skills);
+        }
+        break;
+      }
+
+      case 'skill.toggle.result': {
+        const skillId = payload.skillId as string | undefined;
+        const active = payload.active as boolean | undefined;
+        if (skillId && active !== undefined) {
+          store.setSkills(
+            store.skills.map((s) =>
+              s.id === skillId ? { ...s, active } : s,
+            ),
+          );
+        }
+        break;
+      }
+
+      // ── Reminder handlers ───────────────────────────────────────────────
+
+      case 'reminder.list': {
+        const reminders = payload.reminders as Reminder[] | undefined;
+        if (reminders) {
+          // Replace entire reminders list from gateway
+          useAppStore.setState({ reminders });
+        }
+        break;
+      }
+
+      case 'reminder.created': {
+        const reminder = payload.reminder as Reminder | undefined;
+        if (reminder) {
+          store.addReminder(reminder);
+        }
+        break;
+      }
+
+      // ── Chat history handler ────────────────────────────────────────────
+
+      case 'chat.history': {
+        const olderMessages = payload.messages as ChatMessage[] | undefined;
+        if (olderMessages && olderMessages.length > 0) {
+          store.loadOlderMessages(olderMessages);
+        }
         break;
       }
 

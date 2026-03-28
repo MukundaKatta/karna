@@ -1,4 +1,75 @@
 import { create } from 'zustand';
+import * as FileSystem from 'expo-file-system';
+
+// ── Persistence ─────────────────────────────────────────────────────────────
+
+const STORE_FILE = `${FileSystem.documentDirectory}karna-store.json`;
+
+interface PersistedState {
+  darkMode: boolean;
+  notifications: boolean;
+  agentName: string;
+  url: string;
+  token: string;
+  messages: ChatMessage[];
+  reminders: Reminder[];
+  skills: Skill[];
+}
+
+const PERSIST_KEYS: (keyof PersistedState)[] = [
+  'darkMode',
+  'notifications',
+  'agentName',
+  'url',
+  'token',
+  'messages',
+  'reminders',
+  'skills',
+];
+
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function persistState(state: Record<string, unknown>): void {
+  // Debounce writes to avoid thrashing disk
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    const toPersist: Record<string, unknown> = {};
+    for (const key of PERSIST_KEYS) {
+      toPersist[key] = state[key];
+    }
+    // Keep only the last 100 messages
+    if (Array.isArray(toPersist.messages)) {
+      toPersist.messages = (toPersist.messages as ChatMessage[]).slice(0, 100);
+    }
+    FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
+      (err) => console.warn('[Store] Failed to persist state:', err),
+    );
+  }, 500);
+}
+
+export async function loadPersistedState(): Promise<void> {
+  try {
+    const info = await FileSystem.getInfoAsync(STORE_FILE);
+    if (!info.exists) return;
+
+    const raw = await FileSystem.readAsStringAsync(STORE_FILE);
+    const data = JSON.parse(raw) as Partial<PersistedState>;
+    const patch: Record<string, unknown> = {};
+
+    for (const key of PERSIST_KEYS) {
+      if (data[key] !== undefined) {
+        patch[key] = data[key];
+      }
+    }
+
+    if (Object.keys(patch).length > 0) {
+      useAppStore.setState(patch);
+      console.log('[Store] Restored persisted state');
+    }
+  } catch (err) {
+    console.warn('[Store] Failed to load persisted state:', err);
+  }
+}
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -173,3 +244,8 @@ export const useAppStore = create<AppState>()((set) => ({
   setNotifications: (notifications) => set({ notifications }),
   setAgentName: (agentName) => set({ agentName }),
 }));
+
+// Persist on every state change (debounced)
+useAppStore.subscribe((state) => {
+  persistState(state as unknown as Record<string, unknown>);
+});
