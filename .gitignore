@@ -27,3 +27,14 @@ Thumbs.db
 *.log
 .coverage
 htmlcov/
+.vercel
+.turbo
+.expo
+*.tsbuildinfo
+.env.local
+.env.production
+.env.*.local
+
+# Karna local data
+.karna/
+karna.json
