@@ -6,13 +6,86 @@ import type {
   ConnectMessage,
   ChatMessage,
   SkillInvokeMessage,
+  VoiceStartMessage,
+  VoiceAudioChunkMessage,
+  VoiceEndMessage,
 } from "./schema.js";
 import type { AuthContext } from "./auth.js";
 import { validateToken, generateChallenge, verifyChallenge, createAuthContext } from "./auth.js";
 import type { SessionManager } from "../session/manager.js";
 import type { HeartbeatScheduler } from "../heartbeat/scheduler.js";
+import type { StreamCallback } from "@karna/agent/runtime.js";
+import { handleVoiceStart, handleVoiceAudioChunk, handleVoiceEnd } from "../voice/handler.js";
+import { appendToTranscript, readTranscript } from "../session/store.js";
+import { Orchestrator } from "@karna/agent/orchestration/orchestrator.js";
+import type { AgentDefinition, DelegationRecord } from "@karna/shared/types/orchestration.js";
 
 const logger = pino({ name: "message-handler" });
+
+// ─── Orchestrator Singleton ──────────────────────────────────────────────────
+
+/**
+ * Default agent definitions for the Karna platform.
+ * In production these would come from configuration / database.
+ */
+const DEFAULT_AGENTS: AgentDefinition[] = [
+  {
+    id: "karna-general",
+    name: "Karna",
+    description: "A loyal and capable AI assistant. Handles general-purpose tasks, conversation, and coordination.",
+    persona: "Helpful, accurate, and concise.",
+    model: "claude-sonnet-4-20250514",
+    provider: "anthropic",
+    specializations: ["general", "conversation", "coordination"],
+  },
+  {
+    id: "karna-coder",
+    name: "Karna Coder",
+    description: "Specialized in writing, reviewing, and debugging code across multiple languages and frameworks.",
+    persona: "Precise, methodical, and thorough when working with code.",
+    model: "claude-sonnet-4-20250514",
+    provider: "anthropic",
+    specializations: ["code", "programming", "debugging", "review"],
+  },
+  {
+    id: "karna-researcher",
+    name: "Karna Researcher",
+    description: "Specialized in research, analysis, web search, and synthesizing information from multiple sources.",
+    persona: "Thorough, analytical, and detail-oriented when researching topics.",
+    model: "claude-sonnet-4-20250514",
+    provider: "anthropic",
+    specializations: ["research", "analysis", "web-search", "synthesis"],
+    tools: ["web_search", "browser_navigate", "browser_extract_text", "browser_screenshot"],
+  },
+  {
+    id: "karna-writer",
+    name: "Karna Writer",
+    description: "Specialized in creative writing, content creation, editing, and document drafting.",
+    persona: "Creative, articulate, and adaptable to different writing styles and tones.",
+    model: "claude-sonnet-4-20250514",
+    provider: "anthropic",
+    specializations: ["writing", "content", "editing", "documents"],
+  },
+];
+
+let orchestrator: Orchestrator | null = null;
+const pendingApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }>();
+
+async function getOrCreateOrchestrator(): Promise<Orchestrator> {
+  if (orchestrator) return orchestrator;
+
+  orchestrator = new Orchestrator({
+    agents: DEFAULT_AGENTS,
+    defaultAgentId: "karna-general",
+    poolConfig: { maxSize: 10 },
+    handoffOptions: { maxDepth: 5 },
+    enableSupervisor: false, // Can be enabled when supervisor agent is configured
+  });
+
+  await orchestrator.init();
+  logger.info("Orchestrator initialized");
+  return orchestrator;
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -84,6 +157,18 @@ export async function handleMessage(
 
       case "skill.invoke":
         await handleSkillInvoke(ws, message, context);
+        break;
+
+      case "voice.start":
+        handleVoiceStart(ws, (message as VoiceStartMessage).payload, context);
+        break;
+
+      case "voice.audio.chunk":
+        handleVoiceAudioChunk(ws, (message as VoiceAudioChunkMessage).payload, context);
+        break;
+
+      case "voice.end":
+        await handleVoiceEnd(ws, (message as VoiceEndMessage).payload, context);
         break;
 
       default:
@@ -175,6 +260,12 @@ async function handleChatMessage(
   message: ChatMessage,
   context: ConnectionContext,
 ): Promise<void> {
+  // Auth gate: require authenticated connection before processing messages
+  if (!context.auth) {
+    sendError(ws, "UNAUTHENTICATED", "Must send a 'connect' message before chat messages");
+    return;
+  }
+
   const { content, role } = message.payload;
   const sessionId = message.sessionId;
 
@@ -191,6 +282,15 @@ async function handleChatMessage(
 
   logger.info({ sessionId, role, contentLength: content.length }, "Chat message received");
 
+  // Persist user message to transcript
+  await appendToTranscript(sessionId, {
+    id: nanoid(),
+    sessionId,
+    role: "user",
+    content,
+    timestamp: Date.now(),
+  });
+
   // Send status: thinking
   sendMessage(ws, {
     id: nanoid(),
@@ -203,10 +303,174 @@ async function handleChatMessage(
     },
   });
 
-  // TODO: Forward to agent runtime for processing
-  // For now, acknowledge receipt. The agent runtime integration will
-  // handle sending agent.response messages back through the WebSocket.
-  logger.debug({ sessionId }, "Message queued for agent processing");
+  // Forward to orchestrator
+  try {
+    const orch = await getOrCreateOrchestrator();
+
+    // Load conversation history from transcript
+    const history = await readTranscript(sessionId, 50);
+
+    // Set up streaming callback to forward deltas to the client
+    let streamIndex = 0;
+    const streamCallback: StreamCallback = (event) => {
+      switch (event.type) {
+        case "text":
+          sendMessage(ws, {
+            id: nanoid(),
+            type: "agent.response.stream",
+            timestamp: Date.now(),
+            sessionId,
+            payload: {
+              delta: event.text,
+              index: streamIndex++,
+              finishReason: null,
+            },
+          });
+          break;
+        case "tool_use":
+          sendMessage(ws, {
+            id: nanoid(),
+            type: "tool.approval.requested",
+            timestamp: Date.now(),
+            sessionId,
+            payload: {
+              toolCallId: event.id,
+              toolName: event.name,
+              arguments: event.input,
+              riskLevel: "medium",
+            },
+          });
+          break;
+      }
+    };
+
+    orch.setStreamCallback(streamCallback);
+
+    // Set up approval callback to forward requests to the client
+    orch.setApprovalCallback(async (request) => {
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => {
+          pendingApprovals.delete(request.toolCallId);
+          resolve({
+            toolCallId: request.toolCallId,
+            approved: false, // Reject on timeout — never auto-approve
+            reason: "Rejected: approval request timed out (60s)",
+            respondedAt: Date.now(),
+          });
+        }, 60_000);
+
+        pendingApprovals.set(request.toolCallId, {
+          resolve: (approved: boolean) => {
+            resolve({
+              toolCallId: request.toolCallId,
+              approved,
+              respondedAt: Date.now(),
+            });
+          },
+          timer,
+        });
+      });
+    });
+
+    // Set up delegation callback to emit agent.handoff messages to the client
+    orch.setDelegationCallback((record: DelegationRecord) => {
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "agent.handoff",
+        timestamp: Date.now(),
+        sessionId,
+        payload: {
+          fromAgentId: record.fromAgentId,
+          toAgentId: record.toAgentId,
+          reason: record.reason,
+          contextSummary: record.task,
+        },
+      });
+    });
+
+    // Execute via orchestrator (handles delegation transparently)
+    const result = await orch.handleMessage(session, content, history);
+
+    if (result.success) {
+      // Send final response
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "agent.response",
+        timestamp: Date.now(),
+        sessionId,
+        payload: {
+          content: result.response,
+          role: "assistant",
+          finishReason: "stop",
+          usage: result.totalTokens,
+        },
+      });
+
+      // Persist assistant message to transcript
+      await appendToTranscript(sessionId, {
+        id: nanoid(),
+        sessionId,
+        role: "assistant",
+        content: result.response,
+        timestamp: Date.now(),
+        metadata: {
+          agentId: result.agentId,
+          inputTokens: result.totalTokens.inputTokens,
+          outputTokens: result.totalTokens.outputTokens,
+          delegations: result.delegations.length > 0 ? result.delegations : undefined,
+        },
+      });
+
+      // Send orchestration status if any delegations occurred
+      if (result.delegations.length > 0) {
+        sendMessage(ws, {
+          id: nanoid(),
+          type: "orchestration.status",
+          timestamp: Date.now(),
+          sessionId,
+          payload: {
+            activeAgents: orch.activeAgentCount,
+            delegations: result.delegations.map((d) => ({
+              fromAgentId: d.fromAgentId,
+              toAgentId: d.toAgentId,
+              reason: d.reason,
+              task: d.task,
+              timestamp: d.timestamp,
+            })),
+          },
+        });
+      }
+
+      // Update session stats
+      context.sessionManager.updateSessionStats(
+        sessionId,
+        result.totalTokens.inputTokens,
+        result.totalTokens.outputTokens,
+        0,
+      );
+    } else {
+      sendError(ws, "AGENT_ERROR", result.error ?? "Agent processing failed", true);
+    }
+
+    // Send idle status
+    sendMessage(ws, {
+      id: nanoid(),
+      type: "status",
+      timestamp: Date.now(),
+      sessionId,
+      payload: { state: "idle" },
+    });
+  } catch (error) {
+    logger.error({ error: String(error), sessionId }, "Failed to process chat message");
+    sendError(ws, "AGENT_ERROR", "Failed to process message", true);
+    sendMessage(ws, {
+      id: nanoid(),
+      type: "status",
+      timestamp: Date.now(),
+      sessionId,
+      payload: { state: "error", message: String(error) },
+    });
+  }
 }
 
 async function handleToolApprovalResponse(
@@ -224,8 +488,16 @@ async function handleToolApprovalResponse(
     "Tool approval response received",
   );
 
-  // TODO: Forward approval decision to agent runtime
-  // The agent runtime will continue or abort tool execution based on this.
+  // Forward approval decision to agent runtime
+  const pending = pendingApprovals.get(toolCallId);
+  if (pending) {
+    clearTimeout(pending.timer);
+    pending.resolve(approved);
+    pendingApprovals.delete(toolCallId);
+    logger.info({ toolCallId, approved }, "Forwarded approval to agent runtime");
+  } else {
+    logger.warn({ toolCallId }, "No pending approval found for tool call");
+  }
 
   sendMessage(ws, {
     id: nanoid(),
@@ -267,13 +539,16 @@ async function handleSkillInvoke(
   message: SkillInvokeMessage,
   context: ConnectionContext,
 ): Promise<void> {
+  // Auth gate: require authenticated connection
+  if (!context.auth) {
+    sendError(ws, "UNAUTHENTICATED", "Must send a 'connect' message before invoking skills");
+    return;
+  }
+
   const { skillId, action, parameters } = message.payload;
   const sessionId = message.sessionId;
 
   logger.info({ sessionId, skillId, action }, "Skill invocation requested");
-
-  // TODO: Forward to skill execution engine
-  // For now, acknowledge receipt.
 
   sendMessage(ws, {
     id: nanoid(),
@@ -284,6 +559,56 @@ async function handleSkillInvoke(
       state: "thinking",
       message: `Invoking skill ${skillId}:${action}...`,
     },
+  });
+
+  // Forward to orchestrator as a chat message with skill context
+  try {
+    const orch = await getOrCreateOrchestrator();
+    const session = context.sessionManager.getSession(sessionId ?? "");
+
+    if (!session) {
+      sendError(ws, "SESSION_NOT_FOUND", "Session not found for skill invocation");
+      return;
+    }
+
+    const skillPrompt = `[Skill Invocation] Execute skill "${skillId}" with action "${action}". Parameters: ${JSON.stringify(parameters ?? {})}`;
+
+    const result = await orch.handleMessage(session, skillPrompt, []);
+
+    sendMessage(ws, {
+      id: nanoid(),
+      type: "skill.result",
+      timestamp: Date.now(),
+      sessionId,
+      payload: {
+        skillId,
+        action,
+        result: result.success ? result.response : result.error,
+        isError: !result.success,
+      },
+    });
+  } catch (error) {
+    logger.error({ error: String(error), skillId, action }, "Skill invocation failed");
+    sendMessage(ws, {
+      id: nanoid(),
+      type: "skill.result",
+      timestamp: Date.now(),
+      sessionId,
+      payload: {
+        skillId,
+        action,
+        result: String(error),
+        isError: true,
+      },
+    });
+  }
+
+  sendMessage(ws, {
+    id: nanoid(),
+    type: "status",
+    timestamp: Date.now(),
+    sessionId,
+    payload: { state: "idle" },
   });
 }
 

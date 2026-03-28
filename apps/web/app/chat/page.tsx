@@ -7,6 +7,7 @@ import { useChatStore, type ChatMessageUI, type ToolCallUI } from "@/lib/store";
 import { getWSClient } from "@/lib/ws";
 import { ChatMessage } from "@/components/ChatMessage";
 import { Badge } from "@/components/Badge";
+import { VoiceOverlay } from "@/components/VoiceOverlay";
 
 export default function ChatPage() {
   const {
@@ -23,6 +24,7 @@ export default function ChatPage() {
   } = useChatStore();
 
   const [input, setInput] = useState("");
+  const [voiceMode, setVoiceMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamMessageIdRef = useRef<string | null>(null);
@@ -251,6 +253,22 @@ export default function ChatPage() {
         )}
       </div>
 
+      {/* Voice overlay */}
+      <VoiceOverlay
+        open={voiceMode}
+        onClose={() => setVoiceMode(false)}
+        onTranscript={(text) => {
+          // Show the transcribed text as a user message in the chat
+          addMessage({
+            id: `voice-${Date.now()}`,
+            role: "user",
+            content: text,
+            timestamp: Date.now(),
+            metadata: { finishReason: "voice" },
+          });
+        }}
+      />
+
       {/* Input area — safe area padding for notched phones */}
       <div className="border-t border-dark-700 px-3 sm:px-4 py-2 sm:py-3 pb-safe">
         <div className="flex items-end gap-1.5 sm:gap-2 max-w-4xl mx-auto">
@@ -273,6 +291,7 @@ export default function ChatPage() {
             />
           </div>
           <button
+            onClick={() => setVoiceMode(true)}
             className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
             title="Voice input"
           >

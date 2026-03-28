@@ -32,8 +32,13 @@ const NONCE_BYTES = 32;
  */
 export function validateToken(token: string): boolean {
   const expectedToken = process.env["GATEWAY_AUTH_TOKEN"];
+  const isProduction = process.env["NODE_ENV"] === "production";
 
   if (!expectedToken) {
+    if (isProduction) {
+      logger.error("GATEWAY_AUTH_TOKEN not set in production — rejecting all connections");
+      return false;
+    }
     logger.warn("GATEWAY_AUTH_TOKEN not set — authentication disabled (development mode)");
     return true;
   }
@@ -88,8 +93,13 @@ export function generateChallenge(): ChallengeData {
  */
 export function verifyChallenge(response: string, nonce: string): boolean {
   const secret = process.env["GATEWAY_AUTH_TOKEN"];
+  const isProduction = process.env["NODE_ENV"] === "production";
 
   if (!secret) {
+    if (isProduction) {
+      logger.error("GATEWAY_AUTH_TOKEN not set in production — rejecting challenge");
+      return false;
+    }
     logger.warn("GATEWAY_AUTH_TOKEN not set — challenge verification skipped");
     return true;
   }

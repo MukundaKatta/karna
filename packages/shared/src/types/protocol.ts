@@ -17,6 +17,13 @@ export const MessageTypeSchema = z.enum([
   "status",
   "skill.invoke",
   "skill.result",
+  "voice.start",
+  "voice.audio.chunk",
+  "voice.audio.response",
+  "voice.transcript",
+  "voice.end",
+  "agent.handoff",
+  "orchestration.status",
   "error",
 ]);
 
@@ -186,6 +193,76 @@ export const SkillResultMessageSchema = BaseMessageSchema.extend({
   }),
 });
 
+// ─── Voice Messages ─────────────────────────────────────────────────────────
+
+export const VoiceStartMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("voice.start"),
+  payload: z.object({
+    mode: z.enum(["push-to-talk", "continuous"]),
+  }),
+});
+
+export const VoiceAudioChunkMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("voice.audio.chunk"),
+  payload: z.object({
+    data: z.string().min(1),
+    format: z.enum(["webm", "wav"]),
+    sampleRate: z.number().int().positive(),
+  }),
+});
+
+export const VoiceAudioResponseMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("voice.audio.response"),
+  payload: z.object({
+    data: z.string().min(1),
+    format: z.enum(["mp3", "wav"]),
+    transcript: z.string(),
+  }),
+});
+
+export const VoiceTranscriptMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("voice.transcript"),
+  payload: z.object({
+    text: z.string(),
+    isFinal: z.boolean(),
+  }),
+});
+
+export const VoiceEndMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("voice.end"),
+  payload: z.object({}).optional(),
+});
+
+// ─── Agent Handoff Messages ──────────────────────────────────────────────────
+
+export const AgentHandoffMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("agent.handoff"),
+  payload: z.object({
+    fromAgentId: z.string().min(1),
+    toAgentId: z.string().min(1),
+    reason: z.string().min(1),
+    contextSummary: z.string().optional(),
+  }),
+});
+
+// ─── Orchestration Status Messages ──────────────────────────────────────────
+
+export const OrchestrationStatusMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("orchestration.status"),
+  payload: z.object({
+    activeAgents: z.number().int().nonnegative(),
+    delegations: z.array(
+      z.object({
+        fromAgentId: z.string(),
+        toAgentId: z.string(),
+        reason: z.string(),
+        task: z.string(),
+        timestamp: z.number().int().positive(),
+      })
+    ),
+  }),
+});
+
 // ─── Error Message ───────────────────────────────────────────────────────────
 
 export const ErrorMessageSchema = BaseMessageSchema.extend({
@@ -215,6 +292,13 @@ export const ProtocolMessageSchema = z.discriminatedUnion("type", [
   StatusMessageSchema,
   SkillInvokeMessageSchema,
   SkillResultMessageSchema,
+  VoiceStartMessageSchema,
+  VoiceAudioChunkMessageSchema,
+  VoiceAudioResponseMessageSchema,
+  VoiceTranscriptMessageSchema,
+  VoiceEndMessageSchema,
+  AgentHandoffMessageSchema,
+  OrchestrationStatusMessageSchema,
   ErrorMessageSchema,
 ]);
 
@@ -235,6 +319,13 @@ export type StatusMessage = z.infer<typeof StatusMessageSchema>;
 export type SkillInvokeMessage = z.infer<typeof SkillInvokeMessageSchema>;
 export type SkillResultMessage = z.infer<typeof SkillResultMessageSchema>;
 export type ErrorMessage = z.infer<typeof ErrorMessageSchema>;
+export type VoiceStartMessage = z.infer<typeof VoiceStartMessageSchema>;
+export type VoiceAudioChunkMessage = z.infer<typeof VoiceAudioChunkMessageSchema>;
+export type VoiceAudioResponseMessage = z.infer<typeof VoiceAudioResponseMessageSchema>;
+export type VoiceTranscriptMessage = z.infer<typeof VoiceTranscriptMessageSchema>;
+export type VoiceEndMessage = z.infer<typeof VoiceEndMessageSchema>;
+export type AgentHandoffMessage = z.infer<typeof AgentHandoffMessageSchema>;
+export type OrchestrationStatusMessage = z.infer<typeof OrchestrationStatusMessageSchema>;
 export type ProtocolMessage = z.infer<typeof ProtocolMessageSchema>;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
