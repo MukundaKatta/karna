@@ -1,15 +1,40 @@
 {
-  "name": "@karna/cli",
+  "name": "karna-ai",
   "version": "0.1.0",
+  "description": "Karna — Your Loyal AI Agent Platform. Install globally and run 'karna onboard' to get started.",
   "type": "module",
   "bin": {
     "karna": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "claude",
+    "gpt",
+    "chatbot",
+    "automation",
+    "multi-agent",
+    "voice",
+    "karna"
+  ],
+  "author": "MukundaKatta — Officethree Technologies",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MukundaKatta/karna.git",
+    "directory": "apps/cli"
+  },
+  "homepage": "https://karna-web.vercel.app",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
     "@karna/shared": "workspace:*",
@@ -27,5 +52,8 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "@types/inquirer": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }
