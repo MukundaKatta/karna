@@ -23,7 +23,8 @@
         "NSMicrophoneUsageDescription": "Karna needs microphone access for voice input.",
         "UIBackgroundModes": [
           "audio"
-        ]
+        ],
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -48,7 +49,9 @@
           "icon": "./assets/notification-icon.png",
           "color": "#6366F1"
         }
-      ]
+      ],
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true
