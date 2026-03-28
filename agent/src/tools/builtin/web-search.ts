@@ -104,6 +104,8 @@ async function searchTavily(
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error("TAVILY_API_KEY not set");
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
   const response = await fetch("https://api.tavily.com/search", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -113,7 +115,9 @@ async function searchTavily(
       max_results: maxResults,
       include_answer: false,
     }),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
 
   if (!response.ok) {
     throw new Error(`Tavily API error: ${response.status} ${response.statusText}`);
@@ -151,7 +155,12 @@ async function searchSerpApi(
     engine: "google",
   });
 
-  const response = await fetch(`https://serpapi.com/search?${params.toString()}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const response = await fetch(`https://serpapi.com/search?${params.toString()}`, {
+    signal: controller.signal,
+  });
+  clearTimeout(timeout);
 
   if (!response.ok) {
     throw new Error(`SerpAPI error: ${response.status} ${response.statusText}`);

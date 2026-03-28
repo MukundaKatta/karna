@@ -82,9 +82,9 @@ export const systemOverview = {
       sections.push(`Platform: ${process.platform} ${process.arch}`);
       sections.push(`Node: ${process.version}`);
 
-      return { output: sections.join("\n"), isError: false };
+      return { output: sections.join("\n"), isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -100,16 +100,16 @@ export const runningApps = {
   async execute(): Promise<ToolResult> {
     try {
       if (process.platform !== "darwin") {
-        return { output: "Only available on macOS", isError: true };
+        return { output: "Only available on macOS", isError: true, durationMs: 0 };
       }
       const result = await run("osascript", [
         "-e",
         'tell application "System Events" to get name of every process whose background only is false',
       ]);
       const apps = result.split(", ").sort();
-      return { output: `Running apps (${apps.length}):\n${apps.map((a) => `- ${a}`).join("\n")}`, isError: false };
+      return { output: `Running apps (${apps.length}):\n${apps.map((a) => `- ${a}`).join("\n")}`, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -125,7 +125,7 @@ export const activeWindow = {
   async execute(): Promise<ToolResult> {
     try {
       if (process.platform !== "darwin") {
-        return { output: "Only available on macOS", isError: true };
+        return { output: "Only available on macOS", isError: true, durationMs: 0 };
       }
       const app = await run("osascript", [
         "-e",
@@ -141,9 +141,10 @@ export const activeWindow = {
       return {
         output: `Active app: ${app}${windowTitle ? `\nWindow: ${windowTitle}` : ""}`,
         isError: false,
+        durationMs: 0,
       };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };

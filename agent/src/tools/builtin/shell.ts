@@ -20,7 +20,26 @@ const ShellInputSchema = z.object({
     .max(120_000)
     .optional()
     .describe("Timeout in milliseconds (max 120000)"),
+  elevated: z
+    .boolean()
+    .optional()
+    .describe("Run with elevated privileges (sudo). Requires elevated mode to be enabled per-session."),
 });
+
+// Per-session elevated mode state
+const elevatedSessions = new Set<string>();
+
+/**
+ * Enable or disable elevated bash mode for a session.
+ * When enabled, shell commands can use sudo.
+ */
+export function setElevatedMode(sessionId: string, enabled: boolean): void {
+  if (enabled) {
+    elevatedSessions.add(sessionId);
+  } else {
+    elevatedSessions.delete(sessionId);
+  }
+}
 
 /**
  * Execute shell commands with stdout/stderr capture.
@@ -50,6 +69,10 @@ export const shellTool: ToolDefinitionRuntime = {
         description: "Timeout in milliseconds (max 120000)",
         maximum: 120_000,
       },
+      elevated: {
+        type: "boolean",
+        description: "Run with sudo (requires elevated mode enabled)",
+      },
     },
     required: ["command"],
   },
@@ -67,9 +90,24 @@ export const shellTool: ToolDefinitionRuntime = {
     const timeout = parsed.timeout ?? DEFAULT_TIMEOUT_MS;
     const cwd = parsed.cwd ?? context.workingDirectory ?? process.cwd();
 
+    // Check elevated mode
+    let command = parsed.command;
+    if (parsed.elevated) {
+      if (!elevatedSessions.has(context.sessionId)) {
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr: "Elevated mode is not enabled for this session. Use /elevated on to enable.",
+          error: "Elevated mode not enabled",
+          timedOut: false,
+        };
+      }
+      command = `sudo ${command}`;
+    }
+
     return new Promise((resolve, reject) => {
       const child = exec(
-        parsed.command,
+        command,
         {
           cwd,
           timeout,

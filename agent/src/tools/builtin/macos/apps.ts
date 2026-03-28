@@ -66,7 +66,7 @@ export const macOpenAppTool: ToolDefinitionRuntime = {
     const parsed = OpenAppInputSchema.parse(input);
 
     await runExecFile("open", ["-a", parsed.name]);
-    return { output: `Opened application: ${parsed.name}`, isError: false };
+    return { output: `Opened application: ${parsed.name}`, isError: false, durationMs: 0 };
   },
 };
 
@@ -147,7 +147,7 @@ export const macQuitAppTool: ToolDefinitionRuntime = {
 
     try {
       await runOsascript(script);
-      return { output: `${parsed.force ? "Force-quit" : "Quit"} application: ${parsed.name}`, isError: false };
+      return { output: `${parsed.force ? "Force-quit" : "Quit"} application: ${parsed.name}`, isError: false, durationMs: 0 };
     } catch (err) {
       return {
         output: `Failed to ${action} ${parsed.name}: ${err instanceof Error ? err.message : String(err)}`,
@@ -192,7 +192,7 @@ export const macFocusAppTool: ToolDefinitionRuntime = {
 
     try {
       await runOsascript(script);
-      return { output: `Focused application: ${parsed.name}`, isError: false };
+      return { output: `Focused application: ${parsed.name}`, isError: false, durationMs: 0 };
     } catch (err) {
       return {
         output: `Failed to focus ${parsed.name}: ${err instanceof Error ? err.message : String(err)}`,

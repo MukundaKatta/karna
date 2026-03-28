@@ -104,12 +104,12 @@ export const googleDriveSearchTool: ToolDefinitionRuntime = {
 
       const files = res.data.files ?? [];
       if (files.length === 0) {
-        return { output: `No files found matching "${p.query}".`, isError: false };
+        return { output: `No files found matching "${p.query}".`, isError: false, durationMs: 0 };
       }
-      return { output: JSON.stringify(files, null, 2), isError: false };
+      return { output: JSON.stringify(files, null, 2), isError: false, durationMs: 0 };
     } catch (err: any) {
       logger.error({ err }, "Drive search failed");
-      return { output: `Drive search failed: ${err.message}`, isError: true };
+      return { output: `Drive search failed: ${err.message}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -188,7 +188,7 @@ export const googleDriveDownloadTool: ToolDefinitionRuntime = {
       };
     } catch (err: any) {
       logger.error({ err }, "Drive download failed");
-      return { output: `Drive download failed: ${err.message}`, isError: true };
+      return { output: `Drive download failed: ${err.message}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -248,12 +248,12 @@ export const googleContactsSearchTool: ToolDefinitionRuntime = {
       });
 
       if (results.length === 0) {
-        return { output: `No contacts found matching "${p.query}".`, isError: false };
+        return { output: `No contacts found matching "${p.query}".`, isError: false, durationMs: 0 };
       }
-      return { output: JSON.stringify(results, null, 2), isError: false };
+      return { output: JSON.stringify(results, null, 2), isError: false, durationMs: 0 };
     } catch (err: any) {
       logger.error({ err }, "Contacts search failed");
-      return { output: `Contacts search failed: ${err.message}`, isError: true };
+      return { output: `Contacts search failed: ${err.message}`, isError: true, durationMs: 0 };
     }
   },
 };

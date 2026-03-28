@@ -121,7 +121,7 @@ export const macRevealInFinderTool: ToolDefinitionRuntime = {
       : resolve(context.workingDirectory ?? process.cwd(), parsed.path);
 
     await runExecFile("open", ["-R", filePath]);
-    return { output: `Revealed in Finder: ${filePath}`, isError: false };
+    return { output: `Revealed in Finder: ${filePath}`, isError: false, durationMs: 0 };
   },
 };
 
@@ -267,7 +267,7 @@ export const macTrashTool: ToolDefinitionRuntime = {
 
     try {
       await runOsascript(script);
-      return { output: `Moved to Trash: ${filePath}`, isError: false };
+      return { output: `Moved to Trash: ${filePath}`, isError: false, durationMs: 0 };
     } catch (err) {
       return {
         output: `Failed to trash ${filePath}: ${err instanceof Error ? err.message : String(err)}`,

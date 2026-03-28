@@ -28,7 +28,7 @@ async function notionFetch(
   path: string,
   method: "GET" | "POST" | "PATCH" = "GET",
   body?: Record<string, unknown>
-): Promise<{ output: string; isError: boolean }> {
+): Promise<{ output: string; isError: boolean; durationMs?: number }> {
   try {
     const key = getApiKey();
     const controller = new AbortController();
@@ -51,15 +51,15 @@ async function notionFetch(
     const data = await res.json();
     if (!res.ok) {
       const msg = (data as any).message ?? (data as any).code ?? res.statusText;
-      return { output: `Notion API error (${res.status}): ${msg}`, isError: true };
+      return { output: `Notion API error (${res.status}): ${msg}`, isError: true, durationMs: 0 };
     }
-    return { output: JSON.stringify(data, null, 2), isError: false };
+    return { output: JSON.stringify(data, null, 2), isError: false, durationMs: 0 };
   } catch (err: any) {
     if (err.name === "AbortError") {
-      return { output: `Notion API timed out after ${TIMEOUT_MS}ms`, isError: true };
+      return { output: `Notion API timed out after ${TIMEOUT_MS}ms`, isError: true, durationMs: 0 };
     }
     logger.error({ err }, "Notion API call failed");
-    return { output: `Notion API failed: ${err.message}`, isError: true };
+    return { output: `Notion API failed: ${err.message}`, isError: true, durationMs: 0 };
   }
 }
 
@@ -133,7 +133,7 @@ export const notionSearchTool: ToolDefinitionRuntime = {
         last_edited: item.last_edited_time,
         created: item.created_time,
       }));
-      return { output: JSON.stringify(items, null, 2), isError: false };
+      return { output: JSON.stringify(items, null, 2), isError: false, durationMs: 0 };
     } catch {
       return result;
     }

@@ -92,7 +92,7 @@ export const macGetClipboardTool: ToolDefinitionRuntime = {
     assertMacOS();
 
     const { stdout } = await runExecFile("pbpaste", []);
-    return { output: stdout, isError: false };
+    return { output: stdout, isError: false, durationMs: 0 };
   },
 };
 
@@ -123,7 +123,7 @@ export const macSetClipboardTool: ToolDefinitionRuntime = {
     const parsed = SetClipboardInputSchema.parse(input);
 
     await pipeToCommand("pbcopy", [], parsed.content);
-    return { output: "Clipboard updated", isError: false };
+    return { output: "Clipboard updated", isError: false, durationMs: 0 };
   },
 };
 
@@ -217,7 +217,7 @@ export const macNotificationTool: ToolDefinitionRuntime = {
     if (parsed.sound) script += ` sound name "${escape(parsed.sound)}"`;
 
     await runOsascript(script);
-    return { output: "Notification displayed", isError: false };
+    return { output: "Notification displayed", isError: false, durationMs: 0 };
   },
 };
 

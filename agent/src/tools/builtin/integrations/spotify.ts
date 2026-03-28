@@ -11,11 +11,11 @@ const TIMEOUT_MS = 10_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
-function runOsascript(script: string): Promise<{ output: string; isError: boolean }> {
+function runOsascript(script: string): Promise<{ output: string; isError: boolean; durationMs?: number }> {
   if (process.platform !== "darwin") {
     return Promise.resolve({
       output: "Spotify control via AppleScript is only available on macOS.",
-      isError: true,
+      isError: true, durationMs: 0,
     });
   }
 
@@ -26,11 +26,11 @@ function runOsascript(script: string): Promise<{ output: string; isError: boolea
       { timeout: TIMEOUT_MS },
       (error, stdout, stderr) => {
         if (error && (error as NodeJS.ErrnoException).code === "ENOENT") {
-          resolve({ output: "osascript is not available.", isError: true });
+          resolve({ output: "osascript is not available.", isError: true, durationMs: 0 });
           return;
         }
         if (error?.killed) {
-          resolve({ output: `AppleScript timed out after ${TIMEOUT_MS}ms`, isError: true });
+          resolve({ output: `AppleScript timed out after ${TIMEOUT_MS}ms`, isError: true, durationMs: 0 });
           return;
         }
         const err = (stderr || "").trim();
@@ -39,14 +39,14 @@ function runOsascript(script: string): Promise<{ output: string; isError: boolea
           if (err.includes("not running") || err.includes("not opened")) {
             resolve({
               output: "Spotify is not running. Please open Spotify first.",
-              isError: true,
+              isError: true, durationMs: 0,
             });
             return;
           }
-          resolve({ output: err || `osascript failed with code ${(error as any).code}`, isError: true });
+          resolve({ output: err || `osascript failed with code ${(error as any).code}`, isError: true, durationMs: 0 });
           return;
         }
-        resolve({ output: (stdout || "").trim() || "(no output)", isError: false });
+        resolve({ output: (stdout || "").trim() || "(no output)", isError: false, durationMs: 0 });
       }
     );
   });

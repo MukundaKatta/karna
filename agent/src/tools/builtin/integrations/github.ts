@@ -15,7 +15,7 @@ const MAX_OUTPUT = 30_000;
 function runGh(
   args: string[],
   timeoutMs: number = GH_TIMEOUT_MS
-): Promise<{ output: string; isError: boolean }> {
+): Promise<{ output: string; isError: boolean; durationMs?: number }> {
   return new Promise((resolve) => {
     execFile(
       "gh",
@@ -26,12 +26,12 @@ function runGh(
           resolve({
             output:
               "The `gh` CLI is not installed. Install it from https://cli.github.com/ and run `gh auth login`.",
-            isError: true,
+            isError: true, durationMs: 0,
           });
           return;
         }
         if (error?.killed) {
-          resolve({ output: `Command timed out after ${timeoutMs}ms`, isError: true });
+          resolve({ output: `Command timed out after ${timeoutMs}ms`, isError: true, durationMs: 0 });
           return;
         }
         const out = (stdout || "").trim();
@@ -39,11 +39,11 @@ function runGh(
         if (error) {
           resolve({
             output: err || out || `gh exited with code ${(error as any).code ?? 1}`,
-            isError: true,
+            isError: true, durationMs: 0,
           });
           return;
         }
-        resolve({ output: out || "(no output)", isError: false });
+        resolve({ output: out || "(no output)", isError: false, durationMs: 0 });
       }
     );
   });

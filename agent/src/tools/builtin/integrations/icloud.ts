@@ -68,10 +68,10 @@ export const icloudSearchContacts = {
         end tell
       `;
       const result = await runAppleScript(script);
-      if (!result) return { output: `No contacts found matching "${input.query}"`, isError: false };
-      return { output: result, isError: false };
+      if (!result) return { output: `No contacts found matching "${input.query}"`, isError: false, durationMs: 0 };
+      return { output: result, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -119,10 +119,10 @@ export const icloudListReminders = {
         end tell
       `;
       const result = await runAppleScript(script);
-      if (!result) return { output: "No pending reminders found", isError: false };
-      return { output: result, isError: false };
+      if (!result) return { output: "No pending reminders found", isError: false, durationMs: 0 };
+      return { output: result, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -161,9 +161,9 @@ export const icloudCreateReminder = {
         end tell
       `;
       const result = await runAppleScript(script);
-      return { output: result, isError: false };
+      return { output: result, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -208,10 +208,10 @@ export const icloudSearchNotes = {
         end tell
       `;
       const result = await runAppleScript(script);
-      if (!result) return { output: `No notes found matching "${input.query}"`, isError: false };
-      return { output: result, isError: false };
+      if (!result) return { output: `No notes found matching "${input.query}"`, isError: false, durationMs: 0 };
+      return { output: result, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -248,9 +248,9 @@ export const icloudCreateNote = {
         end tell
       `;
       const result = await runAppleScript(script);
-      return { output: result, isError: false };
+      return { output: result, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };
@@ -285,10 +285,10 @@ export const icloudSafariTabs = {
         end tell
       `;
       const result = await runAppleScript(script);
-      if (!result) return { output: "No Safari tabs open", isError: false };
-      return { output: result, isError: false };
+      if (!result) return { output: "No Safari tabs open", isError: false, durationMs: 0 };
+      return { output: result, isError: false, durationMs: 0 };
     } catch (err) {
-      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true };
+      return { output: `Error: ${err instanceof Error ? err.message : String(err)}`, isError: true, durationMs: 0 };
     }
   },
 };

@@ -414,10 +414,9 @@ async function handleChatMessage(
         content: result.response,
         timestamp: Date.now(),
         metadata: {
-          agentId: result.agentId,
           inputTokens: result.totalTokens.inputTokens,
           outputTokens: result.totalTokens.outputTokens,
-          delegations: result.delegations.length > 0 ? result.delegations : undefined,
+          model: result.agentId,
         },
       });
 

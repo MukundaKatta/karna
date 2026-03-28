@@ -26,7 +26,7 @@ function getToken(): string {
 async function slackApi(
   method: string,
   body: Record<string, unknown>
-): Promise<{ output: string; isError: boolean }> {
+): Promise<{ output: string; isError: boolean; durationMs?: number }> {
   try {
     const token = getToken();
     const controller = new AbortController();
@@ -45,15 +45,15 @@ async function slackApi(
 
     const data = (await res.json()) as Record<string, unknown>;
     if (!data.ok) {
-      return { output: `Slack API error: ${(data.error as string) ?? "unknown"}`, isError: true };
+      return { output: `Slack API error: ${(data.error as string) ?? "unknown"}`, isError: true, durationMs: 0 };
     }
-    return { output: JSON.stringify(data, null, 2), isError: false };
+    return { output: JSON.stringify(data, null, 2), isError: false, durationMs: 0 };
   } catch (err: any) {
     if (err.name === "AbortError") {
-      return { output: `Slack API timed out after ${TIMEOUT_MS}ms`, isError: true };
+      return { output: `Slack API timed out after ${TIMEOUT_MS}ms`, isError: true, durationMs: 0 };
     }
     logger.error({ err }, "Slack API call failed");
-    return { output: `Slack API failed: ${err.message}`, isError: true };
+    return { output: `Slack API failed: ${err.message}`, isError: true, durationMs: 0 };
   }
 }
 
@@ -142,7 +142,7 @@ export const slackListChannelsTool: ToolDefinitionRuntime = {
         num_members: ch.num_members,
         is_archived: ch.is_archived,
       }));
-      return { output: JSON.stringify(channels, null, 2), isError: false };
+      return { output: JSON.stringify(channels, null, 2), isError: false, durationMs: 0 };
     } catch {
       return result;
     }
