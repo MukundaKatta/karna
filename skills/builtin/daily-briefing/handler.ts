@@ -22,6 +22,8 @@ interface WeatherInfo {
   temperature: string;
   conditions: string;
   forecast: string;
+  humidity?: string;
+  wind?: string;
 }
 
 interface CalendarEvent {
@@ -160,15 +162,23 @@ export class DailyBriefingHandler implements SkillHandler {
 
     if (weatherResult.status === "fulfilled") {
       briefingData.weather = weatherResult.value;
+    } else {
+      logger.warn({ error: String(weatherResult.reason) }, "Weather fetch failed");
     }
     if (calendarResult.status === "fulfilled") {
       briefingData.calendar = calendarResult.value;
+    } else {
+      logger.warn({ error: String(calendarResult.reason) }, "Calendar fetch failed");
     }
     if (newsResult.status === "fulfilled") {
       briefingData.news = newsResult.value;
+    } else {
+      logger.warn({ error: String(newsResult.reason) }, "News fetch failed");
     }
     if (tasksResult.status === "fulfilled") {
       briefingData.tasks = tasksResult.value;
+    } else {
+      logger.warn({ error: String(tasksResult.reason) }, "Tasks fetch failed");
     }
 
     // Cache the result
@@ -207,9 +217,9 @@ export class DailyBriefingHandler implements SkillHandler {
     }
 
     const lines = events.map((e) => {
-      let line = `• ${e.startTime} - ${e.endTime}: ${e.title}`;
+      let line = `- ${e.startTime} - ${e.endTime}: ${e.title}`;
       if (e.location) line += ` (${e.location})`;
-      if (e.isConflict) line += " ⚠️ CONFLICT";
+      if (e.isConflict) line += " !! CONFLICT";
       return line;
     });
 
@@ -230,7 +240,7 @@ export class DailyBriefingHandler implements SkillHandler {
     }
 
     const lines = news.map(
-      (n) => `• ${n.headline} — ${n.source}\n  ${n.summary}`
+      (n) => `- ${n.headline} -- ${n.source}\n  ${n.summary}`
     );
 
     return {
@@ -247,7 +257,7 @@ export class DailyBriefingHandler implements SkillHandler {
     }
 
     const lines = tasks.map((t) => {
-      const priority = t.priority === "high" ? "🔴" : t.priority === "medium" ? "🟡" : "🟢";
+      const priority = t.priority === "high" ? "[!]" : t.priority === "medium" ? "[*]" : "[-]";
       let line = `${priority} ${t.title}`;
       if (t.dueDate) line += ` (due: ${t.dueDate})`;
       return line;
@@ -260,56 +270,252 @@ export class DailyBriefingHandler implements SkillHandler {
     };
   }
 
-  // ─── Data Fetching (Stubs — wired to tools at runtime) ─────────────────
+  // ─── Data Fetching ────────────────────────────────────────────────────
 
   private async fetchWeather(
     input: Record<string, unknown>,
     _context: SkillContext
   ): Promise<WeatherInfo | null> {
-    // In production, this calls the web_search tool for weather data.
-    // The agent runtime injects tool access via context.config.
-    const location = (input["location"] as string) ?? "auto";
+    const location = (input["location"] as string) ?? "";
+    const queryLoc = location || "auto";
 
-    logger.debug({ location }, "Fetching weather data");
+    logger.debug({ location: queryLoc }, "Fetching weather data from wttr.in");
 
-    // Stub: return placeholder until tool integration is wired
-    return {
-      location,
-      temperature: "—",
-      conditions: "Weather data requires web-search tool integration",
-      forecast: "Connect the web_search tool to enable live weather.",
-    };
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+
+      // wttr.in provides free, no-key-needed weather in JSON format
+      const url = `https://wttr.in/${encodeURIComponent(queryLoc)}?format=j1`;
+      const response = await fetch(url, {
+        headers: { "User-Agent": "karna-agent/1.0" },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        logger.warn({ status: response.status }, "wttr.in returned non-OK status");
+        return null;
+      }
+
+      const data = (await response.json()) as {
+        current_condition?: Array<{
+          temp_C?: string;
+          temp_F?: string;
+          humidity?: string;
+          weatherDesc?: Array<{ value?: string }>;
+          windspeedKmph?: string;
+          winddir16Point?: string;
+        }>;
+        nearest_area?: Array<{ areaName?: Array<{ value?: string }>; country?: Array<{ value?: string }> }>;
+        weather?: Array<{
+          date?: string;
+          maxtempC?: string;
+          mintempC?: string;
+          maxtempF?: string;
+          mintempF?: string;
+          hourly?: Array<{ weatherDesc?: Array<{ value?: string }> }>;
+        }>;
+      };
+
+      const current = data.current_condition?.[0];
+      const area = data.nearest_area?.[0];
+      const todayForecast = data.weather?.[0];
+
+      if (!current) return null;
+
+      const areaName = area?.areaName?.[0]?.value ?? queryLoc;
+      const country = area?.country?.[0]?.value ?? "";
+      const resolvedLocation = country ? `${areaName}, ${country}` : areaName;
+      const conditions = current.weatherDesc?.[0]?.value ?? "Unknown";
+      const tempC = current.temp_C ?? "?";
+      const tempF = current.temp_F ?? "?";
+      const humidity = current.humidity ? `${current.humidity}%` : undefined;
+      const wind = current.windspeedKmph
+        ? `${current.windspeedKmph} km/h ${current.winddir16Point ?? ""}`
+        : undefined;
+
+      let forecast = "";
+      if (todayForecast) {
+        forecast = `High ${todayForecast.maxtempC}C/${todayForecast.maxtempF}F, Low ${todayForecast.mintempC}C/${todayForecast.mintempF}F`;
+      }
+
+      return {
+        location: resolvedLocation,
+        temperature: `${tempC}C (${tempF}F)`,
+        conditions,
+        forecast,
+        humidity,
+        wind,
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      logger.warn({ error: msg }, "Failed to fetch weather from wttr.in");
+      return null;
+    }
   }
 
   private async fetchCalendarEvents(
-    _context: SkillContext
+    context: SkillContext
   ): Promise<CalendarEvent[]> {
-    // In production, calls calendar_list tool for today's events.
-    logger.debug("Fetching calendar events");
+    logger.debug("Fetching calendar events for today");
 
-    // Stub: return empty until calendar tool is wired
-    return [];
+    if (!context.callTool) {
+      logger.debug("No callTool available — calendar tool not connected");
+      return [];
+    }
+
+    try {
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const todayEnd = new Date(todayStart);
+      todayEnd.setDate(todayEnd.getDate() + 1);
+
+      const result = await context.callTool("calendar_list", {
+        timeMin: todayStart.toISOString(),
+        timeMax: todayEnd.toISOString(),
+      });
+
+      if (!result || typeof result !== "object") return [];
+
+      const events = Array.isArray(result)
+        ? result
+        : Array.isArray((result as Record<string, unknown>)["events"])
+          ? (result as { events: unknown[] }).events
+          : [];
+
+      const parsed: CalendarEvent[] = [];
+      for (const evt of events) {
+        if (!evt || typeof evt !== "object") continue;
+        const e = evt as Record<string, unknown>;
+        const startRaw = e["startTime"] ?? e["start"] ?? "";
+        const endRaw = e["endTime"] ?? e["end"] ?? "";
+        parsed.push({
+          title: (e["title"] as string) ?? (e["summary"] as string) ?? "Untitled",
+          startTime: this.formatTimeStr(String(startRaw)),
+          endTime: this.formatTimeStr(String(endRaw)),
+          location: (e["location"] as string) ?? undefined,
+        });
+      }
+
+      // Sort chronologically
+      parsed.sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+      // Detect scheduling conflicts
+      for (let i = 1; i < parsed.length; i++) {
+        const prev = parsed[i - 1]!;
+        const curr = parsed[i]!;
+        if (curr.startTime < prev.endTime) {
+          curr.isConflict = true;
+          prev.isConflict = true;
+        }
+      }
+
+      return parsed;
+    } catch (error) {
+      logger.warn({ error: String(error) }, "Calendar fetch failed");
+      return [];
+    }
   }
 
   private async fetchNews(
     input: Record<string, unknown>,
-    _context: SkillContext
+    context: SkillContext
   ): Promise<NewsItem[]> {
-    // In production, calls web_search tool for news.
-    const topics = (input["topics"] as string[]) ?? ["technology", "world"];
+    const topics = (input["topics"] as string[]) ?? ["top news today"];
 
-    logger.debug({ topics }, "Fetching news");
+    logger.debug({ topics }, "Fetching news headlines");
 
-    // Stub: return empty until web-search tool is wired
-    return [];
+    if (!context.callTool) {
+      logger.debug("No callTool available — web_search tool not connected");
+      return [];
+    }
+
+    const allItems: NewsItem[] = [];
+
+    for (const topic of topics.slice(0, 3)) {
+      try {
+        const result = await context.callTool("web_search", {
+          query: `${topic} news today ${new Date().toISOString().split("T")[0]}`,
+          maxResults: 5,
+        });
+
+        if (!result || typeof result !== "object") continue;
+
+        const searchResults = Array.isArray(result)
+          ? result
+          : Array.isArray((result as Record<string, unknown>)["results"])
+            ? (result as { results: unknown[] }).results
+            : [];
+
+        for (const r of searchResults) {
+          if (!r || typeof r !== "object") continue;
+          const item = r as Record<string, unknown>;
+          allItems.push({
+            headline: (item["title"] as string) ?? "Untitled",
+            source: (item["source"] as string) ??
+              this.extractDomain((item["url"] as string) ?? ""),
+            summary: (item["snippet"] as string) ?? "",
+          });
+        }
+      } catch (error) {
+        logger.warn({ topic, error: String(error) }, "News search failed for topic");
+      }
+    }
+
+    // Deduplicate by headline
+    const seen = new Set<string>();
+    const deduped = allItems.filter((item) => {
+      const key = item.headline.toLowerCase().slice(0, 60);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return deduped.slice(0, 5);
   }
 
   private async fetchTasks(_context: SkillContext): Promise<TaskItem[]> {
-    // In production, reads from the memory store or a tasks file.
     logger.debug("Fetching pending tasks");
 
-    // Stub: return empty until task storage is wired
-    return [];
+    // Read tasks from local storage file if available
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const { homedir } = await import("node:os");
+      const tasksFile = join(homedir(), ".karna", "tasks.json");
+
+      const content = await readFile(tasksFile, "utf-8");
+      const data = JSON.parse(content) as {
+        tasks?: Array<{
+          title?: string;
+          dueDate?: string;
+          priority?: string;
+          completed?: boolean;
+        }>;
+      };
+
+      if (!Array.isArray(data.tasks)) return [];
+
+      const today = new Date().toISOString().split("T")[0]!;
+
+      return data.tasks
+        .filter((t) => !t.completed)
+        .map((t) => ({
+          title: t.title ?? "Untitled task",
+          dueDate: t.dueDate,
+          priority: (t.priority as "high" | "medium" | "low") ?? "medium",
+        }))
+        .filter((t) => !t.dueDate || t.dueDate <= today || t.priority === "high")
+        .sort((a, b) => {
+          const priorityOrder = { high: 0, medium: 1, low: 2 };
+          return priorityOrder[a.priority] - priorityOrder[b.priority];
+        })
+        .slice(0, 10);
+    } catch {
+      // Tasks file may not exist — that's fine
+      return [];
+    }
   }
 
   // ─── Formatting ────────────────────────────────────────────────────────
@@ -326,40 +532,43 @@ export class DailyBriefingHandler implements SkillHandler {
 
     // Weather
     if (data.weather) {
-      sections.push(
-        `**Weather** (${data.weather.location})\n• ${data.weather.temperature}, ${data.weather.conditions}\n• ${data.weather.forecast}`
-      );
+      const w = data.weather;
+      let weatherText = `**Weather** (${w.location})\n- ${w.temperature}, ${w.conditions}`;
+      if (w.humidity) weatherText += ` | Humidity: ${w.humidity}`;
+      if (w.wind) weatherText += ` | Wind: ${w.wind}`;
+      if (w.forecast) weatherText += `\n- Forecast: ${w.forecast}`;
+      sections.push(weatherText);
     } else {
-      sections.push("**Weather** — unavailable (web-search dependency not connected)");
+      sections.push("**Weather** -- unavailable (could not reach wttr.in)");
     }
 
     // Calendar
     if (data.calendar && data.calendar.length > 0) {
       const conflicts = data.calendar.filter((e) => e.isConflict);
       const eventLines = data.calendar.map((e) => {
-        let line = `• ${e.startTime} - ${e.endTime}: ${e.title}`;
+        let line = `- ${e.startTime} - ${e.endTime}: ${e.title}`;
         if (e.location) line += ` (${e.location})`;
-        if (e.isConflict) line += " ⚠ CONFLICT";
+        if (e.isConflict) line += " !! CONFLICT";
         return line;
       });
 
       let calSection = `**Calendar** (${data.calendar.length} events)\n${eventLines.join("\n")}`;
       if (conflicts.length > 0) {
-        calSection += `\n⚠ ${conflicts.length} scheduling conflict(s) detected`;
+        calSection += `\n!! ${conflicts.length} scheduling conflict(s) detected`;
       }
       sections.push(calSection);
     } else {
-      sections.push("**Calendar** — No events scheduled for today");
+      sections.push("**Calendar** -- No events scheduled for today");
     }
 
     // News
     if (data.news && data.news.length > 0) {
       const newsLines = data.news.map(
-        (n) => `• ${n.headline} — ${n.source}\n  ${n.summary}`
+        (n) => `- ${n.headline} -- ${n.source}\n  ${n.summary}`
       );
       sections.push(`**News**\n${newsLines.join("\n")}`);
     } else {
-      sections.push("**News** — No headlines available");
+      sections.push("**News** -- No headlines available");
     }
 
     // Tasks
@@ -374,14 +583,39 @@ export class DailyBriefingHandler implements SkillHandler {
 
       let taskSection = `**Tasks** (${data.tasks.length} pending)\n${taskLines.join("\n")}`;
       if (highPriority.length > 0) {
-        taskSection += `\n⚠ ${highPriority.length} high-priority item(s)`;
+        taskSection += `\n!! ${highPriority.length} high-priority item(s)`;
       }
       sections.push(taskSection);
     } else {
-      sections.push("**Tasks** — No pending items");
+      sections.push("**Tasks** -- No pending items");
     }
 
     return sections.join("\n\n");
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────
+
+  private formatTimeStr(isoOrTime: string): string {
+    if (!isoOrTime) return "??:??";
+    try {
+      const date = new Date(isoOrTime);
+      if (isNaN(date.getTime())) return isoOrTime;
+      return date.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    } catch {
+      return isoOrTime;
+    }
+  }
+
+  private extractDomain(url: string): string {
+    try {
+      return new URL(url).hostname.replace("www.", "");
+    } catch {
+      return "unknown";
+    }
   }
 }
 

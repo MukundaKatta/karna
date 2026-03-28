@@ -2,9 +2,13 @@
 //
 // Creates travel itineraries with flights, hotels, attractions,
 // day-by-day plans, calendar integration, and budget tracking.
+// Persists trip data to ~/.karna/trips.json.
 //
 // ───────────────────────────────────────────────────────────────────────────
 
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import pino from "pino";
 import type {
@@ -82,7 +86,15 @@ interface Attraction {
   category: string;
 }
 
-// ─── Budget Categories ──────────────────────────────────────────────────────
+interface TripStore {
+  version: number;
+  trips: Trip[];
+}
+
+// ─── Constants ──────────────────────────────────────────────────────────────
+
+const STORAGE_DIR = join(homedir(), ".karna");
+const STORAGE_FILE = join(STORAGE_DIR, "trips.json");
 
 const BUDGET_CATEGORIES = [
   "flights",
@@ -102,13 +114,25 @@ const DEFAULT_BUDGET_ALLOCATION: Record<string, number> = {
   miscellaneous: 0.10,
 };
 
+const ACTIVITY_EMOJIS: Record<string, string> = {
+  sightseeing: "camera",
+  museum: "classical_building",
+  food: "fork_and_knife",
+  shopping: "shopping_bags",
+  nature: "national_park",
+  adventure: "mountain",
+  culture: "performing_arts",
+  relaxation: "beach_with_umbrella",
+  nightlife: "city_sunset",
+  transport: "bus",
+};
+
 // ─── Handler ────────────────────────────────────────────────────────────────
 
 export class TravelPlannerHandler implements SkillHandler {
-  private trips: Map<string, Trip> = new Map();
-
   async initialize(context: SkillContext): Promise<void> {
     logger.info({ sessionId: context.sessionId }, "Travel planner skill initialized");
+    await this.ensureStorageExists();
   }
 
   async execute(
@@ -130,6 +154,8 @@ export class TravelPlannerHandler implements SkillHandler {
           return this.findAttractions(input, context);
         case "budget":
           return this.viewBudget(input);
+        case "list":
+          return this.listTrips();
         default:
           return {
             success: false,
@@ -145,7 +171,6 @@ export class TravelPlannerHandler implements SkillHandler {
   }
 
   async dispose(): Promise<void> {
-    this.trips.clear();
     logger.info("Travel planner skill disposed");
   }
 
@@ -182,13 +207,19 @@ export class TravelPlannerHandler implements SkillHandler {
       allocated[cat] = Math.round(budgetTotal * pct);
     }
 
-    // Search for data (stubs until tool integration)
-    const flights = await this.fetchFlights(destination, startDate, context);
-    const hotels = await this.fetchHotels(destination, startDate, endDate, context);
-    const attractions = await this.fetchAttractions(destination, context);
+    // Fetch data via web_search
+    const [flights, hotels, attractions] = await Promise.allSettled([
+      this.fetchFlights(destination, startDate, context),
+      this.fetchHotels(destination, startDate, endDate, context),
+      this.fetchAttractions(destination, context),
+    ]);
+
+    const resolvedFlights = flights.status === "fulfilled" ? flights.value : [];
+    const resolvedHotels = hotels.status === "fulfilled" ? hotels.value : [];
+    const resolvedAttractions = attractions.status === "fulfilled" ? attractions.value : [];
 
     // Generate day-by-day itinerary
-    const itinerary = this.generateItinerary(destination, startDate, days, attractions);
+    const itinerary = this.generateItinerary(destination, startDate, days, resolvedAttractions, budgetTotal);
 
     const trip: Trip = {
       id: randomUUID().slice(0, 8),
@@ -202,13 +233,16 @@ export class TravelPlannerHandler implements SkillHandler {
         spent: Object.fromEntries(BUDGET_CATEGORIES.map((c) => [c, 0])),
       },
       itinerary,
-      flights,
-      hotels,
-      attractions,
+      flights: resolvedFlights,
+      hotels: resolvedHotels,
+      attractions: resolvedAttractions,
       createdAt: new Date().toISOString(),
     };
 
-    this.trips.set(trip.id, trip);
+    // Persist to disk
+    const store = await this.loadStore();
+    store.trips.push(trip);
+    await this.saveStore(store);
 
     return {
       success: true,
@@ -229,18 +263,18 @@ export class TravelPlannerHandler implements SkillHandler {
       return { success: false, output: "Specify departure (from) and arrival (to) cities.", error: "Missing params" };
     }
 
-    const flights = await this.fetchFlights(to, date, context);
+    const flights = await this.fetchFlights(to, date, context, from);
 
     if (flights.length === 0) {
       return {
         success: true,
-        output: `No flight data available yet. Connect the web_search tool to enable flight search from ${from} to ${to}.`,
+        output: `No flight data available for ${from} to ${to}. Connect the web_search tool for live results.`,
       };
     }
 
     const lines = flights.map(
       (f) =>
-        `• ${f.airline}: ${f.departureTime} -> ${f.arrivalTime} | ${f.currency} ${f.price} | ${f.stops} stop(s)`
+        `[plane] ${f.airline}: ${f.departure} -> ${f.arrival}\n    ${f.departureTime} -> ${f.arrivalTime} | ${f.currency} ${f.price} | ${f.stops} stop(s)`
     );
 
     return {
@@ -267,13 +301,13 @@ export class TravelPlannerHandler implements SkillHandler {
     if (hotels.length === 0) {
       return {
         success: true,
-        output: `No hotel data available yet. Connect the web_search tool to enable hotel search in ${location}.`,
+        output: `No hotel data available for ${location}. Connect the web_search tool for live results.`,
       };
     }
 
     const lines = hotels.map(
       (h) =>
-        `• ${h.name} (${h.rating}/5) — ${h.currency} ${h.pricePerNight}/night\n  ${h.amenities.join(", ")}`
+        `[hotel] ${h.name} (${"*".repeat(h.rating)})\n    ${h.currency} ${h.pricePerNight}/night | ${h.amenities.join(", ")}`
     );
 
     return {
@@ -297,13 +331,14 @@ export class TravelPlannerHandler implements SkillHandler {
     if (attractions.length === 0) {
       return {
         success: true,
-        output: `No attraction data available yet. Connect the web_search tool to find things to do in ${location}.`,
+        output: `No attraction data available for ${location}. Connect the web_search tool for live results.`,
       };
     }
 
-    const lines = attractions.map(
-      (a) => `• ${a.name} [${a.category}] — ${a.estimatedDuration}\n  ${a.description}`
-    );
+    const lines = attractions.map((a) => {
+      const emoji = ACTIVITY_EMOJIS[a.category] ?? "pushpin";
+      return `[${emoji}] ${a.name} [${a.category}] -- ${a.estimatedDuration}\n    ${a.description}${a.estimatedCost > 0 ? ` (~$${a.estimatedCost})` : " (Free)"}`;
+    });
 
     return {
       success: true,
@@ -318,7 +353,8 @@ export class TravelPlannerHandler implements SkillHandler {
       return { success: false, output: "Specify a trip ID to view budget.", error: "Missing tripId" };
     }
 
-    const trip = this.trips.get(tripId);
+    const store = await this.loadStore();
+    const trip = store.trips.find((t) => t.id === tripId);
     if (!trip) {
       return { success: false, output: `Trip "${tripId}" not found.`, error: "Trip not found" };
     }
@@ -328,10 +364,10 @@ export class TravelPlannerHandler implements SkillHandler {
 
     const lines = [
       `Budget for ${trip.destination} Trip (${trip.startDate} to ${trip.endDate})`,
-      `${"─".repeat(50)}`,
+      `${"=".repeat(55)}`,
       "",
       `Category        Allocated    Spent        Remaining`,
-      `${"─".repeat(50)}`,
+      `${"─".repeat(55)}`,
     ];
 
     let totalSpent = 0;
@@ -340,15 +376,19 @@ export class TravelPlannerHandler implements SkillHandler {
       const spent = budget.spent[cat] ?? 0;
       totalSpent += spent;
       const remaining = alloc - spent;
+      const status = remaining < 0 ? " [OVER]" : "";
       lines.push(
-        `${cat.padEnd(16)}${sym} ${alloc.toString().padStart(8)}  ${sym} ${spent.toString().padStart(8)}  ${sym} ${remaining.toString().padStart(8)}`
+        `${cat.padEnd(16)}${sym} ${alloc.toString().padStart(8)}  ${sym} ${spent.toString().padStart(8)}  ${sym} ${remaining.toString().padStart(8)}${status}`
       );
     }
 
-    lines.push(`${"─".repeat(50)}`);
+    lines.push(`${"─".repeat(55)}`);
     lines.push(
       `${"Total".padEnd(16)}${sym} ${budget.total.toString().padStart(8)}  ${sym} ${totalSpent.toString().padStart(8)}  ${sym} ${(budget.total - totalSpent).toString().padStart(8)}`
     );
+
+    const pctUsed = budget.total > 0 ? Math.round((totalSpent / budget.total) * 100) : 0;
+    lines.push(`\nBudget used: ${pctUsed}%`);
 
     return {
       success: true,
@@ -357,33 +397,199 @@ export class TravelPlannerHandler implements SkillHandler {
     };
   }
 
-  // ─── Data Fetching (Stubs) ─────────────────────────────────────────────
+  private async listTrips(): Promise<SkillResult> {
+    const store = await this.loadStore();
+
+    if (store.trips.length === 0) {
+      return { success: true, output: "No trips planned yet. Use the 'plan' action to create one." };
+    }
+
+    const lines = store.trips.map((t) => {
+      const days = Math.ceil(
+        (new Date(t.endDate).getTime() - new Date(t.startDate).getTime()) / (1000 * 60 * 60 * 24)
+      ) + 1;
+      return `- [${t.id}] ${t.destination} | ${t.startDate} to ${t.endDate} (${days} days) | ${t.budget.currency} ${t.budget.total}`;
+    });
+
+    return {
+      success: true,
+      output: `Your Trips:\n${lines.join("\n")}`,
+      data: { count: store.trips.length } as Record<string, unknown>,
+    };
+  }
+
+  // ─── Data Fetching ────────────────────────────────────────────────────
 
   private async fetchFlights(
-    _destination: string,
-    _date: string,
-    _context: SkillContext
+    destination: string,
+    date: string,
+    context: SkillContext,
+    origin?: string
   ): Promise<FlightOption[]> {
-    logger.debug("Fetching flight options (stub)");
-    return [];
+    logger.debug({ destination, date }, "Fetching flight options");
+
+    if (!context.callTool) {
+      logger.debug("No callTool available — web_search not connected");
+      return [];
+    }
+
+    try {
+      const query = origin
+        ? `flights from ${origin} to ${destination} ${date}`
+        : `flights to ${destination} ${date}`;
+
+      const result = await context.callTool("web_search", {
+        query,
+        maxResults: 5,
+      });
+
+      if (!result || typeof result !== "object") return [];
+
+      const searchResults = Array.isArray(result)
+        ? result
+        : Array.isArray((result as Record<string, unknown>)["results"])
+          ? (result as { results: unknown[] }).results
+          : [];
+
+      // Parse flight information from search results
+      const flights: FlightOption[] = [];
+      for (const r of searchResults) {
+        if (!r || typeof r !== "object") continue;
+        const item = r as Record<string, unknown>;
+        const title = (item["title"] as string) ?? "";
+        const snippet = (item["snippet"] as string) ?? "";
+
+        // Try to extract price from text
+        const priceMatch = (title + " " + snippet).match(/\$\s*(\d+)/);
+        const price = priceMatch ? parseInt(priceMatch[1]!, 10) : 0;
+
+        if (title.toLowerCase().includes("flight") || snippet.toLowerCase().includes("flight")) {
+          flights.push({
+            airline: this.extractAirline(title + " " + snippet),
+            departure: origin ?? "Origin",
+            arrival: destination,
+            departureTime: date || "Flexible",
+            arrivalTime: "See details",
+            price,
+            currency: "USD",
+            stops: snippet.toLowerCase().includes("nonstop") ? 0 : 1,
+          });
+        }
+      }
+
+      return flights.slice(0, 5);
+    } catch (error) {
+      logger.warn({ error: String(error) }, "Flight search failed");
+      return [];
+    }
   }
 
   private async fetchHotels(
-    _location: string,
-    _checkIn: string,
-    _checkOut: string,
-    _context: SkillContext
+    location: string,
+    checkIn: string,
+    checkOut: string,
+    context: SkillContext
   ): Promise<HotelOption[]> {
-    logger.debug("Fetching hotel options (stub)");
-    return [];
+    logger.debug({ location }, "Fetching hotel options");
+
+    if (!context.callTool) return [];
+
+    try {
+      const result = await context.callTool("web_search", {
+        query: `best hotels in ${location} ${checkIn}`,
+        maxResults: 5,
+      });
+
+      if (!result || typeof result !== "object") return [];
+
+      const searchResults = Array.isArray(result)
+        ? result
+        : Array.isArray((result as Record<string, unknown>)["results"])
+          ? (result as { results: unknown[] }).results
+          : [];
+
+      const hotels: HotelOption[] = [];
+      for (const r of searchResults) {
+        if (!r || typeof r !== "object") continue;
+        const item = r as Record<string, unknown>;
+        const title = (item["title"] as string) ?? "";
+        const snippet = (item["snippet"] as string) ?? "";
+
+        const priceMatch = (title + " " + snippet).match(/\$\s*(\d+)/);
+        const ratingMatch = (title + " " + snippet).match(/(\d(?:\.\d)?)\s*(?:\/5|stars?|out of 5)/i);
+
+        if (title.toLowerCase().includes("hotel") || snippet.toLowerCase().includes("hotel") || snippet.toLowerCase().includes("accommodation")) {
+          hotels.push({
+            name: this.extractHotelName(title),
+            location,
+            pricePerNight: priceMatch ? parseInt(priceMatch[1]!, 10) : 0,
+            currency: "USD",
+            rating: ratingMatch ? parseFloat(ratingMatch[1]!) : 4,
+            amenities: this.extractAmenities(snippet),
+          });
+        }
+      }
+
+      return hotels.slice(0, 5);
+    } catch (error) {
+      logger.warn({ error: String(error) }, "Hotel search failed");
+      return [];
+    }
   }
 
   private async fetchAttractions(
-    _location: string,
-    _context: SkillContext
+    location: string,
+    context: SkillContext
   ): Promise<Attraction[]> {
-    logger.debug("Fetching attractions (stub)");
-    return [];
+    logger.debug({ location }, "Fetching attractions");
+
+    if (!context.callTool) return [];
+
+    try {
+      const result = await context.callTool("web_search", {
+        query: `top attractions things to do in ${location}`,
+        maxResults: 10,
+      });
+
+      if (!result || typeof result !== "object") return [];
+
+      const searchResults = Array.isArray(result)
+        ? result
+        : Array.isArray((result as Record<string, unknown>)["results"])
+          ? (result as { results: unknown[] }).results
+          : [];
+
+      const attractions: Attraction[] = [];
+      for (const r of searchResults) {
+        if (!r || typeof r !== "object") continue;
+        const item = r as Record<string, unknown>;
+        const title = (item["title"] as string) ?? "";
+        const snippet = (item["snippet"] as string) ?? "";
+
+        const costMatch = snippet.match(/\$\s*(\d+)/);
+        const category = this.categorizeAttraction(title + " " + snippet);
+
+        attractions.push({
+          name: this.cleanAttractionName(title),
+          description: snippet.slice(0, 150),
+          estimatedDuration: this.estimateDuration(snippet),
+          estimatedCost: costMatch ? parseInt(costMatch[1]!, 10) : 0,
+          category,
+        });
+      }
+
+      // Deduplicate by name similarity
+      const seen = new Set<string>();
+      return attractions.filter((a) => {
+        const key = a.name.toLowerCase().slice(0, 30);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    } catch (error) {
+      logger.warn({ error: String(error) }, "Attraction search failed");
+      return [];
+    }
   }
 
   // ─── Itinerary Generation ──────────────────────────────────────────────
@@ -392,10 +598,12 @@ export class TravelPlannerHandler implements SkillHandler {
     destination: string,
     startDate: string,
     days: number,
-    attractions: Attraction[]
+    attractions: Attraction[],
+    totalBudget: number
   ): DayPlan[] {
     const plans: DayPlan[] = [];
     const start = new Date(startDate);
+    const dailyBudget = totalBudget > 0 ? Math.round(totalBudget / days) : 0;
 
     for (let i = 0; i < days; i++) {
       const date = new Date(start);
@@ -406,29 +614,49 @@ export class TravelPlannerHandler implements SkillHandler {
       const afternoon = attractions[i * 3 + 1] ?? null;
       const evening = attractions[i * 3 + 2] ?? null;
 
+      const morningCost = morning?.estimatedCost ?? 0;
+      const afternoonCost = afternoon?.estimatedCost ?? 0;
+      const eveningCost = evening?.estimatedCost ?? Math.round(dailyBudget * 0.3);
+
+      // First day: arrival/check-in, last day: departure
+      const isFirstDay = i === 0;
+      const isLastDay = i === days - 1;
+
       plans.push({
         date: dateStr,
         dayNumber: i + 1,
         morning: {
-          activity: morning?.name ?? `Explore ${destination} — morning`,
-          location: morning?.description ?? destination,
-          estimatedCost: morning?.estimatedCost ?? 0,
+          activity: isFirstDay
+            ? `Arrive in ${destination} & check in`
+            : morning?.name ?? `Explore ${destination}`,
+          location: isFirstDay
+            ? `Airport / Hotel in ${destination}`
+            : morning?.description ?? destination,
+          estimatedCost: isFirstDay ? 0 : morningCost,
+          notes: isFirstDay ? "Get settled, pick up local map/SIM" : undefined,
         },
         afternoon: {
-          activity: afternoon?.name ?? `Explore ${destination} — afternoon`,
-          location: afternoon?.description ?? destination,
-          estimatedCost: afternoon?.estimatedCost ?? 0,
+          activity: isLastDay
+            ? "Pack up & checkout"
+            : afternoon?.name ?? `Discover local ${destination} neighborhoods`,
+          location: isLastDay
+            ? `Hotel in ${destination}`
+            : afternoon?.description ?? destination,
+          estimatedCost: isLastDay ? 0 : afternoonCost,
         },
         evening: {
-          activity: evening?.name ?? "Local dinner",
-          location: `Restaurant in ${destination}`,
-          estimatedCost: evening?.estimatedCost ?? 0,
+          activity: isLastDay
+            ? `Depart from ${destination}`
+            : evening?.name ?? `Dinner at a local restaurant in ${destination}`,
+          location: isLastDay
+            ? `Airport in ${destination}`
+            : `Restaurant in ${destination}`,
+          estimatedCost: isLastDay ? 0 : eveningCost,
         },
-        transport: "Local transport / walking",
-        estimatedCost:
-          (morning?.estimatedCost ?? 0) +
-          (afternoon?.estimatedCost ?? 0) +
-          (evening?.estimatedCost ?? 0),
+        transport: isFirstDay || isLastDay
+          ? "Airport transfer / taxi"
+          : "Local transport / walking / metro",
+        estimatedCost: morningCost + afternoonCost + eveningCost,
       });
     }
 
@@ -439,51 +667,154 @@ export class TravelPlannerHandler implements SkillHandler {
 
   private formatTripPlan(trip: Trip): string {
     const lines: string[] = [];
+    const sym = trip.budget.currency;
 
-    lines.push(`Travel Plan: ${trip.destination}`);
-    lines.push(`${trip.startDate} to ${trip.endDate} (${trip.itinerary.length} days)`);
-    lines.push(`Budget: ${trip.budget.currency} ${trip.budget.total.toLocaleString()}`);
-    lines.push(`Trip ID: ${trip.id}`);
-    lines.push(`${"─".repeat(50)}\n`);
+    lines.push(`[world_map] Travel Plan: ${trip.destination}`);
+    lines.push(`[calendar] ${trip.startDate} to ${trip.endDate} (${trip.itinerary.length} days)`);
+    if (trip.budget.total > 0) {
+      lines.push(`[money_bag] Budget: ${sym} ${trip.budget.total.toLocaleString()}`);
+    }
+    lines.push(`[ticket] Trip ID: ${trip.id}`);
+    lines.push(`${"=".repeat(55)}\n`);
 
     // Flights
     if (trip.flights.length > 0) {
-      lines.push("**Flights**");
+      lines.push("[airplane] **Flights**");
       for (const f of trip.flights) {
-        lines.push(`  ${f.airline}: ${f.departureTime} -> ${f.arrivalTime} — ${f.currency} ${f.price}`);
+        lines.push(`  ${f.airline}: ${f.departure} -> ${f.arrival}`);
+        lines.push(`    ${f.departureTime} -> ${f.arrivalTime} | ${f.currency} ${f.price} | ${f.stops} stop(s)`);
       }
       lines.push("");
     }
 
     // Hotels
     if (trip.hotels.length > 0) {
-      lines.push("**Accommodation**");
+      lines.push("[hotel] **Accommodation Options**");
       for (const h of trip.hotels) {
-        lines.push(`  ${h.name} (${h.rating}/5) — ${h.currency} ${h.pricePerNight}/night`);
+        lines.push(`  ${h.name} (${"*".repeat(h.rating)}) -- ${h.currency} ${h.pricePerNight}/night`);
+        if (h.amenities.length > 0) lines.push(`    Amenities: ${h.amenities.join(", ")}`);
       }
       lines.push("");
     }
 
     // Itinerary
-    lines.push("**Day-by-Day Itinerary**\n");
+    lines.push("[spiral_notepad] **Day-by-Day Itinerary**\n");
     for (const day of trip.itinerary) {
-      lines.push(`Day ${day.dayNumber} (${day.date}):`);
-      lines.push(`  Morning:   ${day.morning.activity}`);
-      lines.push(`  Afternoon: ${day.afternoon.activity}`);
-      lines.push(`  Evening:   ${day.evening.activity}`);
-      lines.push(`  Transport: ${day.transport}`);
+      lines.push(`--- Day ${day.dayNumber} (${day.date}) ---`);
+      lines.push(`  [sunrise] Morning:   ${day.morning.activity}`);
+      if (day.morning.notes) lines.push(`               Note: ${day.morning.notes}`);
+      lines.push(`  [sun] Afternoon: ${day.afternoon.activity}`);
+      lines.push(`  [moon] Evening:   ${day.evening.activity}`);
+      lines.push(`  [bus] Transport: ${day.transport}`);
+      if (day.estimatedCost > 0) {
+        lines.push(`  [dollar] Est. cost:  ~${sym} ${day.estimatedCost}`);
+      }
       lines.push("");
     }
 
     // Budget allocation
-    lines.push("**Budget Allocation**");
-    for (const [cat, amount] of Object.entries(trip.budget.allocated)) {
-      lines.push(`  ${cat}: ${trip.budget.currency} ${amount.toLocaleString()}`);
+    if (trip.budget.total > 0) {
+      lines.push("[bar_chart] **Budget Allocation**");
+      for (const [cat, amount] of Object.entries(trip.budget.allocated)) {
+        const pct = Math.round((amount / trip.budget.total) * 100);
+        lines.push(`  ${cat.padEnd(16)} ${sym} ${amount.toLocaleString().padStart(8)} (${pct}%)`);
+      }
     }
 
-    lines.push(`\nNote: Connect the web_search tool for live flight, hotel, and attraction data.`);
+    // Attractions
+    if (trip.attractions.length > 0) {
+      lines.push("\n[star] **Top Attractions**");
+      for (const a of trip.attractions.slice(0, 8)) {
+        lines.push(`  - ${a.name} [${a.category}] (~${a.estimatedDuration})`);
+      }
+    }
 
     return lines.join("\n");
+  }
+
+  // ─── Parsing Helpers ──────────────────────────────────────────────────
+
+  private extractAirline(text: string): string {
+    const airlines = [
+      "Delta", "United", "American", "Southwest", "JetBlue", "Spirit",
+      "Alaska", "Frontier", "Hawaiian", "Emirates", "Qatar", "Lufthansa",
+      "British Airways", "Air France", "KLM", "Singapore Airlines",
+      "Air India", "IndiGo", "Ryanair", "EasyJet",
+    ];
+    const lower = text.toLowerCase();
+    return airlines.find((a) => lower.includes(a.toLowerCase())) ?? "Airline";
+  }
+
+  private extractHotelName(title: string): string {
+    // Remove common suffixes like "- Booking.com", "| TripAdvisor"
+    return title.replace(/\s*[-|].+$/, "").trim().slice(0, 60) || "Hotel";
+  }
+
+  private extractAmenities(text: string): string[] {
+    const amenities: string[] = [];
+    const keywords = [
+      "wifi", "pool", "spa", "gym", "parking", "breakfast",
+      "restaurant", "bar", "room service", "air conditioning",
+      "beach", "balcony", "kitchen", "laundry",
+    ];
+    const lower = text.toLowerCase();
+    for (const kw of keywords) {
+      if (lower.includes(kw)) amenities.push(kw);
+    }
+    return amenities.slice(0, 5);
+  }
+
+  private categorizeAttraction(text: string): string {
+    const lower = text.toLowerCase();
+    if (/museum|gallery|exhibit/i.test(lower)) return "museum";
+    if (/park|garden|nature|hike|trail/i.test(lower)) return "nature";
+    if (/temple|church|mosque|cathedral|palace|castle/i.test(lower)) return "culture";
+    if (/beach|spa|resort/i.test(lower)) return "relaxation";
+    if (/market|shop|mall/i.test(lower)) return "shopping";
+    if (/food|restaurant|cuisine|eat/i.test(lower)) return "food";
+    if (/adventure|dive|surf|climb/i.test(lower)) return "adventure";
+    if (/bar|club|nightlife/i.test(lower)) return "nightlife";
+    return "sightseeing";
+  }
+
+  private cleanAttractionName(title: string): string {
+    return title
+      .replace(/\s*[-|].+$/, "")
+      .replace(/^\d+\.\s*/, "")
+      .trim()
+      .slice(0, 80) || "Attraction";
+  }
+
+  private estimateDuration(text: string): string {
+    const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*hours?/i);
+    if (hourMatch) return `${hourMatch[1]} hours`;
+    const minMatch = text.match(/(\d+)\s*min/i);
+    if (minMatch) return `${minMatch[1]} minutes`;
+    return "2-3 hours";
+  }
+
+  // ─── Storage ──────────────────────────────────────────────────────────
+
+  private async ensureStorageExists(): Promise<void> {
+    try {
+      await mkdir(STORAGE_DIR, { recursive: true });
+    } catch {
+      // Directory may already exist
+    }
+  }
+
+  private async loadStore(): Promise<TripStore> {
+    try {
+      const content = await readFile(STORAGE_FILE, "utf-8");
+      return JSON.parse(content) as TripStore;
+    } catch {
+      return { version: 1, trips: [] };
+    }
+  }
+
+  private async saveStore(store: TripStore): Promise<void> {
+    await this.ensureStorageExists();
+    await writeFile(STORAGE_FILE, JSON.stringify(store, null, 2), "utf-8");
   }
 }
 
