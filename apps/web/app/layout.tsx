@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Sidebar } from "@/components/Sidebar";
+import { ClientLayout } from "@/components/ClientLayout";
 import "./globals.css";
+
+// Force dynamic rendering for all pages to avoid static prerender issues
+// with client components (Sidebar, Zustand store)
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Karna - AI Agent Dashboard",
@@ -29,13 +33,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="antialiased">
-        <div className="flex h-dvh overflow-hidden">
-          <Sidebar />
-          <main className="flex-1 overflow-hidden min-w-0">
-            {children}
-          </main>
-        </div>
+      <body className="antialiased bg-dark-900">
+        <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
   );
