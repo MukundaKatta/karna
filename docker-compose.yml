@@ -16,10 +16,13 @@ services:
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - REDIS_URL=redis://redis:6379
     volumes:
       - karna-data:/root/.karna
     depends_on:
       supabase-db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -47,6 +50,8 @@ services:
       KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
       KONG_DNS_ORDER: LAST,A,CNAME
       KONG_PLUGINS: request-transformer,cors,key-auth,acl
+    volumes:
+      - ./docker/kong.yml:/var/lib/kong/kong.yml:ro
     ports:
       - "54321:8000"
     depends_on:
@@ -71,6 +76,35 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  langfuse:
+    image: langfuse/langfuse:latest
+    ports:
+      - "3200:3000"
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@supabase-db:5432/karna
+      NEXTAUTH_URL: http://localhost:3200
+      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-langfuse-dev-secret}
+      SALT: ${LANGFUSE_SALT:-langfuse-dev-salt}
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    profiles:
+      - monitoring
+    restart: unless-stopped
+
   ollama:
     image: ollama/ollama:latest
     ports:
@@ -84,4 +118,5 @@ services:
 volumes:
   karna-data:
   supabase-db-data:
+  redis-data:
   ollama-data:

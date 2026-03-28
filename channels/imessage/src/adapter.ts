@@ -548,7 +548,7 @@ async function main(): Promise<void> {
   const gatewayUrl = process.env["KARNA_GATEWAY_URL"] ?? "ws://localhost:3000/ws";
 
   if (platform() !== "darwin") {
-    console.error("iMessage adapter is only supported on macOS");
+    process.stderr.write("iMessage adapter is only supported on macOS" + "\n");
     process.exit(1);
   }
 
@@ -571,7 +571,7 @@ const isMainModule =
 
 if (isMainModule) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    process.stderr.write(`Fatal error: ${String(error)}\n`);
     process.exit(1);
   });
 }

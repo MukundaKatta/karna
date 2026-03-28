@@ -126,6 +126,54 @@ export class MetricsCollector {
     logger.info("Metrics reset");
   }
 
+  /**
+   * Render metrics in Prometheus text exposition format.
+   */
+  getPrometheusMetrics(connections = 0, sessions = 0): string {
+    const lines: string[] = [];
+
+    const ts = Date.now();
+
+    // Counters
+    lines.push("# HELP karna_requests_total Total number of LLM API requests");
+    lines.push("# TYPE karna_requests_total counter");
+    lines.push(`karna_requests_total ${this.totalRequests} ${ts}`);
+
+    lines.push("# HELP karna_tokens_total Total tokens consumed");
+    lines.push("# TYPE karna_tokens_total counter");
+    lines.push(`karna_tokens_total{direction="input"} ${this.totalInputTokens} ${ts}`);
+    lines.push(`karna_tokens_total{direction="output"} ${this.totalOutputTokens} ${ts}`);
+
+    lines.push("# HELP karna_cost_usd_total Estimated cost in USD");
+    lines.push("# TYPE karna_cost_usd_total counter");
+    lines.push(`karna_cost_usd_total ${this.totalCostUsd.toFixed(6)} ${ts}`);
+
+    // Gauges
+    lines.push("# HELP karna_active_connections Current WebSocket connections");
+    lines.push("# TYPE karna_active_connections gauge");
+    lines.push(`karna_active_connections ${connections} ${ts}`);
+
+    lines.push("# HELP karna_active_sessions Current active sessions");
+    lines.push("# TYPE karna_active_sessions gauge");
+    lines.push(`karna_active_sessions ${sessions} ${ts}`);
+
+    // Per-model counters
+    lines.push("# HELP karna_model_requests_total Requests per model");
+    lines.push("# TYPE karna_model_requests_total counter");
+    for (const [model, usage] of this.byModel) {
+      lines.push(`karna_model_requests_total{model="${model}"} ${usage.requestCount} ${ts}`);
+    }
+
+    lines.push("# HELP karna_model_tokens_total Tokens per model");
+    lines.push("# TYPE karna_model_tokens_total counter");
+    for (const [model, usage] of this.byModel) {
+      lines.push(`karna_model_tokens_total{model="${model}",direction="input"} ${usage.inputTokens} ${ts}`);
+      lines.push(`karna_model_tokens_total{model="${model}",direction="output"} ${usage.outputTokens} ${ts}`);
+    }
+
+    return lines.join("\n") + "\n";
+  }
+
   // ─── Internal ───────────────────────────────────────────────────────────
 
   private calculateCost(

@@ -544,7 +544,7 @@ const isMainModule =
 
 if (isMainModule) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    process.stderr.write(`Fatal error: ${String(error)}\n`);
     process.exit(1);
   });
 }

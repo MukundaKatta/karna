@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { createLogger } from "@karna/shared";
 import { authMiddleware, signAccessToken, signRefreshToken, verifyToken, type AuthUser } from "../middleware/auth.js";
+import { AUTH_RATE_LIMIT_CONFIG } from "../middleware/rate-limit.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
 
   // ─── POST /auth/register ──────────────────────────────────────────────
 
-  server.post("/auth/register", async (request, reply) => {
+  server.post("/auth/register", { config: AUTH_RATE_LIMIT_CONFIG }, async (request, reply) => {
     const parseResult = RegisterSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send({
@@ -118,7 +119,7 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
 
   // ─── POST /auth/login ────────────────────────────────────────────────
 
-  server.post("/auth/login", async (request, reply) => {
+  server.post("/auth/login", { config: AUTH_RATE_LIMIT_CONFIG }, async (request, reply) => {
     const parseResult = LoginSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send({
@@ -214,14 +215,15 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
       const newRefreshToken = signRefreshToken(userId);
 
       return reply.send({ accessToken: newAccessToken, refreshToken: newRefreshToken });
-    } catch {
+    } catch (error) {
+      logger.warn({ error: String(error) }, "Refresh token verification failed");
       return reply.status(401).send({ error: "Invalid or expired refresh token" });
     }
   });
 
   // ─── POST /auth/forgot-password ──────────────────────────────────────
 
-  server.post("/auth/forgot-password", async (request, reply) => {
+  server.post("/auth/forgot-password", { config: AUTH_RATE_LIMIT_CONFIG }, async (request, reply) => {
     const parseResult = ForgotPasswordSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send({ error: "Valid email is required" });

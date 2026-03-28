@@ -23,15 +23,29 @@ const RETRY_BASE_DELAY_MS = 1000;
  */
 export class OpenAIProvider implements ModelProvider {
   readonly name = "openai";
-  private readonly client: OpenAI;
+  private readonly client: OpenAI | null;
+  private readonly available: boolean;
 
   constructor(apiKey?: string) {
-    this.client = new OpenAI({
-      apiKey: apiKey ?? process.env.OPENAI_API_KEY,
-    });
+    const key = apiKey ?? process.env.OPENAI_API_KEY;
+    if (!key) {
+      logger.warn("OpenAI API key not configured — OpenAI models will be unavailable");
+      this.client = null;
+      this.available = false;
+      return;
+    }
+    this.client = new OpenAI({ apiKey: key });
+    this.available = true;
   }
 
   async *chat(params: ChatParams): AsyncGenerator<StreamEvent> {
+    if (!this.client || !this.available) {
+      throw new AgentModelError(
+        "PROVIDER_UNAVAILABLE",
+        "OpenAI provider is not available. Set OPENAI_API_KEY environment variable to enable OpenAI models.",
+      );
+    }
+
     const model = params.model ?? DEFAULT_MODEL;
     const maxTokens = params.maxTokens ?? DEFAULT_MAX_TOKENS;
     const messages = this.buildMessages(params);

@@ -60,3 +60,14 @@ export async function registerRateLimit(server: FastifyInstance): Promise<void> 
 
   logger.info("Plan-based rate limiting registered");
 }
+
+// ─── Auth Rate Limit Config ──────────────────────────────────────────────
+// Apply to auth routes via routeConfig in route options.
+
+export const AUTH_RATE_LIMIT_CONFIG = {
+  rateLimit: {
+    max: 10,
+    timeWindow: "1 minute",
+    keyGenerator: (request: FastifyRequest) => request.ip,
+  },
+};

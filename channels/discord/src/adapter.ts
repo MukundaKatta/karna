@@ -568,12 +568,12 @@ async function main(): Promise<void> {
   const gatewayUrl = process.env["KARNA_GATEWAY_URL"] ?? "ws://localhost:3000/ws";
 
   if (!botToken) {
-    console.error("DISCORD_BOT_TOKEN environment variable is required");
+    process.stderr.write("DISCORD_BOT_TOKEN environment variable is required" + "\n");
     process.exit(1);
   }
 
   if (!clientId) {
-    console.error("DISCORD_CLIENT_ID environment variable is required");
+    process.stderr.write("DISCORD_CLIENT_ID environment variable is required" + "\n");
     process.exit(1);
   }
 
@@ -596,7 +596,7 @@ const isMainModule =
 
 if (isMainModule) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    process.stderr.write(`Fatal error: ${String(error)}\n`);
     process.exit(1);
   });
 }

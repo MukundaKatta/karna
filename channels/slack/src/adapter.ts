@@ -631,17 +631,17 @@ async function main(): Promise<void> {
   const gatewayUrl = process.env["KARNA_GATEWAY_URL"] ?? "ws://localhost:3000/ws";
 
   if (!botToken) {
-    console.error("SLACK_BOT_TOKEN environment variable is required");
+    process.stderr.write("SLACK_BOT_TOKEN environment variable is required" + "\n");
     process.exit(1);
   }
 
   if (!appToken) {
-    console.error("SLACK_APP_TOKEN environment variable is required");
+    process.stderr.write("SLACK_APP_TOKEN environment variable is required" + "\n");
     process.exit(1);
   }
 
   if (!signingSecret) {
-    console.error("SLACK_SIGNING_SECRET environment variable is required");
+    process.stderr.write("SLACK_SIGNING_SECRET environment variable is required" + "\n");
     process.exit(1);
   }
 
@@ -669,7 +669,7 @@ const isMainModule =
 
 if (isMainModule) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    process.stderr.write(`Fatal error: ${String(error)}\n`);
     process.exit(1);
   });
 }

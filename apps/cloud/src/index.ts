@@ -48,6 +48,18 @@ async function main(): Promise<void> {
 
   await registerRateLimit(server);
 
+  // ─── Security Headers ─────────────────────────────────────────────────
+
+  server.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "0");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    if (process.env["NODE_ENV"] === "production") {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+  });
+
   // ─── Health Endpoint ──────────────────────────────────────────────────
 
   server.get("/health", async (_request, reply) => {
@@ -113,6 +125,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 }
+
+// ─── Process-Level Error Handlers ─────────────────────────────────────────
+
+process.on("unhandledRejection", (reason) => {
+  logger.fatal({ reason: String(reason) }, "Unhandled promise rejection");
+  process.exit(1);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.fatal({ error: error.message, stack: error.stack }, "Uncaught exception");
+  process.exit(1);
+});
 
 main().catch((error) => {
   logger.fatal({ error: String(error) }, "Unhandled error in Karna Cloud main");

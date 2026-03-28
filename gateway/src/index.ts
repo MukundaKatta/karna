@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import websocket from "@fastify/websocket";
+import cors from "@fastify/cors";
 import pino from "pino";
 import { nanoid } from "nanoid";
 import { parseMessage } from "./protocol/schema.js";
@@ -9,6 +10,7 @@ import { HeartbeatScheduler } from "./heartbeat/scheduler.js";
 import { loadConfig } from "./config/loader.js";
 import { getSystemHealth, setConnectionCounter, setSessionCounter } from "./health/status.js";
 import { MetricsCollector } from "./health/metrics.js";
+import { validateGatewayEnv } from "./config/validate-env.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,12 @@ const logger = pino({
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
+  // Validate environment before anything else
+  const envResult = validateGatewayEnv();
+  if (!envResult.valid) {
+    process.exit(1);
+  }
+
   // Load configuration
   const config = await loadConfig();
   const port = Number(process.env["GATEWAY_PORT"]) || config.gateway.port;
@@ -61,6 +69,31 @@ async function main(): Promise<void> {
     },
   });
 
+  // ─── CORS ──────────────────────────────────────────────────────────────
+
+  const corsOrigins = process.env["CORS_ORIGINS"]?.split(",").map((o) => o.trim()).filter(Boolean)
+    ?? (config.gateway.corsOrigin ? [config.gateway.corsOrigin] : undefined)
+    ?? ["http://localhost:3000", "http://localhost:5173"];
+
+  await server.register(cors, {
+    origin: corsOrigins,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
+    credentials: true,
+  });
+
+  // ─── Security Headers ─────────────────────────────────────────────────
+
+  server.addHook("onSend", async (_request, reply) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-XSS-Protection", "0");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    if (process.env["NODE_ENV"] === "production") {
+      reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+  });
+
   // ─── Health Endpoint ────────────────────────────────────────────────────
 
   server.get("/health", async (_request, reply) => {
@@ -73,6 +106,75 @@ async function main(): Promise<void> {
 
   server.get("/metrics", async (_request, reply) => {
     return reply.send(metricsCollector.getMetrics());
+  });
+
+  // ─── Prometheus Metrics Endpoint ──────────────────────────────────────
+
+  server.get("/metrics/prometheus", async (_request, reply) => {
+    const text = metricsCollector.getPrometheusMetrics(
+      connectedClients.size,
+      sessionManager.activeSessionCount,
+    );
+    return reply.type("text/plain; version=0.0.4; charset=utf-8").send(text);
+  });
+
+  // ─── Sessions REST API ────────────────────────────────────────────────
+
+  server.get("/api/sessions", async (_request, reply) => {
+    const sessions = sessionManager.listAllSessions();
+    return reply.send({
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        channelType: s.channelType,
+        channelId: s.channelId,
+        userId: s.userId,
+        status: s.status,
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+        stats: s.stats,
+      })),
+      total: sessions.length,
+    });
+  });
+
+  // ─── Analytics REST API ───────────────────────────────────────────────
+
+  server.get("/api/analytics", async (_request, reply) => {
+    const sessions = sessionManager.listAllSessions();
+    const metrics = metricsCollector.getMetrics();
+
+    let totalMessages = 0;
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let totalCostUsd = 0;
+
+    for (const session of sessions) {
+      if (session.stats) {
+        totalMessages += session.stats.messageCount;
+        totalInputTokens += session.stats.totalInputTokens;
+        totalOutputTokens += session.stats.totalOutputTokens;
+        totalCostUsd += session.stats.totalCostUsd;
+      }
+    }
+
+    return reply.send({
+      overview: {
+        activeSessions: sessions.length,
+        activeConnections: connectedClients.size,
+        totalMessages,
+        totalInputTokens,
+        totalOutputTokens,
+        totalCostUsd: Math.round(totalCostUsd * 10000) / 10000,
+      },
+      metrics,
+      sessionsByChannel: sessions.reduce(
+        (acc, s) => {
+          acc[s.channelType] = (acc[s.channelType] ?? 0) + 1;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
+    });
   });
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
@@ -184,6 +286,18 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 }
+
+// ─── Process-Level Error Handlers ─────────────────────────────────────────
+
+process.on("unhandledRejection", (reason) => {
+  logger.fatal({ reason: String(reason) }, "Unhandled promise rejection");
+  process.exit(1);
+});
+
+process.on("uncaughtException", (error) => {
+  logger.fatal({ error: error.message, stack: error.stack }, "Uncaught exception");
+  process.exit(1);
+});
 
 main().catch((error) => {
   logger.fatal({ error: String(error) }, "Unhandled error in gateway main");

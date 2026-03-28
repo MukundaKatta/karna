@@ -26,7 +26,7 @@ export function registerStatusCommand(program: Command): void {
     .option(
       "-g, --gateway <url>",
       "Gateway URL",
-      "http://localhost:3000",
+      `http://localhost:${process.env["GATEWAY_PORT"] ?? "18789"}`,
     )
     .action(async (options: { gateway: string }) => {
       await showStatus(options);

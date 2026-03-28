@@ -52,6 +52,8 @@ export interface SkillContext {
   agentId: string;
   userId?: string;
   config?: Record<string, unknown>;
+  /** Execute a registered tool by name. Injected by the runtime. */
+  callTool?: (toolName: string, input: Record<string, unknown>) => Promise<unknown>;
 }
 
 /**

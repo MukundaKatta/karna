@@ -248,7 +248,8 @@ async function checkGatewayReachability(): Promise<CheckResult> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 3_000);
 
-    const response = await fetch("http://localhost:3000/health", {
+    const gatewayPort = process.env["GATEWAY_PORT"] ?? "18789";
+    const response = await fetch(`http://localhost:${gatewayPort}/health`, {
       signal: controller.signal,
     });
     clearTimeout(timeout);
@@ -257,7 +258,7 @@ async function checkGatewayReachability(): Promise<CheckResult> {
       return {
         name: "Gateway",
         status: "pass",
-        message: "Running on localhost:3000",
+        message: `Running on localhost:${gatewayPort}`,
       };
     }
 

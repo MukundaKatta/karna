@@ -2,9 +2,8 @@
   "name": "karna",
   "version": "0.1.0",
   "private": true,
-  "description": "Karna — Your Loyal AI Agent Platform",
+  "description": "Karna \u2014 Your Loyal AI Agent Platform",
   "author": "Officethree Technologies",
-  "license": "MIT",
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"

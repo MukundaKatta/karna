@@ -24,7 +24,29 @@ declare module "fastify" {
 
 // ─── JWT Configuration ──────────────────────────────────────────────────────
 
-const JWT_SECRET = process.env["JWT_SECRET"] ?? "karna-cloud-dev-secret-change-me";
+function resolveJwtSecret(): string {
+  const secret = process.env["JWT_SECRET"];
+  const isProduction = process.env["NODE_ENV"] === "production";
+
+  if (secret && secret.length >= 32) {
+    return secret;
+  }
+
+  if (isProduction) {
+    throw new Error(
+      "JWT_SECRET must be set to a value of at least 32 characters in production. " +
+      "Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
+    );
+  }
+
+  // Development/test: generate a per-process ephemeral secret
+  const { randomBytes } = require("node:crypto") as typeof import("node:crypto");
+  const ephemeral = randomBytes(32).toString("hex");
+  logger.warn("JWT_SECRET not set — using ephemeral secret (tokens will not survive restarts)");
+  return ephemeral;
+}
+
+const JWT_SECRET = resolveJwtSecret();
 const JWT_ISSUER = "karna-cloud";
 const JWT_EXPIRY = "24h";
 const JWT_REFRESH_EXPIRY = "7d";

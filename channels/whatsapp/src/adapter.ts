@@ -510,7 +510,7 @@ export class WhatsAppAdapter {
         } else {
           // Wait before retry with exponential backoff
           await new Promise((resolve) =>
-            setTimeout(resolve, 1000 * Math.pow(2, attempt)),
+            setTimeout(resolve, Math.min(1000 * Math.pow(2, attempt), 60_000)),
           );
         }
       }
@@ -609,7 +609,7 @@ const isMainModule =
 
 if (isMainModule) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    process.stderr.write(`Fatal error: ${String(error)}\n`);
     process.exit(1);
   });
 }

@@ -10,6 +10,7 @@ export interface SystemHealth {
   uptimeHuman: string;
   connections: number;
   sessions: number;
+  database: "connected" | "disconnected" | "unknown";
   memoryUsage: {
     heapUsedMB: number;
     heapTotalMB: number;
@@ -27,6 +28,8 @@ const startedAt = Date.now();
 
 let connectionCountFn: () => number = () => 0;
 let sessionCountFn: () => number = () => 0;
+let databaseCheckerFn: (() => Promise<boolean>) | null = null;
+let lastDbStatus: "connected" | "disconnected" | "unknown" = "unknown";
 
 export function setConnectionCounter(fn: () => number): void {
   connectionCountFn = fn;
@@ -34,6 +37,12 @@ export function setConnectionCounter(fn: () => number): void {
 
 export function setSessionCounter(fn: () => number): void {
   sessionCountFn = fn;
+}
+
+export function setDatabaseChecker(fn: () => Promise<boolean>): void {
+  databaseCheckerFn = fn;
+  // Run initial check
+  fn().then((ok) => { lastDbStatus = ok ? "connected" : "disconnected"; }).catch(() => { lastDbStatus = "disconnected"; });
 }
 
 // ─── Health Check ───────────────────────────────────────────────────────────
@@ -63,12 +72,24 @@ export function getSystemHealth(): SystemHealth {
     logger.warn({ heapUsageRatio }, "Heap usage elevated");
   }
 
+  // Async DB check — use cached result to keep health endpoint sync
+  if (databaseCheckerFn) {
+    databaseCheckerFn()
+      .then((ok) => { lastDbStatus = ok ? "connected" : "disconnected"; })
+      .catch(() => { lastDbStatus = "disconnected"; });
+  }
+
+  if (lastDbStatus === "disconnected") {
+    status = status === "healthy" ? "degraded" : status;
+  }
+
   return {
     status,
     uptime: uptimeMs,
     uptimeHuman: formatUptime(uptimeMs),
     connections,
     sessions,
+    database: lastDbStatus,
     memoryUsage: {
       heapUsedMB: Math.round(heapUsedMB * 100) / 100,
       heapTotalMB: Math.round(heapTotalMB * 100) / 100,

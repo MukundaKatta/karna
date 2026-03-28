@@ -543,17 +543,17 @@ async function main(): Promise<void> {
   const webhookPort = parseInt(process.env["SMS_WEBHOOK_PORT"] ?? "3001", 10);
 
   if (!accountSid) {
-    console.error("TWILIO_ACCOUNT_SID environment variable is required");
+    process.stderr.write("TWILIO_ACCOUNT_SID environment variable is required" + "\n");
     process.exit(1);
   }
 
   if (!authToken) {
-    console.error("TWILIO_AUTH_TOKEN environment variable is required");
+    process.stderr.write("TWILIO_AUTH_TOKEN environment variable is required" + "\n");
     process.exit(1);
   }
 
   if (!phoneNumber) {
-    console.error("TWILIO_PHONE_NUMBER environment variable is required");
+    process.stderr.write("TWILIO_PHONE_NUMBER environment variable is required" + "\n");
     process.exit(1);
   }
 
@@ -582,7 +582,7 @@ const isMainModule =
 
 if (isMainModule) {
   main().catch((error) => {
-    console.error("Fatal error:", error);
+    process.stderr.write(`Fatal error: ${String(error)}\n`);
     process.exit(1);
   });
 }

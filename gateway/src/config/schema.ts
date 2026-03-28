@@ -9,7 +9,7 @@ export const GatewayConfigSchema = z.object({
   maxConnections: z.number().int().positive().default(100),
   heartbeatIntervalMs: z.number().int().positive().default(30_000),
   sessionTimeoutMs: z.number().int().positive().default(3_600_000),
-  corsOrigin: z.string().default("*"),
+  corsOrigin: z.string().default(""),
 });
 
 export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;

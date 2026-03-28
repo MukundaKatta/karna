@@ -9,6 +9,7 @@ export const MemorySourceSchema = z.enum([
   "system",
   "skill",
   "external",
+  "document",
 ]);
 
 export type MemorySource = z.infer<typeof MemorySourceSchema>;

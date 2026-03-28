@@ -231,7 +231,8 @@ export type AgentModelErrorCode =
   | "CONTEXT_OVERFLOW"
   | "AUTH_ERROR"
   | "RATE_LIMIT"
-  | "PROVIDER_ERROR";
+  | "PROVIDER_ERROR"
+  | "PROVIDER_UNAVAILABLE";
 
 export class AgentModelError extends Error {
   constructor(

@@ -13,6 +13,20 @@ export interface SessionManagerOptions {
   sessionTimeoutMs?: number;
   /** Interval for flushing sessions to persistent storage. Defaults to 60s. */
   flushIntervalMs?: number;
+  /** Supabase client for persistence (optional). */
+  supabaseClient?: SupabaseSessionClient;
+}
+
+/**
+ * Minimal Supabase client interface for session persistence.
+ */
+export interface SupabaseSessionClient {
+  from(table: string): {
+    insert(data: Record<string, unknown>): { select(): { single(): Promise<{ data: unknown; error: unknown }> } };
+    update(data: Record<string, unknown>): { eq(col: string, val: string): { select(): { single(): Promise<{ data: unknown; error: unknown }> } } };
+    upsert(data: Record<string, unknown>[]): Promise<{ error: unknown }>;
+    select(cols?: string): { eq(col: string, val: string): { order(col: string, opts: Record<string, boolean>): Promise<{ data: unknown[]; error: unknown }> } };
+  };
 }
 
 // ─── Session Manager ────────────────────────────────────────────────────────
@@ -24,11 +38,14 @@ export class SessionManager {
   private readonly sessionTimeoutMs: number;
   private flushTimer: ReturnType<typeof setInterval> | null = null;
   private readonly flushIntervalMs: number;
+  private readonly supabase: SupabaseSessionClient | null;
+  private dirtySessionIds = new Set<string>();
 
   constructor(options: SessionManagerOptions = {}) {
     this.maxSessions = options.maxSessions ?? 1000;
     this.sessionTimeoutMs = options.sessionTimeoutMs ?? 3_600_000;
     this.flushIntervalMs = options.flushIntervalMs ?? 60_000;
+    this.supabase = options.supabaseClient ?? null;
   }
 
   /**
@@ -47,7 +64,11 @@ export class SessionManager {
     this.flushTimer.unref();
 
     logger.info(
-      { flushIntervalMs: this.flushIntervalMs, maxSessions: this.maxSessions },
+      {
+        flushIntervalMs: this.flushIntervalMs,
+        maxSessions: this.maxSessions,
+        persistence: this.supabase ? "supabase" : "in-memory",
+      },
       "Session manager started",
     );
   }
@@ -103,6 +124,7 @@ export class SessionManager {
     };
 
     this.sessions.set(session.id, session);
+    this.dirtySessionIds.add(session.id);
 
     // Update agent index
     let agentSessions = this.agentSessionIndex.get(agentId);
@@ -159,6 +181,15 @@ export class SessionManager {
   }
 
   /**
+   * List all active sessions.
+   */
+  listAllSessions(): Session[] {
+    return Array.from(this.sessions.values()).filter(
+      (s) => s.status === "active",
+    );
+  }
+
+  /**
    * Update a session's status.
    */
   updateSessionStatus(sessionId: string, status: SessionStatus): boolean {
@@ -167,6 +198,7 @@ export class SessionManager {
 
     session.status = status;
     session.updatedAt = Date.now();
+    this.dirtySessionIds.add(sessionId);
 
     logger.debug({ sessionId, status }, "Session status updated");
     return true;
@@ -189,6 +221,7 @@ export class SessionManager {
     session.stats.totalOutputTokens += outputTokens;
     session.stats.totalCostUsd += costUsd;
     session.updatedAt = Date.now();
+    this.dirtySessionIds.add(sessionId);
 
     return true;
   }
@@ -212,6 +245,10 @@ export class SessionManager {
       }
     }
 
+    // Flush to storage BEFORE deleting from map, so the terminated
+    // status is persisted. Remove from dirtySessionIds after delete
+    // to prevent stale entries.
+    this.dirtySessionIds.delete(sessionId);
     this.sessions.delete(sessionId);
     logger.info({ sessionId }, "Session terminated");
 
@@ -261,19 +298,59 @@ export class SessionManager {
   }
 
   /**
-   * Flush session state to persistent storage (Supabase).
-   * Currently a placeholder — will be integrated when the Supabase client is available.
+   * Flush dirty session state to persistent storage (Supabase).
+   * Falls back to a no-op if Supabase is not configured.
    */
   private async flushToStorage(): Promise<void> {
-    if (this.sessions.size === 0) return;
+    if (this.dirtySessionIds.size === 0) return;
 
-    logger.debug(
-      { sessionCount: this.sessions.size },
-      "Flushing sessions to storage",
-    );
+    if (!this.supabase) {
+      // No persistence configured — clear dirty set silently
+      this.dirtySessionIds.clear();
+      return;
+    }
 
-    // TODO: Integrate with @karna/supabase client
-    // For now, this is a no-op. The session data is held in memory
-    // and persisted via the JSONL transcript store.
+    const sessionsToFlush: Record<string, unknown>[] = [];
+    for (const sessionId of this.dirtySessionIds) {
+      const session = this.sessions.get(sessionId);
+      if (!session) continue;
+
+      sessionsToFlush.push({
+        id: session.id,
+        channel_type: session.channelType,
+        channel_id: session.channelId,
+        user_id: session.userId ?? null,
+        status: session.status,
+        created_at: new Date(session.createdAt).toISOString(),
+        updated_at: new Date(session.updatedAt).toISOString(),
+        expires_at: session.expiresAt ? new Date(session.expiresAt).toISOString() : null,
+        metadata: session.metadata ?? {},
+        message_count: session.stats?.messageCount ?? 0,
+        total_input_tokens: session.stats?.totalInputTokens ?? 0,
+        total_output_tokens: session.stats?.totalOutputTokens ?? 0,
+        total_cost_usd: session.stats?.totalCostUsd ?? 0,
+      });
+    }
+
+    if (sessionsToFlush.length === 0) {
+      this.dirtySessionIds.clear();
+      return;
+    }
+
+    try {
+      const { error } = await this.supabase.from("sessions").upsert(sessionsToFlush);
+
+      if (error) {
+        logger.error({ error: String(error) }, "Failed to upsert sessions to Supabase");
+      } else {
+        logger.debug(
+          { sessionCount: sessionsToFlush.length },
+          "Flushed sessions to Supabase",
+        );
+        this.dirtySessionIds.clear();
+      }
+    } catch (error) {
+      logger.error({ error: String(error) }, "Exception flushing sessions to Supabase");
+    }
   }
 }

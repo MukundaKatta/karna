@@ -29,7 +29,7 @@ export function registerGatewayCommand(program: Command): void {
   gateway
     .command("start")
     .description("Start the gateway process")
-    .option("-p, --port <port>", "Port to listen on", "3000")
+    .option("-p, --port <port>", "Port to listen on", process.env["GATEWAY_PORT"] ?? "18789")
     .option("-d, --detach", "Run in background (detached)", false)
     .action(async (options: { port: string; detach: boolean }) => {
       await startGateway(options);
@@ -45,7 +45,7 @@ export function registerGatewayCommand(program: Command): void {
   gateway
     .command("restart")
     .description("Restart the gateway process")
-    .option("-p, --port <port>", "Port to listen on", "3000")
+    .option("-p, --port <port>", "Port to listen on", process.env["GATEWAY_PORT"] ?? "18789")
     .action(async (options: { port: string }) => {
       await stopGateway();
       await startGateway({ ...options, detach: true });
