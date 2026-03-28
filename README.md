@@ -2,22 +2,38 @@
 
 > Named after the legendary warrior from the Mahabharata, Karna is a self-hosted AI assistant platform with multi-channel messaging, extensible skills, and semantic memory.
 
-[![GitHub Pages](https://img.shields.io/badge/Live_Demo-Visit_Site-blue?style=for-the-badge)](https://MukundaKatta.github.io/karna/)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-karna--web.vercel.app-blue?style=for-the-badge)](https://karna-web.vercel.app)
 [![License](https://img.shields.io/github/license/MukundaKatta/karna?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/MukundaKatta/karna?style=flat-square)](https://github.com/MukundaKatta/karna/stargazers)
+[![Tools](https://img.shields.io/badge/tools-97+-green?style=flat-square)]()
+[![Channels](https://img.shields.io/badge/channels-13-orange?style=flat-square)]()
+[![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue?style=flat-square)]()
 
 ## What is Karna?
 
 Karna is a **production-ready, self-hosted AI agent** that connects to 13+ messaging platforms and runs locally on your machine. Think of it as your personal AI assistant that lives in your chat apps.
 
-**Key differentiators:**
+**Why Karna > OpenClaw:**
+- **97+ tools** — 48 core + 19 macOS + 20 app integrations + 6 iCloud/iPhone + 3 system + delegation
 - **13 messaging channels** — Telegram, Slack, Discord, WhatsApp, SMS, iMessage, Webchat, Signal, Google Chat, Microsoft Teams, Matrix, IRC, LINE
-- **38+ built-in tools** — shell, files, web search, browser automation, calendar, email, code execution, image generation, and more
-- **Semantic memory** — remembers context across conversations with vector-based retrieval
-- **Voice** — speech-to-text (Whisper) and text-to-speech (ElevenLabs) pipeline
+- **Multi-Agent Orchestration** — supervisor/worker delegation, handoff protocol, agent pool
+- **Voice Mode** — real-time Whisper STT + ElevenLabs TTS with browser UI
+- **3-tier memory** — working + short-term + long-term with vector search (pgvector)
+- **RAG pipeline** — document chunking, hybrid retrieval (vector + keyword + RRF)
+- **Self-improvement** — learns from user feedback, auto-tunes prompts
+- **Observability** — real-time trace visualization with span waterfall
+- **Visual Workflows** — DAG-based automation builder (Zapier-like)
+- **KarnaHub Marketplace** — browse, install, and publish community skills
+- **Sandboxed execution** — Docker containers with seccomp, resource limits
+- **Mac control** — apps, Finder, clipboard, screenshots, AppleScript, Siri Shortcuts
+- **iPhone sync** — contacts, reminders, notes, Safari tabs via iCloud
+- **App integrations** — GitHub, Google Drive, Slack, Notion, Spotify
+- **Full web dashboard** — chat, agents, sessions, analytics, memory, tools, settings
+- **Mobile app** — React Native (Expo) for iOS and Android
 - **Canvas** — agent-generated visual interfaces pushed to clients (A2UI)
 - **Plugin SDK** — build custom channels, tools, and skills
 - **Self-hosted** — your data stays on your machine
+- **Production-ready** — Docker, Kubernetes, CI/CD, OpenAPI docs
 
 ## Install (One Command)
 
