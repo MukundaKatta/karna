@@ -3,6 +3,20 @@
   "version": "0.1.0",
   "type": "module",
   "main": "dist/runtime.js",
+  "exports": {
+    ".": "./dist/runtime.js",
+    "./runtime.js": "./dist/runtime.js",
+    "./tools/registry.js": "./dist/tools/registry.js",
+    "./tools/builtin/index.js": "./dist/tools/builtin/index.js",
+    "./tools/executor.js": "./dist/tools/executor.js",
+    "./tools/approval.js": "./dist/tools/approval.js",
+    "./models/router.js": "./dist/models/router.js",
+    "./models/provider.js": "./dist/models/provider.js",
+    "./context/builder.js": "./dist/context/builder.js",
+    "./context/system-prompt.js": "./dist/context/system-prompt.js",
+    "./memory/store.js": "./dist/memory/store.js",
+    "./memory/embedder.js": "./dist/memory/embedder.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/runtime.ts",
