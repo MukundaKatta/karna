@@ -1,5 +1,0 @@
-{
-  "installCommand": "pnpm install",
-  "buildCommand": "pnpm --filter @karna/shared build && pnpm --filter @karna/web build",
-  "outputDirectory": "apps/web/.next"
-}
