@@ -1,0 +1,44 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "info": {
+      "en-US": {
+        "title": "Karna — AI Assistant",
+        "subtitle": "Your personal AI agent",
+        "description": "Karna is a self-hosted AI assistant that connects to your existing tools and services. Have natural conversations via text or voice, automate tasks, and build custom skills — all powered by your choice of AI models (Claude, GPT-4, or local models via Ollama).\n\nKey features:\n• Voice conversations with real-time speech recognition\n• Chat history with persistent memory\n• 97+ built-in tools for productivity\n• Integrations: GitHub, Google Drive, Notion, Slack, Spotify, iCloud\n• Skills marketplace — browse and install community skills\n• Multi-agent workflows — automate complex tasks\n• End-to-end encrypted connection to your self-hosted gateway\n• Privacy-first: your data stays on your infrastructure\n\nKarna requires a self-hosted gateway (available at github.com/MukundaKatta/karna). The mobile app is a thin client that connects to your instance.\n\nThis app is for users running their own Karna gateway. A demo instance is provided for App Review.",
+        "keywords": "ai,assistant,chatbot,productivity,voice,automation,claude,gpt,agent,self-hosted",
+        "releaseNotes": "Initial release of Karna mobile — voice and text conversations with your self-hosted AI agent.",
+        "marketingUrl": "https://karna-web.vercel.app",
+        "supportUrl": "https://github.com/MukundaKatta/karna/issues",
+        "privacyPolicyUrl": "https://karna-web.vercel.app/privacy"
+      }
+    },
+    "categories": ["PRODUCTIVITY", "UTILITIES"],
+    "copyright": "2026 Officethree Technologies",
+    "advisory": {
+      "alcoholTobaccoOrDrugUseOrReferences": "NONE",
+      "contests": "NONE",
+      "gamblingSimulated": "NONE",
+      "medicalOrTreatmentInformation": "NONE",
+      "profanityOrCrudeHumor": "NONE",
+      "sexualContentGraphicAndNudity": "NONE",
+      "sexualContentOrNudity": "NONE",
+      "horrorOrFearThemes": "NONE",
+      "matureOrSuggestiveThemes": "NONE",
+      "unrestrictedWebAccess": false,
+      "gambling": false,
+      "violenceCartoonOrFantasy": "NONE",
+      "violenceRealistic": "NONE",
+      "violenceRealisticProlongedGraphicOrSadistic": "NONE"
+    },
+    "review": {
+      "firstName": "REPLACE_WITH_CONTACT_FIRST_NAME",
+      "lastName": "REPLACE_WITH_CONTACT_LAST_NAME",
+      "email": "REPLACE_WITH_CONTACT_EMAIL",
+      "phone": "REPLACE_WITH_CONTACT_PHONE",
+      "demoUsername": "appreview@karna.ai",
+      "demoPassword": "REPLACE_WITH_DEMO_PASSWORD",
+      "notes": "Karna is a self-hosted AI assistant client. For review, please use the provided demo credentials which connect to a pre-configured gateway instance. Voice input requires microphone permission. To test: 1) Launch app and log in with demo credentials, 2) Type a message or tap the mic icon to speak, 3) The assistant will respond via the connected gateway."
+    }
+  }
+}
