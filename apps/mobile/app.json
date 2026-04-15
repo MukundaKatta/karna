@@ -19,12 +19,21 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.karna.mobile",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Karna needs microphone access for voice input.",
+        "NSMicrophoneUsageDescription": "Karna uses the microphone to capture voice input for your AI assistant conversations.",
+        "NSCameraUsageDescription": "Karna uses the camera when you attach images to your conversations.",
+        "NSPhotoLibraryUsageDescription": "Karna accesses your photo library when you attach images to your conversations.",
+        "NSUserNotificationsUsageDescription": "Karna sends notifications to alert you about completed tasks and agent responses.",
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "remote-notification"
         ],
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationCategoryType": "public.app-category.productivity"
       }
     },
     "android": {
