@@ -1,6 +1,6 @@
-# Karna — Your Loyal AI Agent Platform
+# Karna
 
-> Named after the legendary warrior from the Mahabharata, Karna is a self-hosted AI assistant platform with multi-channel messaging, extensible skills, and semantic memory.
+> Named after the legendary warrior from the Mahabharata, Karna is a self-hosted AI agent platform for multichannel messaging, memory, plugins, and practical workflow automation.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-karna--web.vercel.app-blue?style=for-the-badge)](https://karna-web.vercel.app)
 [![License](https://img.shields.io/github/license/MukundaKatta/karna?style=flat-square)](LICENSE)
@@ -9,9 +9,13 @@
 [![Channels](https://img.shields.io/badge/channels-13-orange?style=flat-square)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue?style=flat-square)]()
 
-## What is Karna?
+## What Karna Does
 
-Karna is a **production-ready, self-hosted AI agent** that connects to 13+ messaging platforms and runs locally on your machine. Think of it as your personal AI assistant that lives in your chat apps.
+Karna is a **production-ready, self-hosted AI agent platform** that connects to 13+ messaging platforms and runs locally on your machine. It is designed for builders who want more than a chat demo: persistent context, operational workflows, extensibility, and real integrations across the channels people already use.
+
+Instead of treating an agent as a single interface, Karna is structured like a platform. It combines messaging, memory, tools, orchestration, plugins, and deployment paths so an agent can stay useful over time rather than only looking impressive in a one-off interaction.
+
+## Why Karna
 
 **Why Karna > OpenClaw:**
 - **97+ tools** — 48 core + 19 macOS + 20 app integrations + 6 iCloud/iPhone + 3 system + delegation
@@ -35,7 +39,17 @@ Karna is a **production-ready, self-hosted AI agent** that connects to 13+ messa
 - **Self-hosted** — your data stays on your machine
 - **Production-ready** — Docker, Kubernetes, CI/CD, OpenAPI docs
 
-## Install (One Command)
+## Core Use Cases
+
+- personal or team copilots that live in chat channels
+- workflow automation with persistent context
+- multi-channel assistants that need memory across sessions
+- plugin-driven agent systems that connect to real tools
+- self-hosted agent infrastructure for experimentation or production
+
+## Quick Start
+
+### Install (One Command)
 
 ```bash
 npm install -g karna-ai
