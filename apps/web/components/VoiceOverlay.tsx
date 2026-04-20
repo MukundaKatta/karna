@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { X, Mic, MicOff } from "lucide-react";
+import { X, Mic, MicOff, Waves } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getVoiceClient, type VoiceState } from "@/lib/voice";
+import { getVoiceClient, type VoiceMode, type VoiceState } from "@/lib/voice";
 import { getWSClient } from "@/lib/ws";
 
 interface VoiceOverlayProps {
@@ -17,6 +17,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [audioLevel, setAudioLevel] = useState(0);
   const [transcript, setTranscript] = useState("");
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("push-to-talk");
   const [statusText, setStatusText] = useState("Tap the microphone to start");
   const voiceClientRef = useRef(getVoiceClient());
 
@@ -29,7 +30,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       setVoiceState(state);
       switch (state) {
         case "recording":
-          setStatusText("Listening...");
+          setStatusText(voiceMode === "continuous" ? "Listening until you pause..." : "Listening...");
           break;
         case "processing":
           setStatusText("Thinking...");
@@ -61,7 +62,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       unsubLevel();
       unsubTranscript();
     };
-  }, [open, onTranscript]);
+  }, [open, onTranscript, voiceMode]);
 
   // Listen for voice.transcript and voice.audio.response messages from WS
   useEffect(() => {
@@ -115,9 +116,9 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       vc.stopRecording();
     } else {
       setTranscript("");
-      vc.startRecording();
+      vc.startRecording(voiceMode);
     }
-  }, []);
+  }, [voiceMode]);
 
   const handleClose = useCallback(() => {
     const vc = voiceClientRef.current;
@@ -168,6 +169,26 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         title="Close voice mode"
       >
         <X size={24} />
+      </button>
+
+      <button
+        onClick={() =>
+          setVoiceMode((current) =>
+            current === "push-to-talk" ? "continuous" : "push-to-talk",
+          )
+        }
+        disabled={isRecording || isProcessing}
+        className={cn(
+          "absolute top-4 left-4 flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+          voiceMode === "continuous"
+            ? "bg-accent-600 text-white"
+            : "bg-dark-800 text-dark-300 hover:text-white",
+          (isRecording || isProcessing) && "opacity-50 cursor-not-allowed",
+        )}
+        title="Toggle continuous listening"
+      >
+        <Waves size={16} />
+        {voiceMode === "continuous" ? "Continuous" : "Push to Talk"}
       </button>
 
       {/* Status text */}
@@ -242,7 +263,11 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
           </p>
         ) : (
           <p className="text-dark-600 text-sm">
-            {isRecording ? "Speak now..." : ""}
+            {isRecording
+              ? voiceMode === "continuous"
+                ? "Speak naturally. I'll stop when you pause."
+                : "Speak now..."
+              : ""}
           </p>
         )}
       </div>
