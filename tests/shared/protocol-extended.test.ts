@@ -6,6 +6,7 @@ import {
   ToolApprovalRequestedMessageSchema,
   ToolApprovalResponseMessageSchema,
   ToolResultMessageSchema,
+  VoiceAudioChunkMessageSchema,
   HeartbeatCheckMessageSchema,
   HeartbeatAckMessageSchema,
   SkillInvokeMessageSchema,
@@ -76,6 +77,24 @@ describe("Protocol Schema - Extended Coverage", () => {
         };
         expect(ToolApprovalRequestedMessageSchema.safeParse(msg).success).toBe(true);
       }
+    });
+  });
+
+  describe("VoiceAudioChunkMessage", () => {
+    it("accepts mobile m4a audio chunks", () => {
+      const msg = {
+        id: "msg-voice-1",
+        type: "voice.audio.chunk",
+        timestamp: Date.now(),
+        sessionId: "session-1",
+        payload: {
+          data: "YmFzZTY0",
+          format: "m4a",
+          sampleRate: 44100,
+        },
+      };
+
+      expect(VoiceAudioChunkMessageSchema.safeParse(msg).success).toBe(true);
     });
   });
 

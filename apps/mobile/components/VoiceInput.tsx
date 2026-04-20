@@ -110,7 +110,9 @@ export function VoiceInput() {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const uri = await stopRecording();
     if (uri) {
-      gatewayClient.sendVoiceMessage(uri);
+      gatewayClient.sendVoiceMessage(uri).catch((err) => {
+        console.warn('[VoiceInput] Failed to send voice message:', err);
+      });
     }
   }, [recording, stopPulse]);
 
