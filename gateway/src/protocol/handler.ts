@@ -19,6 +19,7 @@ import { handleVoiceStart, handleVoiceAudioChunk, handleVoiceEnd } from "../voic
 import { appendToTranscript, readTranscript } from "../session/store.js";
 import { Orchestrator } from "@karna/agent/orchestration/orchestrator.js";
 import type { AgentDefinition, DelegationRecord } from "@karna/shared/types/orchestration.js";
+import type { Session } from "@karna/shared/types/session.js";
 
 const logger = pino({ name: "message-handler" });
 
@@ -68,11 +69,58 @@ const DEFAULT_AGENTS: AgentDefinition[] = [
   },
 ];
 
-let orchestrator: Orchestrator | null = null;
+interface OrchestratorLike {
+  activeAgentCount: number;
+  init(): Promise<void>;
+  setStreamCallback(callback: StreamCallback): void;
+  setApprovalCallback(
+    callback: (request: { toolCallId: string }) => Promise<{
+      toolCallId: string;
+      approved: boolean;
+      reason?: string;
+      respondedAt: number;
+    }>,
+  ): void;
+  setDelegationCallback(callback: (record: DelegationRecord) => void): void;
+  handleMessage(
+    session: Session,
+    content: string,
+    history: unknown[],
+  ): Promise<{
+    success: boolean;
+    response: string;
+    error?: string;
+    totalTokens: { inputTokens: number; outputTokens: number };
+    agentId: string;
+    delegations: DelegationRecord[];
+  }>;
+}
+
+let orchestrator: OrchestratorLike | null = null;
+let orchestratorFactory: (() => Promise<OrchestratorLike>) | null = null;
 const pendingApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }>();
 
-async function getOrCreateOrchestrator(): Promise<Orchestrator> {
+export function setOrchestratorFactoryForTests(factory: (() => Promise<OrchestratorLike>) | null): void {
+  orchestratorFactory = factory;
+  orchestrator = null;
+}
+
+export function resetProtocolTestState(): void {
+  for (const pending of pendingApprovals.values()) {
+    clearTimeout(pending.timer);
+  }
+  pendingApprovals.clear();
+  orchestrator = null;
+  orchestratorFactory = null;
+}
+
+async function getOrCreateOrchestrator(): Promise<OrchestratorLike> {
   if (orchestrator) return orchestrator;
+
+  if (orchestratorFactory) {
+    orchestrator = await orchestratorFactory();
+    return orchestrator;
+  }
 
   orchestrator = new Orchestrator({
     agents: DEFAULT_AGENTS,

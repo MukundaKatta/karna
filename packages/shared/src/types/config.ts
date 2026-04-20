@@ -95,7 +95,7 @@ export type ChannelConfig = z.infer<typeof ChannelConfigSchema>;
 
 export const MemoryConfigSchema = z.object({
   enabled: z.boolean().default(true),
-  backend: z.enum(["sqlite", "postgres", "redis"]).default("sqlite"),
+  backend: z.enum(["sqlite", "postgres", "redis", "supabase"]).default("sqlite"),
   connectionString: z.string().optional(),
   maxEntriesPerSession: z.number().int().positive().default(1000),
   defaultTtlMs: z.number().int().positive().optional(),
