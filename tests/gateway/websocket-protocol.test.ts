@@ -1,5 +1,13 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../gateway/src/session/manager.js";
+vi.mock("../../gateway/src/voice/handler.js", () => ({
+  handleVoiceStart: vi.fn(),
+  handleVoiceAudioChunk: vi.fn(),
+  handleVoiceEnd: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@karna/agent/orchestration/orchestrator.js", () => ({
+  Orchestrator: class {},
+}));
 import {
   handleMessage,
   resetProtocolTestState,
@@ -206,5 +214,110 @@ describe("gateway websocket protocol", () => {
 
     expect(appendToTranscript).toHaveBeenCalledTimes(2);
     expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
+  });
+
+  it("relays rtc signaling messages to the requested peer and stamps sourceChannelId", async () => {
+    const sourceWs = createSocket();
+    const targetWs = createSocket();
+    const sourceSessionManager = new SessionManager({ flushIntervalMs: 300_000 });
+    const targetSessionManager = new SessionManager({ flushIntervalMs: 300_000 });
+    const sourceSession = sourceSessionManager.createSession("caller-web", "web", "user-1");
+    const targetSession = targetSessionManager.createSession("callee-mobile", "mobile", "user-1");
+
+    const connectedClients = new Map([
+      [
+        "caller-web",
+        {
+          ws: sourceWs as never,
+          auth: createAuthContext("caller-web", "operator", "token-a"),
+          sessionIds: new Set([sourceSession.id]),
+          lastSeen: Date.now(),
+        },
+      ],
+      [
+        "callee-mobile",
+        {
+          ws: targetWs as never,
+          auth: createAuthContext("callee-mobile", "operator", "token-b"),
+          sessionIds: new Set([targetSession.id]),
+          lastSeen: Date.now(),
+        },
+      ],
+    ]);
+
+    const context = createContext({
+      ws: sourceWs as never,
+      auth: createAuthContext("caller-web", "operator", "token-a"),
+      sessionManager: sourceSessionManager,
+      connectedClients,
+    });
+
+    await handleMessage(
+      sourceWs as never,
+      {
+        id: "msg-rtc-offer",
+        type: "rtc.offer",
+        timestamp: Date.now(),
+        sessionId: sourceSession.id,
+        payload: {
+          targetChannelId: "callee-mobile",
+          description: {
+            type: "offer",
+            sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1",
+          },
+        },
+      },
+      context,
+    );
+
+    expect(sourceWs.sent).toHaveLength(0);
+    expect(targetWs.sent).toHaveLength(1);
+    expect(targetWs.sent[0]?.type).toBe("rtc.offer");
+    expect((targetWs.sent[0]?.payload as Record<string, unknown>)?.sourceChannelId).toBe("caller-web");
+    expect((targetWs.sent[0]?.payload as Record<string, unknown>)?.targetChannelId).toBe("callee-mobile");
+  });
+
+  it("returns an error when rtc signaling targets a disconnected peer", async () => {
+    const ws = createSocket();
+    const sessionManager = new SessionManager({ flushIntervalMs: 300_000 });
+    const session = sessionManager.createSession("caller-web", "web", "user-1");
+    const context = createContext({
+      ws: ws as never,
+      auth: createAuthContext("caller-web", "operator", "token-a"),
+      sessionManager,
+      connectedClients: new Map([
+        [
+          "caller-web",
+          {
+            ws: ws as never,
+            auth: createAuthContext("caller-web", "operator", "token-a"),
+            sessionIds: new Set([session.id]),
+            lastSeen: Date.now(),
+          },
+        ],
+      ]),
+    });
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-rtc-offer",
+        type: "rtc.offer",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          targetChannelId: "missing-peer",
+          description: {
+            type: "offer",
+            sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1",
+          },
+        },
+      },
+      context,
+    );
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]?.type).toBe("error");
+    expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe("RTC_PEER_NOT_FOUND");
   });
 });
