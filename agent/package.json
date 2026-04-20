@@ -15,6 +15,7 @@
     "./context/builder.js": "./dist/context/builder.js",
     "./context/system-prompt.js": "./dist/context/system-prompt.js",
     "./memory/store.js": "./dist/memory/store.js",
+    "./memory/supabase-backend.js": "./dist/memory/supabase-backend.js",
     "./memory/embedder.js": "./dist/memory/embedder.js",
     "./voice/index.js": "./dist/voice/index.js",
     "./orchestration/orchestrator.js": "./dist/orchestration/orchestrator.js",
@@ -31,7 +32,9 @@
   },
   "dependencies": {
     "@karna/shared": "workspace:*",
+    "@karna/supabase": "workspace:*",
     "@anthropic-ai/sdk": "^0.39.0",
+    "@supabase/supabase-js": "^2.49.8",
     "openai": "^4.75.0",
     "zod": "^3.23.0",
     "pino": "^9.0.0",

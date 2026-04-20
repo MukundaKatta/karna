@@ -11,6 +11,10 @@ import { loadConfig } from "./config/loader.js";
 import { getSystemHealth, setConnectionCounter, setSessionCounter } from "./health/status.js";
 import { MetricsCollector } from "./health/metrics.js";
 import { validateGatewayEnv } from "./config/validate-env.js";
+import { MemoryStore, InMemoryBackend } from "@karna/agent/memory/store.js";
+import { SupabaseMemoryBackend } from "@karna/agent/memory/supabase-backend.js";
+import { createSupabaseClient } from "@karna/supabase";
+import { registerMemoryRoutes } from "./routes/memory.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -46,6 +50,20 @@ async function main(): Promise<void> {
   }
 
   const metricsCollector = new MetricsCollector();
+  let memoryStore = new MemoryStore(new InMemoryBackend());
+
+  if (
+    config.memory.enabled &&
+    (config.memory.backend === "supabase" || process.env["SUPABASE_URL"])
+  ) {
+    try {
+      const supabase = createSupabaseClient();
+      memoryStore = new MemoryStore(new SupabaseMemoryBackend(supabase));
+      logger.info("Memory store configured with Supabase pgvector backend");
+    } catch (error) {
+      logger.warn({ error: String(error) }, "Falling back to in-memory memory store");
+    }
+  }
 
   // Connected clients registry
   const connectedClients = new Map<string, ConnectedClient>();
@@ -176,6 +194,8 @@ async function main(): Promise<void> {
       ),
     });
   });
+
+  registerMemoryRoutes(server, memoryStore);
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
 
