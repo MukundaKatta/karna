@@ -9,6 +9,7 @@ import {
   ErrorMessageSchema,
   parseProtocolMessage,
   safeParseProtocolMessage,
+  RTCOfferMessageSchema,
 } from "../../packages/shared/src/types/protocol.js";
 
 describe("Protocol Schema", () => {
@@ -50,6 +51,26 @@ describe("Protocol Schema", () => {
         },
       };
       const result = ConnectMessageSchema.safeParse(msg);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("RTCOfferMessage", () => {
+    it("validates a WebRTC offer message", () => {
+      const msg = {
+        id: "msg-rtc-offer",
+        type: "rtc.offer",
+        timestamp: Date.now(),
+        sessionId: "session-1",
+        payload: {
+          targetChannelId: "mobile-1",
+          description: {
+            type: "offer",
+            sdp: "v=0\r\no=- 46117326 2 IN IP4 127.0.0.1",
+          },
+        },
+      };
+      const result = RTCOfferMessageSchema.safeParse(msg);
       expect(result.success).toBe(true);
     });
   });

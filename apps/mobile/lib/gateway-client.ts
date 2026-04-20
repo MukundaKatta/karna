@@ -27,6 +27,7 @@ class GatewayClient {
   private intentionalClose = false;
   private sessionId: string | null = null;
   private pendingStreamMessageId: string | null = null;
+  private channelId = `mobile-${generateId()}`;
 
   connect(url: string, token: string): void {
     this.url = url;
@@ -149,7 +150,7 @@ class GatewayClient {
           timestamp: Date.now(),
           payload: {
             channelType: 'mobile',
-            channelId: 'mobile-chat',
+            channelId: this.channelId,
             metadata: {
               token: this.token,
               platform: 'mobile',
@@ -165,6 +166,7 @@ class GatewayClient {
           );
           if (message.type === 'connect.ack') {
             this.sessionId = message.payload?.sessionId as string | null;
+            this.channelId = (message.payload?.channelId as string | undefined) ?? this.channelId;
           }
           if (message.type === 'heartbeat.check') {
             this.send({
@@ -231,6 +233,7 @@ class GatewayClient {
     switch (message.type) {
       case 'connect.ack': {
         this.sessionId = (payload.sessionId as string) ?? null;
+        this.channelId = (payload.channelId as string | undefined) ?? this.channelId;
         break;
       }
 

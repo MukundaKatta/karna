@@ -9,6 +9,10 @@ import type {
   VoiceStartMessage,
   VoiceAudioChunkMessage,
   VoiceEndMessage,
+  RTCOfferMessage,
+  RTCAnswerMessage,
+  RTCIceCandidateMessage,
+  RTCHangupMessage,
 } from "./schema.js";
 import type { AuthContext } from "./auth.js";
 import { validateToken, generateChallenge, verifyChallenge, createAuthContext } from "./auth.js";
@@ -219,6 +223,17 @@ export async function handleMessage(
         await handleVoiceEnd(ws, (message as VoiceEndMessage).payload, context);
         break;
 
+      case "rtc.offer":
+      case "rtc.answer":
+      case "rtc.ice-candidate":
+      case "rtc.hangup":
+        await handleRTCSignal(
+          ws,
+          message as RTCOfferMessage | RTCAnswerMessage | RTCIceCandidateMessage | RTCHangupMessage,
+          context,
+        );
+        break;
+
       default:
         logger.warn({ type: message.type }, "Unhandled message type");
         sendError(ws, "UNHANDLED_TYPE", `No handler for message type: ${message.type}`);
@@ -295,6 +310,7 @@ async function handleConnect(
     timestamp: Date.now(),
     payload: {
       sessionId: session.id,
+      channelId,
       token: nanoid(32),
       expiresAt: Date.now() + 3_600_000, // 1 hour
     },
@@ -659,7 +675,51 @@ async function handleSkillInvoke(
   });
 }
 
+async function handleRTCSignal(
+  ws: WebSocket,
+  message: RTCOfferMessage | RTCAnswerMessage | RTCIceCandidateMessage | RTCHangupMessage,
+  context: ConnectionContext,
+): Promise<void> {
+  if (!context.auth) {
+    sendError(ws, "UNAUTHENTICATED", "Must send a 'connect' message before RTC signaling");
+    return;
+  }
+
+  const sourceChannelId = resolveClientIdBySocket(context.connectedClients, ws) ?? context.auth.channelId;
+  const targetChannelId = message.payload.targetChannelId;
+  const targetClient = context.connectedClients.get(targetChannelId);
+
+  if (!targetClient || targetClient.ws.readyState !== targetClient.ws.OPEN) {
+    sendError(ws, "RTC_PEER_NOT_FOUND", `Target peer ${targetChannelId} is not connected`);
+    return;
+  }
+
+  sendMessage(targetClient.ws, {
+    ...message,
+    payload: {
+      ...message.payload,
+      sourceChannelId,
+    },
+  });
+
+  logger.info(
+    { type: message.type, sourceChannelId, targetChannelId, sessionId: message.sessionId },
+    "Forwarded RTC signaling message",
+  );
+}
+
 // ─── Broadcast ──────────────────────────────────────────────────────────────
+
+function resolveClientIdBySocket(
+  connectedClients: Map<string, ConnectedClient>,
+  ws: WebSocket,
+): string | null {
+  for (const [clientId, client] of connectedClients) {
+    if (client.ws === ws) return clientId;
+  }
+
+  return null;
+}
 
 /**
  * Broadcast an agent response to all clients subscribed to a given session.

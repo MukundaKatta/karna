@@ -10,6 +10,7 @@ interface WSClientOptions {
   reconnectInterval?: number;
   maxReconnectAttempts?: number;
   heartbeatInterval?: number;
+  channelId?: string;
 }
 
 export class WSClient {
@@ -26,12 +27,14 @@ export class WSClient {
   private _state: WSState = "disconnected";
   private sessionId: string | null = null;
   private token: string | null = null;
+  private channelId: string;
 
   constructor(options: WSClientOptions = {}) {
     this.url = options.url ?? process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000/ws";
     this.reconnectInterval = options.reconnectInterval ?? 3000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
     this.heartbeatInterval = options.heartbeatInterval ?? 30000;
+    this.channelId = options.channelId ?? `web-${crypto.randomUUID()}`;
   }
 
   get state(): WSState {
@@ -42,8 +45,13 @@ export class WSClient {
     return this.sessionId;
   }
 
-  connect(channelId = "web-chat"): void {
+  get currentChannelId(): string {
+    return this.channelId;
+  }
+
+  connect(channelId?: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (channelId) this.channelId = channelId;
 
     this.setState("connecting");
     this.ws = new WebSocket(this.url);
@@ -57,7 +65,7 @@ export class WSClient {
         timestamp: Date.now(),
         payload: {
           channelType: "web",
-          channelId,
+          channelId: this.channelId,
         },
       });
       this.startHeartbeat();
@@ -69,6 +77,9 @@ export class WSClient {
         // Handle connect.ack to store session info
         if (data.type === "connect.ack") {
           this.sessionId = data.payload.sessionId;
+          if (typeof data.payload.channelId === "string") {
+            this.channelId = data.payload.channelId;
+          }
           this.token = data.payload.token;
         }
         // Handle heartbeat checks

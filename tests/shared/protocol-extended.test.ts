@@ -7,6 +7,7 @@ import {
   ToolApprovalResponseMessageSchema,
   ToolResultMessageSchema,
   VoiceAudioChunkMessageSchema,
+  RTCIceCandidateMessageSchema,
   HeartbeatCheckMessageSchema,
   HeartbeatAckMessageSchema,
   SkillInvokeMessageSchema,
@@ -23,6 +24,7 @@ describe("Protocol Schema - Extended Coverage", () => {
       "tool.approval.requested", "tool.approval.response", "tool.result",
       "heartbeat.check", "heartbeat.ack",
       "status", "skill.invoke", "skill.result", "error",
+      "rtc.offer", "rtc.answer", "rtc.ice-candidate", "rtc.hangup",
     ];
 
     for (const type of validTypes) {
@@ -95,6 +97,27 @@ describe("Protocol Schema - Extended Coverage", () => {
       };
 
       expect(VoiceAudioChunkMessageSchema.safeParse(msg).success).toBe(true);
+    });
+  });
+
+  describe("RTCIceCandidateMessage", () => {
+    it("accepts an ICE candidate relay payload", () => {
+      const msg = {
+        id: "msg-rtc-ice-1",
+        type: "rtc.ice-candidate",
+        timestamp: Date.now(),
+        sessionId: "session-1",
+        payload: {
+          targetChannelId: "web-peer",
+          candidate: {
+            candidate: "candidate:1 1 UDP 2122260223 192.0.2.1 54400 typ host",
+            sdpMid: "0",
+            sdpMLineIndex: 0,
+          },
+        },
+      };
+
+      expect(RTCIceCandidateMessageSchema.safeParse(msg).success).toBe(true);
     });
   });
 

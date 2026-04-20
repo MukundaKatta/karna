@@ -22,6 +22,10 @@ export const MessageTypeSchema = z.enum([
   "voice.audio.response",
   "voice.transcript",
   "voice.end",
+  "rtc.offer",
+  "rtc.answer",
+  "rtc.ice-candidate",
+  "rtc.hangup",
   "agent.handoff",
   "orchestration.status",
   "error",
@@ -59,6 +63,7 @@ export const ConnectAckMessageSchema = BaseMessageSchema.extend({
   type: z.literal("connect.ack"),
   payload: z.object({
     sessionId: z.string().min(1),
+    channelId: z.string().min(1),
     token: z.string().min(1),
     expiresAt: z.number().int().positive(),
   }),
@@ -233,6 +238,57 @@ export const VoiceEndMessageSchema = BaseMessageSchema.extend({
   payload: z.object({}).optional(),
 });
 
+// ─── WebRTC Signaling Messages ──────────────────────────────────────────────
+
+const RTCSessionDescriptionSchema = z.object({
+  type: z.enum(["offer", "answer"]),
+  sdp: z.string().min(1),
+});
+
+const RTCIceCandidateSchema = z.object({
+  candidate: z.string().min(1),
+  sdpMid: z.string().nullable().optional(),
+  sdpMLineIndex: z.number().int().nonnegative().nullable().optional(),
+  usernameFragment: z.string().nullable().optional(),
+});
+
+const RTCSignalPayloadBaseSchema = z.object({
+  targetChannelId: z.string().min(1),
+  sourceChannelId: z.string().min(1).optional(),
+});
+
+export const RTCOfferMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("rtc.offer"),
+  payload: RTCSignalPayloadBaseSchema.extend({
+    description: RTCSessionDescriptionSchema.extend({
+      type: z.literal("offer"),
+    }),
+  }),
+});
+
+export const RTCAnswerMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("rtc.answer"),
+  payload: RTCSignalPayloadBaseSchema.extend({
+    description: RTCSessionDescriptionSchema.extend({
+      type: z.literal("answer"),
+    }),
+  }),
+});
+
+export const RTCIceCandidateMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("rtc.ice-candidate"),
+  payload: RTCSignalPayloadBaseSchema.extend({
+    candidate: RTCIceCandidateSchema,
+  }),
+});
+
+export const RTCHangupMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("rtc.hangup"),
+  payload: RTCSignalPayloadBaseSchema.extend({
+    reason: z.string().min(1).optional(),
+  }),
+});
+
 // ─── Agent Handoff Messages ──────────────────────────────────────────────────
 
 export const AgentHandoffMessageSchema = BaseMessageSchema.extend({
@@ -297,6 +353,10 @@ export const ProtocolMessageSchema = z.discriminatedUnion("type", [
   VoiceAudioResponseMessageSchema,
   VoiceTranscriptMessageSchema,
   VoiceEndMessageSchema,
+  RTCOfferMessageSchema,
+  RTCAnswerMessageSchema,
+  RTCIceCandidateMessageSchema,
+  RTCHangupMessageSchema,
   AgentHandoffMessageSchema,
   OrchestrationStatusMessageSchema,
   ErrorMessageSchema,
@@ -324,6 +384,10 @@ export type VoiceAudioChunkMessage = z.infer<typeof VoiceAudioChunkMessageSchema
 export type VoiceAudioResponseMessage = z.infer<typeof VoiceAudioResponseMessageSchema>;
 export type VoiceTranscriptMessage = z.infer<typeof VoiceTranscriptMessageSchema>;
 export type VoiceEndMessage = z.infer<typeof VoiceEndMessageSchema>;
+export type RTCOfferMessage = z.infer<typeof RTCOfferMessageSchema>;
+export type RTCAnswerMessage = z.infer<typeof RTCAnswerMessageSchema>;
+export type RTCIceCandidateMessage = z.infer<typeof RTCIceCandidateMessageSchema>;
+export type RTCHangupMessage = z.infer<typeof RTCHangupMessageSchema>;
 export type AgentHandoffMessage = z.infer<typeof AgentHandoffMessageSchema>;
 export type OrchestrationStatusMessage = z.infer<typeof OrchestrationStatusMessageSchema>;
 export type ProtocolMessage = z.infer<typeof ProtocolMessageSchema>;
