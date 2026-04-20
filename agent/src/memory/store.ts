@@ -43,6 +43,7 @@ export interface ScoredMemory extends MemoryEntry {
 export interface MemoryBackend {
   save(input: SaveMemoryInput): Promise<MemoryEntry>;
   search(params: MemorySearchParams): Promise<ScoredMemory[]>;
+  listByAgent(agentId: string): Promise<MemoryEntry[]>;
   getById(id: string): Promise<MemoryEntry | null>;
   delete(id: string): Promise<boolean>;
   updateAccessedAt(id: string): Promise<void>;
@@ -112,6 +113,13 @@ export class MemoryStore {
   }
 
   /**
+   * List all memories for an agent.
+   */
+  async listByAgent(agentId: string): Promise<MemoryEntry[]> {
+    return this.backend.listByAgent(agentId);
+  }
+
+  /**
    * Delete a memory entry.
    */
   async delete(id: string): Promise<boolean> {
@@ -131,6 +139,7 @@ export class MemoryStore {
  */
 export class InMemoryBackend implements MemoryBackend {
   private readonly entries = new Map<string, MemoryEntry>();
+  private readonly agentIds = new Map<string, string>();
   private counter = 0;
 
   async save(input: SaveMemoryInput): Promise<MemoryEntry> {
@@ -159,6 +168,7 @@ export class InMemoryBackend implements MemoryBackend {
     };
 
     this.entries.set(id, entry);
+    this.agentIds.set(id, input.agentId);
     return entry;
   }
 
@@ -201,7 +211,15 @@ export class InMemoryBackend implements MemoryBackend {
     return this.entries.get(id) ?? null;
   }
 
+  async listByAgent(agentId: string): Promise<MemoryEntry[]> {
+    return Array.from(this.entries.entries())
+      .filter(([id]) => this.agentIds.get(id) === agentId)
+      .map(([, entry]) => entry)
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }
+
   async delete(id: string): Promise<boolean> {
+    this.agentIds.delete(id);
     return this.entries.delete(id);
   }
 
