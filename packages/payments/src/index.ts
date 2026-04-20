@@ -55,5 +55,6 @@ export {
   type UsageRecord,
   type UsageReport,
   type LimitCheckResult,
+  type SessionLimitCheckResult,
   type UsageStore,
 } from "./usage.js";

@@ -42,6 +42,10 @@ export interface LimitCheckResult {
   resetAt: Date;
 }
 
+export interface SessionLimitCheckResult extends LimitCheckResult {
+  sessionId: string;
+}
+
 export interface UsageStore {
   increment(key: string, field: string, amount: number): Promise<number>;
   get(key: string, field: string): Promise<number>;
@@ -123,6 +127,19 @@ export class UsageMeter {
     return count;
   }
 
+  async trackSessionMessage(agentId: string, sessionId: string, channel: string): Promise<number> {
+    if (!sessionId) throw new Error("Session ID is required");
+
+    const dateKey = this.getDateKey();
+    const bucketKey = this.getSessionBucketKey(agentId, sessionId, dateKey);
+
+    const count = await this.store.increment(bucketKey, "messages", 1);
+    await this.store.increment(bucketKey, `messages:${channel}`, 1);
+
+    logger.debug({ agentId, sessionId, channel, totalMessages: count }, "Session message tracked");
+    return count;
+  }
+
   async trackTokens(agentId: string, inputTokens: number, outputTokens: number): Promise<void> {
     if (!agentId) throw new Error("Agent ID is required");
     if (inputTokens < 0 || outputTokens < 0) throw new Error("Token counts must be non-negative");
@@ -189,6 +206,55 @@ export class UsageMeter {
     };
   }
 
+  async getSessionUsage(agentId: string, sessionId: string, period: UsagePeriod = "daily"): Promise<UsageReport> {
+    if (!agentId) throw new Error("Agent ID is required");
+    if (!sessionId) throw new Error("Session ID is required");
+
+    const now = new Date();
+    const dates = period === "daily" ? [this.getDateKey(now)] : this.getMonthDates(now);
+    const daily: UsageRecord[] = [];
+    let totalMessages = 0;
+    let totalTokensIn = 0;
+    let totalTokensOut = 0;
+
+    for (const date of dates) {
+      const bucketKey = this.getSessionBucketKey(agentId, sessionId, date);
+      const data = await this.store.getAll(bucketKey);
+      const messages = data["messages"] ?? 0;
+      const tokensIn = data["tokens_in"] ?? 0;
+      const tokensOut = data["tokens_out"] ?? 0;
+
+      totalMessages += messages;
+      totalTokensIn += tokensIn;
+      totalTokensOut += tokensOut;
+
+      if (messages > 0 || tokensIn > 0 || tokensOut > 0) {
+        daily.push({
+          agentId,
+          channel: "session",
+          messages,
+          tokensIn,
+          tokensOut,
+          date,
+        });
+      }
+    }
+
+    const costCents = Math.ceil((totalTokensIn * 0.3 + totalTokensOut * 1.5) / 100_000);
+
+    return {
+      agentId,
+      period,
+      startDate: dates[0] ?? this.getDateKey(now),
+      endDate: dates[dates.length - 1] ?? this.getDateKey(now),
+      totalMessages,
+      totalTokensIn,
+      totalTokensOut,
+      costCents,
+      daily,
+    };
+  }
+
   // ─── Limit Checks ──────────────────────────────────────────────────────
 
   async checkLimits(agentId: string, plan: PlanId): Promise<LimitCheckResult> {
@@ -219,6 +285,30 @@ export class UsageMeter {
     return { allowed, remaining, limit, used: totalMessages, resetAt };
   }
 
+  async checkSessionLimits(
+    agentId: string,
+    sessionId: string,
+    sessionMessageLimit: number,
+  ): Promise<SessionLimitCheckResult> {
+    if (!sessionId) throw new Error("Session ID is required");
+
+    const dateKey = this.getDateKey();
+    const bucketKey = this.getSessionBucketKey(agentId, sessionId, dateKey);
+    const used = await this.store.get(bucketKey, "messages");
+    const remaining = Math.max(0, sessionMessageLimit - used);
+    const now = new Date();
+    const resetAt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+
+    return {
+      sessionId,
+      allowed: used < sessionMessageLimit,
+      remaining,
+      limit: sessionMessageLimit,
+      used,
+      resetAt,
+    };
+  }
+
   // ─── Billing Cycle Reset ──────────────────────────────────────────────
 
   async resetUsage(agentId: string): Promise<void> {
@@ -239,6 +329,10 @@ export class UsageMeter {
 
   private getBucketKey(agentId: string, date: string): string {
     return `usage:${agentId}:${date}`;
+  }
+
+  private getSessionBucketKey(agentId: string, sessionId: string, date: string): string {
+    return `usage:${agentId}:session:${sessionId}:${date}`;
   }
 
   private getDateKey(date: Date = new Date()): string {

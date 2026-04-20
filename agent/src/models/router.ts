@@ -28,6 +28,17 @@ export interface RouteResult {
   complexity: ComplexityTier;
 }
 
+export interface ModelTarget {
+  provider: ModelProvider;
+  model: string;
+}
+
+export interface FailoverRoute {
+  primary: ModelTarget;
+  fallbacks: ModelTarget[];
+  complexity: ComplexityTier;
+}
+
 export type ComplexityTier = "simple" | "moderate" | "complex";
 
 // ─── Complexity Thresholds ──────────────────────────────────────────────────
@@ -45,6 +56,12 @@ const DEFAULT_MODELS: Record<ComplexityTier, string> = {
   simple: "claude-haiku-4-20250514",
   moderate: "claude-sonnet-4-20250514",
   complex: "claude-sonnet-4-20250514",
+};
+
+const DEFAULT_FALLBACK_MODELS: Record<ComplexityTier, string[]> = {
+  simple: ["gpt-4o-mini", "claude-sonnet-4-20250514"],
+  moderate: ["gpt-4o", "claude-haiku-4-20250514"],
+  complex: ["gpt-4o", "claude-opus-4-20250514"],
 };
 
 // ─── Provider Cache ─────────────────────────────────────────────────────────
@@ -152,6 +169,33 @@ export function routeModel(message: string, agent?: AgentConfig): RouteResult {
   );
 
   return { provider, model, complexity };
+}
+
+export function buildFailoverChain(
+  message: string,
+  agent?: AgentConfig,
+  fallbackModels?: string[],
+): FailoverRoute {
+  const primary = routeModel(message, agent);
+  const desiredFallbacks = fallbackModels ?? DEFAULT_FALLBACK_MODELS[primary.complexity];
+  const seen = new Set([primary.model]);
+  const fallbacks: ModelTarget[] = [];
+
+  for (const model of desiredFallbacks) {
+    if (seen.has(model)) continue;
+    seen.add(model);
+    const providerName = inferProvider(model);
+    fallbacks.push({
+      model,
+      provider: getProvider(providerName),
+    });
+  }
+
+  return {
+    primary: { provider: primary.provider, model: primary.model },
+    fallbacks,
+    complexity: primary.complexity,
+  };
 }
 
 /**

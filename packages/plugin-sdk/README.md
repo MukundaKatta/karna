@@ -12,7 +12,7 @@ export default definePlugin({
   version: "1.0.0",
   description: "My custom Karna plugin",
 
-  async activate(ctx: PluginContext) {
+  async register(ctx: PluginContext) {
     // Register a custom tool
     ctx.registerTool({
       name: "my_tool",
@@ -28,13 +28,13 @@ export default definePlugin({
     ctx.registerSkill({
       name: "my-skill",
       triggers: [{ type: "command", value: "/myskill" }],
-      async execute(action, input) {
-        return { output: "Skill executed!", success: true };
+      async handler(context) {
+        return { response: `Skill executed for ${context.input}`, success: true };
       },
     });
   },
 
-  async deactivate() {
+  async unregister() {
     // Cleanup
   },
 });
@@ -57,6 +57,14 @@ Register custom messaging channel adapters.
 2. Add `karna-plugin` keyword to package.json
 3. Publish to npm: `npm publish`
 4. Users install via: `karna marketplace install your-plugin`
+
+## Included Example
+
+See [`examples/echo-plugin.ts`](./examples/echo-plugin.ts) for a minimal plugin that:
+- registers a low-risk tool
+- registers a command-triggered skill
+- logs registration through the plugin context
+- works as a smoke-test target for the SDK
 
 ## API Reference
 
