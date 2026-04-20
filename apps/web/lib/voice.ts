@@ -11,6 +11,12 @@ export type VoiceState = "idle" | "requesting" | "recording" | "processing" | "p
 export type VoiceStateHandler = (state: VoiceState) => void;
 export type AudioLevelHandler = (level: number) => void;
 export type TranscriptHandler = (text: string, isFinal: boolean) => void;
+export type VoiceMode = "push-to-talk" | "continuous";
+
+const DEFAULT_SAMPLE_RATE = 48000;
+const DEFAULT_TIMESLICE_MS = 250;
+const SILENCE_THRESHOLD = 0.04;
+const SILENCE_DURATION_MS = 1500;
 
 export class VoiceClient {
   private mediaRecorder: MediaRecorder | null = null;
@@ -18,6 +24,8 @@ export class VoiceClient {
   private audioContext: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
   private animationFrame: number | null = null;
+  private silenceStartedAt: number | null = null;
+  private currentMode: VoiceMode = "push-to-talk";
   private _state: VoiceState = "idle";
   private stateHandlers = new Set<VoiceStateHandler>();
   private levelHandlers = new Set<AudioLevelHandler>();
@@ -50,9 +58,11 @@ export class VoiceClient {
 
   // ─── Recording ────────────────────────────────────────────────────────────
 
-  async startRecording(): Promise<void> {
+  async startRecording(mode: VoiceMode = "push-to-talk"): Promise<void> {
     if (this._state === "recording") return;
 
+    this.currentMode = mode;
+    this.silenceStartedAt = null;
     this.setState("requesting");
 
     try {
@@ -61,7 +71,7 @@ export class VoiceClient {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 48000,
+          sampleRate: DEFAULT_SAMPLE_RATE,
         },
       });
 
@@ -90,7 +100,7 @@ export class VoiceClient {
         type: "voice.start",
         timestamp: Date.now(),
         sessionId: ws.currentSessionId,
-        payload: { mode: "push-to-talk" },
+        payload: { mode },
       });
 
       // Send audio chunks as they become available
@@ -109,7 +119,7 @@ export class VoiceClient {
             payload: {
               data: base64,
               format: "webm",
-              sampleRate: 48000,
+              sampleRate: DEFAULT_SAMPLE_RATE,
             },
           });
         }
@@ -127,7 +137,7 @@ export class VoiceClient {
       };
 
       // Start recording with 250ms timeslice for chunked streaming
-      this.mediaRecorder.start(250);
+      this.mediaRecorder.start(DEFAULT_TIMESLICE_MS);
       this.setState("recording");
     } catch (error) {
       console.error("Failed to start recording:", error);
@@ -232,6 +242,19 @@ export class VoiceClient {
       const average = sum / dataArray.length / 255;
       this.levelHandlers.forEach((handler) => handler(average));
 
+      if (this.currentMode === "continuous" && this._state === "recording") {
+        if (average <= SILENCE_THRESHOLD) {
+          if (this.silenceStartedAt === null) {
+            this.silenceStartedAt = performance.now();
+          } else if (performance.now() - this.silenceStartedAt >= SILENCE_DURATION_MS) {
+            this.stopRecording();
+            return;
+          }
+        } else {
+          this.silenceStartedAt = null;
+        }
+      }
+
       this.animationFrame = requestAnimationFrame(tick);
     };
 
@@ -247,6 +270,7 @@ export class VoiceClient {
 
   private cleanup(): void {
     this.stopLevelMonitoring();
+    this.silenceStartedAt = null;
 
     if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
       try {
