@@ -113,6 +113,17 @@ export class SupabaseMemoryBackend implements MemoryBackend {
     return mapRowToEntry(data as Record<string, unknown>);
   }
 
+  async listByAgent(agentId: string): Promise<MemoryEntry[]> {
+    const { data, error } = await this.client
+      .from("memories")
+      .select("*")
+      .eq("agent_id", agentId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return (data ?? []).map((row) => mapRowToEntry(row as Record<string, unknown>));
+  }
+
   async delete(id: string): Promise<boolean> {
     const { error, count } = await this.client
       .from("memories")

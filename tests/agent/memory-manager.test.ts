@@ -128,4 +128,63 @@ describe("MemoryManager (3-tier)", () => {
       expect(promoted).toBe(1); // Only the 0.9 importance one
     });
   });
+
+  describe("long-term maintenance", () => {
+    it("enforces max long-term memories per agent", async () => {
+      const retentionStore = new MemoryStore(new InMemoryBackend());
+      const retentionManager = new MemoryManager(retentionStore, {
+        maxLongTermMemoriesPerAgent: 2,
+      });
+
+      await retentionManager.saveLongTerm({
+        agentId: "agent-1",
+        content: "Memory 1",
+        source: "conversation",
+      });
+      await retentionManager.saveLongTerm({
+        agentId: "agent-1",
+        content: "Memory 2",
+        source: "conversation",
+      });
+      await retentionManager.saveLongTerm({
+        agentId: "agent-1",
+        content: "Memory 3",
+        source: "conversation",
+      });
+
+      const deleted = await retentionManager.enforceRetention("agent-1");
+      const remaining = await retentionStore.listByAgent("agent-1");
+
+      expect(deleted).toBe(1);
+      expect(remaining).toHaveLength(2);
+      retentionManager.stop();
+    });
+
+    it("consolidates related long-term memories into a summary memory", async () => {
+      await manager.saveLongTerm({
+        agentId: "agent-1",
+        content: "User prefers concise answers",
+        source: "conversation",
+        sessionId: "session-1",
+        category: "preference",
+        tags: ["preference"],
+      });
+      await manager.saveLongTerm({
+        agentId: "agent-1",
+        content: "User likes bullet lists",
+        source: "conversation",
+        sessionId: "session-1",
+        category: "preference",
+        tags: ["formatting"],
+      });
+
+      const consolidated = await manager.consolidateLongTerm("agent-1");
+      const remaining = await longTermStore.listByAgent("agent-1");
+
+      expect(consolidated).toBe(1);
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0]?.tags).toContain("consolidated");
+      expect(remaining[0]?.content).toContain("Consolidated memory");
+    });
+  });
 });

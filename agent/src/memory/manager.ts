@@ -21,6 +21,10 @@ export interface MemoryManagerOptions {
   shortTermTtlMs?: number;
   /** Importance threshold for promoting short-term to long-term. Default: 0.7 */
   promotionThreshold?: number;
+  /** Maximum number of long-term memories to keep per agent. */
+  maxLongTermMemoriesPerAgent?: number;
+  /** Run long-term maintenance on an interval when enabled. */
+  maintenanceIntervalMs?: number;
 }
 
 export interface MemoryContext {
@@ -38,14 +42,27 @@ export class MemoryManager {
   private readonly longTerm: MemoryStore | null;
   private readonly promotionThreshold: number;
   private readonly workingMemoryMaxTokens: number;
+  private readonly maxLongTermMemoriesPerAgent: number | null;
+  private readonly knownAgentIds = new Set<string>();
+  private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(longTermStore: MemoryStore | null, options?: MemoryManagerOptions) {
     this.longTerm = longTermStore;
     this.promotionThreshold = options?.promotionThreshold ?? 0.7;
     this.workingMemoryMaxTokens = options?.workingMemoryMaxTokens ?? 100_000;
+    this.maxLongTermMemoriesPerAgent = options?.maxLongTermMemoriesPerAgent ?? null;
     this.shortTerm = new ShortTermMemory({
       defaultTtlMs: options?.shortTermTtlMs,
     });
+
+    if (this.longTerm && options?.maintenanceIntervalMs) {
+      this.maintenanceTimer = setInterval(() => {
+        this.runMaintenance().catch((error) => {
+          logger.warn({ error: String(error) }, "Long-term memory maintenance failed");
+        });
+      }, options.maintenanceIntervalMs);
+      this.maintenanceTimer.unref();
+    }
   }
 
   // ─── Working Memory ─────────────────────────────────────────────────────
@@ -119,6 +136,7 @@ export class MemoryManager {
       logger.debug("Long-term memory not available — skipping save");
       return null;
     }
+    this.knownAgentIds.add(input.agentId);
     return this.longTerm.save(input);
   }
 
@@ -174,6 +192,7 @@ export class MemoryManager {
    */
   async promoteToLongTerm(sessionId: string, agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
+    this.knownAgentIds.add(agentId);
 
     const entries = this.shortTerm.getForSession(sessionId);
     const toPromote = entries.filter((e) => e.importance >= this.promotionThreshold);
@@ -206,6 +225,97 @@ export class MemoryManager {
     return promoted;
   }
 
+  /**
+   * Consolidate related long-term memories for an agent into a single summary memory.
+   */
+  async consolidateLongTerm(agentId: string): Promise<number> {
+    if (!this.longTerm) return 0;
+
+    const memories = await this.longTerm.listByAgent(agentId);
+    const groups = new Map<string, MemoryEntry[]>();
+
+    for (const memory of memories) {
+      if (memory.tags.includes("consolidated")) continue;
+      const key = `${memory.sessionId ?? "global"}::${memory.category ?? "general"}`;
+      const group = groups.get(key) ?? [];
+      group.push(memory);
+      groups.set(key, group);
+    }
+
+    let consolidatedGroups = 0;
+    for (const [, group] of groups) {
+      if (group.length < 2) continue;
+
+      const ordered = group.sort((a, b) => a.createdAt - b.createdAt).slice(0, 5);
+      const combinedContent = ordered
+        .map((memory) => memory.summary ?? memory.content)
+        .join("\n- ");
+
+      await this.longTerm.save({
+        agentId,
+        content: `Consolidated memory:\n- ${combinedContent}`,
+        summary: ordered.map((memory) => memory.summary ?? memory.content).join("; ").slice(0, 500),
+        source: "system",
+        priority: "high",
+        category: ordered[0]?.category,
+        sessionId: ordered[0]?.sessionId,
+        tags: Array.from(new Set([...ordered.flatMap((memory) => memory.tags), "consolidated"])),
+      });
+
+      await Promise.all(ordered.map((memory) => this.longTerm!.delete(memory.id)));
+      consolidatedGroups++;
+    }
+
+    if (consolidatedGroups > 0) {
+      logger.info({ agentId, consolidatedGroups }, "Consolidated long-term memories");
+    }
+
+    return consolidatedGroups;
+  }
+
+  /**
+   * Enforce retention rules for long-term memory.
+   */
+  async enforceRetention(agentId: string): Promise<number> {
+    if (!this.longTerm) return 0;
+
+    const memories = await this.longTerm.listByAgent(agentId);
+    const now = Date.now();
+    let deleted = 0;
+
+    for (const memory of memories) {
+      if (memory.expiresAt && memory.expiresAt <= now) {
+        if (await this.longTerm.delete(memory.id)) deleted++;
+      }
+    }
+
+    if (this.maxLongTermMemoriesPerAgent) {
+      const remaining = (await this.longTerm.listByAgent(agentId))
+        .sort((a, b) => b.accessedAt - a.accessedAt);
+      const overflow = remaining.slice(this.maxLongTermMemoriesPerAgent);
+
+      for (const memory of overflow) {
+        if (await this.longTerm.delete(memory.id)) deleted++;
+      }
+    }
+
+    if (deleted > 0) {
+      logger.info({ agentId, deleted }, "Applied long-term memory retention");
+    }
+
+    return deleted;
+  }
+
+  /**
+   * Run consolidation and retention for all known agents.
+   */
+  async runMaintenance(): Promise<void> {
+    for (const agentId of this.knownAgentIds) {
+      await this.consolidateLongTerm(agentId);
+      await this.enforceRetention(agentId);
+    }
+  }
+
   // ─── Cleanup ────────────────────────────────────────────────────────────
 
   /**
@@ -228,5 +338,9 @@ export class MemoryManager {
    */
   stop(): void {
     this.shortTerm.stop();
+    if (this.maintenanceTimer) {
+      clearInterval(this.maintenanceTimer);
+      this.maintenanceTimer = null;
+    }
   }
 }
