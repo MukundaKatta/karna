@@ -206,7 +206,7 @@ export const VoiceAudioChunkMessageSchema = BaseMessageSchema.extend({
   type: z.literal("voice.audio.chunk"),
   payload: z.object({
     data: z.string().min(1),
-    format: z.enum(["webm", "wav"]),
+    format: z.enum(["webm", "wav", "m4a"]),
     sampleRate: z.number().int().positive(),
   }),
 });
