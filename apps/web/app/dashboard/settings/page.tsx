@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Save, Eye, EyeOff, Download, Upload, RefreshCw, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
+import { useVoiceSettingsStore } from "@/lib/store";
 
 interface SettingsState {
   gateway: {
@@ -79,6 +80,18 @@ export default function SettingsPage() {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
   const [saved, setSaved] = useState(false);
+  const hydrated = useVoiceSettingsStore((s) => s.hydrated);
+  const hydrateVoiceSettings = useVoiceSettingsStore((s) => s.hydrateVoiceSettings);
+  const liveVoiceEnabled = useVoiceSettingsStore((s) => s.liveVoiceEnabled);
+  const setLiveVoiceEnabled = useVoiceSettingsStore((s) => s.setLiveVoiceEnabled);
+  const liveVoicePeerChannelId = useVoiceSettingsStore((s) => s.liveVoicePeerChannelId);
+  const setLiveVoicePeerChannelId = useVoiceSettingsStore(
+    (s) => s.setLiveVoicePeerChannelId,
+  );
+
+  useEffect(() => {
+    hydrateVoiceSettings();
+  }, [hydrateVoiceSettings]);
 
   const handleSave = () => {
     setSaved(true);
@@ -360,6 +373,46 @@ export default function SettingsPage() {
               className={inputClass}
             />
           </div>
+        </div>
+      </section>
+
+      {/* Live Voice Beta */}
+      <section className="rounded-xl border border-dark-700 bg-dark-800 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-medium text-white">Live Voice Beta</h2>
+            <p className="text-sm text-dark-400 mt-1">
+              Configure the runtime WebRTC peer used by the web dashboard voice overlay.
+            </p>
+          </div>
+          <button
+            onClick={() => setLiveVoiceEnabled(!liveVoiceEnabled)}
+            className={cn(
+              "relative w-10 h-5 rounded-full transition-colors",
+              liveVoiceEnabled ? "bg-accent-600" : "bg-dark-600",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
+                liveVoiceEnabled ? "left-5.5" : "left-0.5",
+              )}
+            />
+          </button>
+        </div>
+
+        <div>
+          <label className={labelClass}>Peer Channel ID</label>
+          <input
+            type="text"
+            value={hydrated ? liveVoicePeerChannelId : ""}
+            onChange={(e) => setLiveVoicePeerChannelId(e.target.value)}
+            className={inputClass}
+            placeholder="mobile-voice-peer"
+          />
+          <p className="text-xs text-dark-500 mt-2">
+            This is saved in the browser so you can change live voice peers without rebuilding the app.
+          </p>
         </div>
       </section>
     </div>
