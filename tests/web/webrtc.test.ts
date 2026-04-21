@@ -288,4 +288,34 @@ describe("WebRTCVoiceSession", () => {
     expect((stream as unknown as { tracks: Array<{ stop: ReturnType<typeof vi.fn> }> }).tracks[0]?.stop).toHaveBeenCalledTimes(1);
     expect(session.currentState).toBe("ended");
   });
+
+  it("emits remote streams and transitions to connected when a track arrives", async () => {
+    const remoteStream = createStream(["remote-track-1"]);
+    const { peer } = createPeerConnectionStub();
+    const session = new WebRTCVoiceSession({
+      wsClient: {
+        currentSessionId: "session-7",
+        send: vi.fn(),
+        onMessage: vi.fn(() => () => {}),
+      } as never,
+      peerConnectionFactory: () => peer as never,
+      getUserMedia: vi.fn().mockResolvedValue(createStream(["track-7"])),
+    });
+
+    const states: string[] = [];
+    const receivedStreams: MediaStream[] = [];
+    session.onStateChange((state) => {
+      states.push(state);
+    });
+    session.onRemoteStream((stream) => {
+      receivedStreams.push(stream);
+    });
+
+    await session.startCall("mobile-peer");
+    peer.ontrack?.({ streams: [remoteStream] });
+
+    expect(receivedStreams).toEqual([remoteStream]);
+    expect(session.currentState).toBe("connected");
+    expect(states).toContain("connected");
+  });
 });
