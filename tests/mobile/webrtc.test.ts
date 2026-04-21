@@ -242,4 +242,39 @@ describe("MobileWebRTCSession", () => {
     expect(session.currentState).toBe("connected");
     expect(states).toContain("connected");
   });
+
+  it("transitions to error when the gateway returns an RTC error", async () => {
+    let messageHandler: ((message: unknown) => void) | null = null;
+    const session = new MobileWebRTCSession({
+      gateway: {
+        send: vi.fn(),
+        onMessage: vi.fn((handler: (message: unknown) => void) => {
+          messageHandler = handler;
+          return () => {
+            messageHandler = null;
+          };
+        }),
+        getCurrentSessionId: () => "session-mobile-6",
+      } as never,
+      peerConnectionFactory: () => createPeerConnectionStub().peer as never,
+      getUserMedia: vi.fn().mockResolvedValue(createStream(["mobile-track-6"])),
+    });
+
+    const states: string[] = [];
+    session.onStateChange((state) => {
+      states.push(state);
+    });
+
+    session.listen();
+    messageHandler?.({
+      type: "error",
+      payload: {
+        code: "RTC_INVALID_TARGET",
+        message: "Cannot start a live voice session with the same channel",
+      },
+    });
+
+    expect(session.currentState).toBe("error");
+    expect(states).toContain("error");
+  });
 });

@@ -318,4 +318,39 @@ describe("WebRTCVoiceSession", () => {
     expect(session.currentState).toBe("connected");
     expect(states).toContain("connected");
   });
+
+  it("transitions to error when the gateway returns an RTC error", async () => {
+    let messageHandler: ((message: unknown) => void) | null = null;
+    const session = new WebRTCVoiceSession({
+      wsClient: {
+        currentSessionId: "session-8",
+        send: vi.fn(),
+        onMessage: vi.fn((handler: (message: unknown) => void) => {
+          messageHandler = handler;
+          return () => {
+            messageHandler = null;
+          };
+        }),
+      } as never,
+      peerConnectionFactory: () => createPeerConnectionStub().peer as never,
+      getUserMedia: vi.fn().mockResolvedValue(createStream(["track-8"])),
+    });
+
+    const states: string[] = [];
+    session.onStateChange((state) => {
+      states.push(state);
+    });
+
+    session.listen();
+    messageHandler?.({
+      type: "error",
+      payload: {
+        code: "RTC_PEER_NOT_FOUND",
+        message: "Target peer is not connected",
+      },
+    });
+
+    expect(session.currentState).toBe("error");
+    expect(states).toContain("error");
+  });
 });

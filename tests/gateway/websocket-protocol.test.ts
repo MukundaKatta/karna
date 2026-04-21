@@ -320,4 +320,48 @@ describe("gateway websocket protocol", () => {
     expect(ws.sent[0]?.type).toBe("error");
     expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe("RTC_PEER_NOT_FOUND");
   });
+
+  it("rejects rtc signaling that targets the same channel", async () => {
+    const ws = createSocket();
+    const sessionManager = new SessionManager({ flushIntervalMs: 300_000 });
+    const session = sessionManager.createSession("caller-web", "web", "user-1");
+    const context = createContext({
+      ws: ws as never,
+      auth: createAuthContext("caller-web", "operator", "token-a"),
+      sessionManager,
+      connectedClients: new Map([
+        [
+          "caller-web",
+          {
+            ws: ws as never,
+            auth: createAuthContext("caller-web", "operator", "token-a"),
+            sessionIds: new Set([session.id]),
+            lastSeen: Date.now(),
+          },
+        ],
+      ]),
+    });
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-rtc-self",
+        type: "rtc.offer",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          targetChannelId: "caller-web",
+          description: {
+            type: "offer",
+            sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1",
+          },
+        },
+      },
+      context,
+    );
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]?.type).toBe("error");
+    expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe("RTC_INVALID_TARGET");
+  });
 });
