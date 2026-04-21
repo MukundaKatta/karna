@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { getVoiceClient, type VoiceMode, type VoiceState } from "@/lib/voice";
 import { getWSClient } from "@/lib/ws";
 import { getWebRTCVoiceSession, type WebRTCSessionState } from "@/lib/webrtc";
+import { useVoiceSettingsStore } from "@/lib/store";
 
 interface VoiceOverlayProps {
   open: boolean;
@@ -24,7 +25,14 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
   const voiceClientRef = useRef(getVoiceClient());
   const rtcSessionRef = useRef(getWebRTCVoiceSession());
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-  const rtcTargetChannelId = process.env.NEXT_PUBLIC_VOICE_PEER_CHANNEL_ID;
+  const hydrated = useVoiceSettingsStore((s) => s.hydrated);
+  const hydrateVoiceSettings = useVoiceSettingsStore((s) => s.hydrateVoiceSettings);
+  const liveVoiceEnabled = useVoiceSettingsStore((s) => s.liveVoiceEnabled);
+  const rtcTargetChannelId = useVoiceSettingsStore((s) => s.liveVoicePeerChannelId);
+
+  useEffect(() => {
+    hydrateVoiceSettings();
+  }, [hydrateVoiceSettings]);
 
   // Subscribe to voice client events
   useEffect(() => {
@@ -70,7 +78,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
   }, [open, onTranscript, voiceMode]);
 
   useEffect(() => {
-    if (!open || !rtcTargetChannelId) return;
+    if (!open || !liveVoiceEnabled || !rtcTargetChannelId) return;
 
     const rtc = rtcSessionRef.current;
     rtc.listen();
@@ -98,7 +106,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       unsubState();
       unsubRemote();
     };
-  }, [open, rtcTargetChannelId]);
+  }, [open, liveVoiceEnabled, rtcTargetChannelId]);
 
   // Listen for voice.transcript and voice.audio.response messages from WS
   useEffect(() => {
@@ -168,7 +176,10 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
   }, [onClose]);
 
   const handleLiveCallClick = useCallback(() => {
-    if (!rtcTargetChannelId) return;
+    if (!liveVoiceEnabled || !rtcTargetChannelId) {
+      setStatusText("Configure Live Voice Beta in Settings first.");
+      return;
+    }
 
     const rtc = rtcSessionRef.current;
     if (rtcState === "connected" || rtcState === "requesting-media" || rtcState === "negotiating") {
@@ -181,7 +192,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       setStatusText("Live call failed. Try again.");
       setRtcState("error");
     });
-  }, [rtcState, rtcTargetChannelId]);
+  }, [liveVoiceEnabled, rtcState, rtcTargetChannelId]);
 
   // Handle Escape key
   useEffect(() => {
@@ -249,7 +260,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         {voiceMode === "continuous" ? "Continuous" : "Push to Talk"}
       </button>
 
-      {rtcTargetChannelId && (
+      {(liveVoiceEnabled || rtcState === "error") && hydrated && (
         <button
           onClick={handleLiveCallClick}
           disabled={isRecording || isProcessing}
@@ -257,13 +268,19 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
             "absolute top-4 left-44 flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
             isRtcConnected
               ? "bg-green-600 text-white hover:bg-green-500"
+              : rtcState === "error"
+                ? "bg-red-600 text-white hover:bg-red-500"
               : "bg-dark-800 text-dark-300 hover:text-white",
             (isRecording || isProcessing) && "opacity-50 cursor-not-allowed",
           )}
           title="Start live voice call"
         >
           {isRtcConnected || isRtcConnecting ? <PhoneOff size={16} /> : <Phone size={16} />}
-          {isRtcConnected ? "End Live Call" : isRtcConnecting ? "Connecting..." : "Live Call Beta"}
+          {isRtcConnected
+            ? "End Live Call"
+            : isRtcConnecting
+              ? "Connecting..."
+              : "Live Call Beta"}
         </button>
       )}
 

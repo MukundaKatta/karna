@@ -128,3 +128,75 @@ export const useDashboardStore = create<DashboardState>((set) => ({
   toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
 }));
+
+// ─── Voice Settings Store ───────────────────────────────────────────────────
+
+const WEB_VOICE_SETTINGS_STORAGE_KEY = "karna:web:voice-settings";
+
+type StoredVoiceSettings = {
+  liveVoiceEnabled?: boolean;
+  liveVoicePeerChannelId?: string;
+};
+
+function readStoredVoiceSettings(): StoredVoiceSettings {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WEB_VOICE_SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as StoredVoiceSettings;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredVoiceSettings(settings: StoredVoiceSettings): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    WEB_VOICE_SETTINGS_STORAGE_KEY,
+    JSON.stringify(settings),
+  );
+}
+
+interface VoiceSettingsState {
+  hydrated: boolean;
+  liveVoiceEnabled: boolean;
+  liveVoicePeerChannelId: string;
+  hydrateVoiceSettings: () => void;
+  setLiveVoiceEnabled: (enabled: boolean) => void;
+  setLiveVoicePeerChannelId: (channelId: string) => void;
+}
+
+export const useVoiceSettingsStore = create<VoiceSettingsState>((set, get) => ({
+  hydrated: false,
+  liveVoiceEnabled: false,
+  liveVoicePeerChannelId: "",
+  hydrateVoiceSettings: () => {
+    if (get().hydrated) return;
+    const stored = readStoredVoiceSettings();
+    set({
+      hydrated: true,
+      liveVoiceEnabled: stored.liveVoiceEnabled ?? false,
+      liveVoicePeerChannelId: stored.liveVoicePeerChannelId ?? "",
+    });
+  },
+  setLiveVoiceEnabled: (enabled) => {
+    set({ liveVoiceEnabled: enabled });
+    writeStoredVoiceSettings({
+      liveVoiceEnabled: enabled,
+      liveVoicePeerChannelId: get().liveVoicePeerChannelId,
+    });
+  },
+  setLiveVoicePeerChannelId: (channelId) => {
+    set({ liveVoicePeerChannelId: channelId });
+    writeStoredVoiceSettings({
+      liveVoiceEnabled: get().liveVoiceEnabled,
+      liveVoicePeerChannelId: channelId,
+    });
+  },
+}));
