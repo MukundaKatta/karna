@@ -78,7 +78,13 @@ export class MobileWebRTCSession {
         }) as unknown as PeerConnectionLike);
     this.getUserMedia =
       options?.getUserMedia ??
-      ((constraints) => navigator.mediaDevices.getUserMedia(constraints));
+      ((constraints) => {
+        const mediaDevices = globalThis.navigator?.mediaDevices;
+        if (!mediaDevices?.getUserMedia) {
+          throw new Error('Native WebRTC media support is not available');
+        }
+        return mediaDevices.getUserMedia(constraints);
+      });
   }
 
   get currentState(): MobileWebRTCState {
@@ -87,6 +93,13 @@ export class MobileWebRTCSession {
 
   get currentTargetChannelId(): string | null {
     return this.targetChannelId;
+  }
+
+  isAvailable(): boolean {
+    return (
+      typeof globalThis.RTCPeerConnection === 'function' &&
+      typeof globalThis.navigator?.mediaDevices?.getUserMedia === 'function'
+    );
   }
 
   onStateChange(handler: (state: MobileWebRTCState) => void): () => void {
