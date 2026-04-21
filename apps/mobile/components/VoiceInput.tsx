@@ -15,13 +15,14 @@ import { Feather } from '@expo/vector-icons';
 import { startRecording, stopRecording, getRecordingStatus } from '@/lib/voice';
 import { gatewayClient } from '@/lib/gateway-client';
 import { getMobileWebRTCSession, type MobileWebRTCState } from '@/lib/webrtc';
+import {
+  normalizeMeteringLevel,
+  shouldAutoStopRecording,
+} from '@/lib/vad';
 import { useAppStore } from '@/lib/store';
 import { getColors, Spacing, BorderRadius } from '@/lib/theme';
 
 type MobileVoiceMode = 'push-to-talk' | 'continuous';
-
-const SILENCE_THRESHOLD = 0.08;
-const SILENCE_DURATION_MS = 1400;
 
 export function VoiceInput() {
   const darkMode = useAppStore((s) => s.darkMode);
@@ -136,20 +137,18 @@ export function VoiceInput() {
       levelPollRef.current = setInterval(async () => {
         const status = await getRecordingStatus();
         if (status && 'metering' in status && typeof status.metering === 'number') {
-          const normalized = Math.max(0, Math.min(1, (status.metering + 60) / 60));
+          const normalized = normalizeMeteringLevel(status.metering);
           setAudioLevel(normalized);
 
           if (voiceMode === 'continuous') {
-            if (normalized <= SILENCE_THRESHOLD) {
-              if (silenceStartedAtRef.current === null) {
-                silenceStartedAtRef.current = Date.now();
-              } else if (
-                Date.now() - silenceStartedAtRef.current >= SILENCE_DURATION_MS
-              ) {
-                void finishRecording();
-              }
-            } else {
-              silenceStartedAtRef.current = null;
+            const nextState = shouldAutoStopRecording({
+              normalizedLevel: normalized,
+              silenceStartedAt: silenceStartedAtRef.current,
+              now: Date.now(),
+            });
+            silenceStartedAtRef.current = nextState.nextSilenceStartedAt;
+            if (nextState.shouldStop) {
+              void finishRecording();
             }
           }
         }
