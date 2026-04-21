@@ -24,7 +24,11 @@ import { getColors, Spacing, BorderRadius } from '@/lib/theme';
 
 type MobileVoiceMode = 'push-to-talk' | 'continuous';
 
-export function VoiceInput() {
+interface VoiceInputProps {
+  onLiveStateChange?: (state: MobileWebRTCState) => void;
+}
+
+export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
   const darkMode = useAppStore((s) => s.darkMode);
   const liveVoiceEnabled = useAppStore((s) => s.liveVoiceEnabled);
   const liveVoicePeerChannelId = useAppStore((s) => s.liveVoicePeerChannelId);
@@ -89,9 +93,11 @@ export function VoiceInput() {
     const rtc = rtcSessionRef.current;
     rtc.listen();
     setRtcState(rtc.currentState);
+    onLiveStateChange?.(rtc.currentState);
 
     const unsubscribe = rtc.onStateChange((state) => {
       setRtcState(state);
+      onLiveStateChange?.(state);
     });
 
     return () => {
@@ -102,7 +108,7 @@ export function VoiceInput() {
       rtc.endCall(false);
       unsubscribe();
     };
-  }, []);
+  }, [onLiveStateChange]);
 
   const finishRecording = useCallback(async () => {
     if (!recording) return;

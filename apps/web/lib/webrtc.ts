@@ -10,6 +10,14 @@ type RTCSignalMessage = {
   payload?: Record<string, unknown>;
 };
 
+type RTCErrorMessage = {
+  type: "error";
+  payload?: {
+    code?: string;
+    message?: string;
+  };
+};
+
 type RTCSignalDescription = {
   type: "offer" | "answer";
   sdp: string;
@@ -136,8 +144,18 @@ export class WebRTCVoiceSession {
     if (this.unsubscribeMessage) return;
 
     const handler: WSMessageHandler = (data) => {
-      const message = data as RTCSignalMessage;
-      if (!message?.type || !message.type.startsWith("rtc.")) return;
+      const message = data as RTCSignalMessage | RTCErrorMessage;
+      if (!message?.type) return;
+
+      if (message.type === "error") {
+        const code = message.payload?.code;
+        if (typeof code === "string" && code.startsWith("RTC_")) {
+          this.setState("error");
+        }
+        return;
+      }
+
+      if (!message.type.startsWith("rtc.")) return;
       void this.handleSignal(message);
     };
 

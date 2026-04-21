@@ -8,6 +8,14 @@ type ProtocolMessage = {
   payload?: Record<string, unknown>;
 };
 
+type ProtocolErrorMessage = {
+  type: "error";
+  payload?: {
+    code?: string;
+    message?: string;
+  };
+};
+
 type SignalType = 'rtc.offer' | 'rtc.answer' | 'rtc.ice-candidate' | 'rtc.hangup';
 
 type SessionDescription = {
@@ -116,6 +124,15 @@ export class MobileWebRTCSession {
     if (this.unsubscribeMessage) return;
 
     this.unsubscribeMessage = this.gateway.onMessage((message) => {
+      const maybeError = message as ProtocolErrorMessage;
+      if (maybeError.type === 'error') {
+        const code = maybeError.payload?.code;
+        if (typeof code === 'string' && code.startsWith('RTC_')) {
+          this.setState('error');
+        }
+        return;
+      }
+
       if (!message.type.startsWith('rtc.')) return;
       void this.handleSignal(message);
     });

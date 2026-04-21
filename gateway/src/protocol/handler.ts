@@ -687,6 +687,12 @@ async function handleRTCSignal(
 
   const sourceChannelId = resolveClientIdBySocket(context.connectedClients, ws) ?? context.auth.channelId;
   const targetChannelId = message.payload.targetChannelId;
+
+  if (targetChannelId === sourceChannelId) {
+    sendError(ws, "RTC_INVALID_TARGET", "Cannot start a live voice session with the same channel");
+    return;
+  }
+
   const targetClient = context.connectedClients.get(targetChannelId);
 
   if (!targetClient || targetClient.ws.readyState !== targetClient.ws.OPEN) {

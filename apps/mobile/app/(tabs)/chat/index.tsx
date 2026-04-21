@@ -14,6 +14,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAppStore, type ChatMessage } from '@/lib/store';
 import { gatewayClient } from '@/lib/gateway-client';
+import type { MobileWebRTCState } from '@/lib/webrtc';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { ChatBubble } from '@/components/ChatBubble';
 import { TypingIndicator } from '@/components/TypingIndicator';
@@ -27,6 +28,7 @@ export default function ChatScreen() {
   const colors = getColors(darkMode ? 'dark' : 'light');
 
   const [inputText, setInputText] = useState('');
+  const [liveVoiceState, setLiveVoiceState] = useState<MobileWebRTCState>('idle');
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
   const handleSend = useCallback(async () => {
@@ -73,6 +75,23 @@ export default function ChatScreen() {
         : connectionStatus === 'error'
           ? 'Connection Error'
           : 'Disconnected';
+  const showLiveVoiceBanner =
+    liveVoiceState === 'requesting-media' ||
+    liveVoiceState === 'negotiating' ||
+    liveVoiceState === 'connected' ||
+    liveVoiceState === 'error';
+  const liveVoiceBannerColor =
+    liveVoiceState === 'connected'
+      ? colors.success
+      : liveVoiceState === 'error'
+        ? colors.error
+        : colors.warning;
+  const liveVoiceBannerLabel =
+    liveVoiceState === 'connected'
+      ? 'Live voice active'
+      : liveVoiceState === 'error'
+        ? 'Live voice unavailable on this build'
+        : 'Connecting live voice...';
 
   return (
     <KeyboardAvoidingView
@@ -91,6 +110,22 @@ export default function ChatScreen() {
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
           <Text style={[styles.statusText, { color: statusColor }]}>
             {statusLabel}
+          </Text>
+        </View>
+      )}
+
+      {showLiveVoiceBanner && (
+        <View
+          style={[
+            styles.statusBar,
+            { backgroundColor: liveVoiceBannerColor + '20' },
+          ]}
+        >
+          <View
+            style={[styles.statusDot, { backgroundColor: liveVoiceBannerColor }]}
+          />
+          <Text style={[styles.statusText, { color: liveVoiceBannerColor }]}>
+            {liveVoiceBannerLabel}
           </Text>
         </View>
       )}
@@ -169,7 +204,7 @@ export default function ChatScreen() {
               <Feather name="send" size={18} color="#FFFFFF" />
             </Pressable>
           ) : (
-            <VoiceInput />
+            <VoiceInput onLiveStateChange={setLiveVoiceState} />
           )}
         </View>
       </View>
