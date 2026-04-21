@@ -126,6 +126,14 @@ class GatewayClient {
     return this.ws?.readyState ?? WebSocket.CLOSED;
   }
 
+  getCurrentSessionId(): string | null {
+    return this.sessionId;
+  }
+
+  getCurrentChannelId(): string {
+    return this.channelId;
+  }
+
   // ── Private ──────────────────────────────────────────────────────────────
 
   private establishConnection(): void {
