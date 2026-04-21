@@ -11,6 +11,8 @@ interface PersistedState {
   agentName: string;
   url: string;
   token: string;
+  liveVoiceEnabled: boolean;
+  liveVoicePeerChannelId: string;
   messages: ChatMessage[];
   reminders: Reminder[];
   skills: Skill[];
@@ -22,6 +24,8 @@ const PERSIST_KEYS: (keyof PersistedState)[] = [
   'agentName',
   'url',
   'token',
+  'liveVoiceEnabled',
+  'liveVoicePeerChannelId',
   'messages',
   'reminders',
   'skills',
@@ -162,9 +166,13 @@ interface SettingsSlice {
   darkMode: boolean;
   notifications: boolean;
   agentName: string;
+  liveVoiceEnabled: boolean;
+  liveVoicePeerChannelId: string;
   setDarkMode: (enabled: boolean) => void;
   setNotifications: (enabled: boolean) => void;
   setAgentName: (name: string) => void;
+  setLiveVoiceEnabled: (enabled: boolean) => void;
+  setLiveVoicePeerChannelId: (channelId: string) => void;
 }
 
 type AppState = ConnectionSlice &
@@ -240,9 +248,14 @@ export const useAppStore = create<AppState>()((set) => ({
   darkMode: true,
   notifications: true,
   agentName: 'Karna',
+  liveVoiceEnabled: false,
+  liveVoicePeerChannelId: '',
   setDarkMode: (darkMode) => set({ darkMode }),
   setNotifications: (notifications) => set({ notifications }),
   setAgentName: (agentName) => set({ agentName }),
+  setLiveVoiceEnabled: (liveVoiceEnabled) => set({ liveVoiceEnabled }),
+  setLiveVoicePeerChannelId: (liveVoicePeerChannelId) =>
+    set({ liveVoicePeerChannelId }),
 }));
 
 // Persist on every state change (debounced)

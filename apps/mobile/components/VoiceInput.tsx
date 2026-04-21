@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Pressable, Text } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Alert } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -20,19 +20,20 @@ import { getColors, Spacing, BorderRadius } from '@/lib/theme';
 
 export function VoiceInput() {
   const darkMode = useAppStore((s) => s.darkMode);
+  const liveVoiceEnabled = useAppStore((s) => s.liveVoiceEnabled);
+  const liveVoicePeerChannelId = useAppStore((s) => s.liveVoicePeerChannelId);
   const colors = getColors(darkMode ? 'dark' : 'light');
   const [recording, setRecording] = useState(false);
-  const [rtcState, setRtcState] = useState<MobileWebRTCState>('idle');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [rtcState, setRtcState] = useState<MobileWebRTCState>('idle');
   const levelPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rtcSessionRef = useRef(getMobileWebRTCSession());
-  const liveVoicePeerChannelId = process.env.EXPO_PUBLIC_VOICE_PEER_CHANNEL_ID;
-  const liveVoiceEnabled =
-    process.env.EXPO_PUBLIC_ENABLE_LIVE_VOICE === 'true' && Boolean(liveVoicePeerChannelId);
 
   const pulseScale = useSharedValue(1);
   const ringOpacity = useSharedValue(0);
   const ringScale = useSharedValue(1);
+  const isLiveCallConfigured =
+    liveVoiceEnabled && liveVoicePeerChannelId.trim().length > 0;
 
   const pulseAnimatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
@@ -78,6 +79,9 @@ export function VoiceInput() {
 
   useEffect(() => {
     const rtc = rtcSessionRef.current;
+    rtc.listen();
+    setRtcState(rtc.currentState);
+
     const unsubscribe = rtc.onStateChange((state) => {
       setRtcState(state);
     });
@@ -130,12 +134,22 @@ export function VoiceInput() {
   }, [recording, stopPulse]);
 
   const handleLiveCallPress = useCallback(async () => {
-    if (!liveVoiceEnabled || !liveVoicePeerChannelId) return;
+    if (!isLiveCallConfigured) {
+      Alert.alert(
+        'Live Voice Beta',
+        'Enable Live Voice Beta and set a peer channel ID in Settings first.',
+      );
+      return;
+    }
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const rtc = rtcSessionRef.current;
 
-    if (rtcState === 'connected' || rtcState === 'requesting-media' || rtcState === 'negotiating') {
+    if (
+      rtcState === 'connected' ||
+      rtcState === 'requesting-media' ||
+      rtcState === 'negotiating'
+    ) {
       rtc.endCall();
       return;
     }
@@ -143,88 +157,93 @@ export function VoiceInput() {
     if (!rtc.isAvailable()) {
       console.warn('[VoiceInput] Native WebRTC runtime is not available on this build');
       setRtcState('error');
+      Alert.alert(
+        'Live Voice Beta',
+        'Live voice requires a native WebRTC-enabled mobile build.',
+      );
       return;
     }
 
     try {
-      rtc.listen();
-      await rtc.startCall(liveVoicePeerChannelId);
-    } catch (err) {
-      console.warn('[VoiceInput] Failed to start live WebRTC call:', err);
+      await rtc.startCall(liveVoicePeerChannelId.trim());
+    } catch (error) {
+      console.warn('[VoiceInput] Failed to start live call:', error);
       setRtcState('error');
+      Alert.alert(
+        'Live Voice Beta',
+        'Could not start the live voice session on this build.',
+      );
     }
-  }, [liveVoiceEnabled, liveVoicePeerChannelId, rtcState]);
+  }, [isLiveCallConfigured, liveVoicePeerChannelId, rtcState]);
 
   const levelBarWidth = `${Math.round(audioLevel * 100)}%` as const;
-  const isRtcConnecting = rtcState === 'requesting-media' || rtcState === 'negotiating';
+  const isRtcConnecting =
+    rtcState === 'requesting-media' || rtcState === 'negotiating';
   const isRtcConnected = rtcState === 'connected';
   const showRtcBadge = liveVoiceEnabled || rtcState === 'error';
+  const liveButtonColor = isRtcConnected
+    ? colors.success
+    : rtcState === 'error'
+      ? colors.error
+      : isLiveCallConfigured
+        ? colors.surfaceAlt
+        : colors.border;
+  const liveLabelColor =
+    isRtcConnected ? '#FFFFFF' : isLiveCallConfigured ? colors.text : colors.textTertiary;
+  const liveStatusLabel = isRtcConnected
+    ? 'End'
+    : isRtcConnecting
+      ? 'Joining...'
+      : 'Live Beta';
 
   return (
     <View style={styles.container}>
       <View style={styles.controlsRow}>
+        <View style={styles.buttonWrapper}>
+          <Animated.View
+            style={[
+              styles.ring,
+              { borderColor: colors.primary },
+              ringAnimatedStyle,
+            ]}
+          />
+          <Animated.View style={pulseAnimatedStyle}>
+            <Pressable
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              style={[
+                styles.button,
+                {
+                  backgroundColor: recording ? colors.error : colors.primary,
+                },
+              ]}
+            >
+              <Feather name="mic" size={22} color="#FFFFFF" />
+            </Pressable>
+          </Animated.View>
+        </View>
+
         {showRtcBadge && (
           <Pressable
             onPress={handleLiveCallPress}
             style={[
               styles.liveButton,
               {
-                backgroundColor: isRtcConnected
-                  ? colors.success
-                  : rtcState === 'error'
-                    ? colors.error
-                    : colors.surfaceAlt,
+                backgroundColor: liveButtonColor,
                 borderColor: isRtcConnected ? colors.success : colors.border,
               },
             ]}
           >
             <Feather
-              name={isRtcConnected || isRtcConnecting ? 'phone-off' : 'phone-call'}
-              size={16}
-              color={isRtcConnected ? '#FFFFFF' : colors.textSecondary}
+              name={isRtcConnected || isRtcConnecting ? 'phone-off' : 'radio'}
+              size={18}
+              color={liveLabelColor}
             />
-            <Text
-              style={[
-                styles.liveButtonText,
-                {
-                  color: isRtcConnected ? '#FFFFFF' : colors.textSecondary,
-                },
-              ]}
-            >
-              {isRtcConnected ? 'End' : isRtcConnecting ? 'Joining…' : 'Live Beta'}
+            <Text style={[styles.liveButtonText, { color: liveLabelColor }]}>
+              {liveStatusLabel}
             </Text>
           </Pressable>
         )}
-
-        <View style={styles.buttonWrapper}>
-        <Animated.View
-          style={[
-            styles.ring,
-            { borderColor: colors.primary },
-            ringAnimatedStyle,
-          ]}
-        />
-        <Animated.View style={pulseAnimatedStyle}>
-          <Pressable
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
-            style={[
-              styles.button,
-              {
-                backgroundColor: recording
-                  ? colors.error
-                  : colors.primary,
-              },
-            ]}
-          >
-            <Feather
-              name={recording ? 'mic' : 'mic'}
-              size={22}
-              color="#FFFFFF"
-            />
-          </Pressable>
-        </Animated.View>
-        </View>
       </View>
 
       {recording && (
@@ -275,19 +294,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  liveButton: {
-    minHeight: 36,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
-  liveButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
   ring: {
     position: 'absolute',
     width: 48,
@@ -301,6 +307,20 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  liveButton: {
+    minHeight: 36,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  liveButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   levelContainer: {
     alignItems: 'center',
