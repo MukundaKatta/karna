@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { X, Mic, MicOff, Waves } from "lucide-react";
+import { X, Mic, MicOff, Waves, Phone, PhoneOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getVoiceClient, type VoiceMode, type VoiceState } from "@/lib/voice";
 import { getWSClient } from "@/lib/ws";
+import { getWebRTCVoiceSession, type WebRTCSessionState } from "@/lib/webrtc";
 
 interface VoiceOverlayProps {
   open: boolean;
@@ -15,11 +16,15 @@ interface VoiceOverlayProps {
 
 export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [rtcState, setRtcState] = useState<WebRTCSessionState>("idle");
   const [audioLevel, setAudioLevel] = useState(0);
   const [transcript, setTranscript] = useState("");
   const [voiceMode, setVoiceMode] = useState<VoiceMode>("push-to-talk");
   const [statusText, setStatusText] = useState("Tap the microphone to start");
   const voiceClientRef = useRef(getVoiceClient());
+  const rtcSessionRef = useRef(getWebRTCVoiceSession());
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const rtcTargetChannelId = process.env.NEXT_PUBLIC_VOICE_PEER_CHANNEL_ID;
 
   // Subscribe to voice client events
   useEffect(() => {
@@ -64,6 +69,37 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
     };
   }, [open, onTranscript, voiceMode]);
 
+  useEffect(() => {
+    if (!open || !rtcTargetChannelId) return;
+
+    const rtc = rtcSessionRef.current;
+    rtc.listen();
+
+    const unsubState = rtc.onStateChange((state) => {
+      setRtcState(state);
+
+      if (state === "requesting-media" || state === "negotiating") {
+        setStatusText("Connecting live call...");
+      } else if (state === "connected") {
+        setStatusText("Live call active");
+      } else if (state === "ended") {
+        setStatusText("Tap the microphone to start");
+      }
+    });
+
+    const unsubRemote = rtc.onRemoteStream((stream) => {
+      const audio = remoteAudioRef.current;
+      if (!audio) return;
+      audio.srcObject = stream;
+      void audio.play().catch(() => {});
+    });
+
+    return () => {
+      unsubState();
+      unsubRemote();
+    };
+  }, [open, rtcTargetChannelId]);
+
   // Listen for voice.transcript and voice.audio.response messages from WS
   useEffect(() => {
     if (!open) return;
@@ -104,9 +140,11 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
       if (vc.isRecording) {
         vc.stopRecording();
       }
+      rtcSessionRef.current.endCall(false);
       setTranscript("");
       setAudioLevel(0);
       setVoiceState("idle");
+      setRtcState("idle");
     }
   }, [open]);
 
@@ -125,8 +163,25 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
     if (vc.isRecording) {
       vc.stopRecording();
     }
+    rtcSessionRef.current.endCall(false);
     onClose();
   }, [onClose]);
+
+  const handleLiveCallClick = useCallback(() => {
+    if (!rtcTargetChannelId) return;
+
+    const rtc = rtcSessionRef.current;
+    if (rtcState === "connected" || rtcState === "requesting-media" || rtcState === "negotiating") {
+      rtc.endCall();
+      return;
+    }
+
+    setTranscript("");
+    void rtc.startCall(rtcTargetChannelId).catch(() => {
+      setStatusText("Live call failed. Try again.");
+      setRtcState("error");
+    });
+  }, [rtcState, rtcTargetChannelId]);
 
   // Handle Escape key
   useEffect(() => {
@@ -145,6 +200,8 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
   const isRecording = voiceState === "recording";
   const isProcessing = voiceState === "processing";
   const isPlaying = voiceState === "playing";
+  const isRtcConnecting = rtcState === "requesting-media" || rtcState === "negotiating";
+  const isRtcConnected = rtcState === "connected";
   const isActive = isRecording || isProcessing || isPlaying;
 
   // Generate visualization bars based on audio level
@@ -162,6 +219,7 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-dark-900/95 backdrop-blur-sm">
+      <audio ref={remoteAudioRef} autoPlay playsInline className="hidden" />
       {/* Close button */}
       <button
         onClick={handleClose}
@@ -190,6 +248,24 @@ export function VoiceOverlay({ open, onClose, onTranscript }: VoiceOverlayProps)
         <Waves size={16} />
         {voiceMode === "continuous" ? "Continuous" : "Push to Talk"}
       </button>
+
+      {rtcTargetChannelId && (
+        <button
+          onClick={handleLiveCallClick}
+          disabled={isRecording || isProcessing}
+          className={cn(
+            "absolute top-4 left-44 flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors",
+            isRtcConnected
+              ? "bg-green-600 text-white hover:bg-green-500"
+              : "bg-dark-800 text-dark-300 hover:text-white",
+            (isRecording || isProcessing) && "opacity-50 cursor-not-allowed",
+          )}
+          title="Start live voice call"
+        >
+          {isRtcConnected || isRtcConnecting ? <PhoneOff size={16} /> : <Phone size={16} />}
+          {isRtcConnected ? "End Live Call" : isRtcConnecting ? "Connecting..." : "Live Call Beta"}
+        </button>
+      )}
 
       {/* Status text */}
       <p className="text-dark-300 text-sm font-medium mb-8 tracking-wide uppercase">

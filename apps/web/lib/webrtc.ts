@@ -68,7 +68,10 @@ export class WebRTCVoiceSession {
     this.ws = options?.wsClient ?? getWSClient();
     this.createPeerConnection =
       options?.peerConnectionFactory ??
-      (() => new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }));
+      (() =>
+        new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        }) as unknown as RTCPeerConnectionLike);
     this.getUserMedia =
       options?.getUserMedia ??
       ((constraints) => navigator.mediaDevices.getUserMedia(constraints));
