@@ -1,5 +1,13 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../gateway/src/session/manager.js";
+vi.mock("../../gateway/src/voice/handler.js", () => ({
+  handleVoiceStart: vi.fn(),
+  handleVoiceAudioChunk: vi.fn(),
+  handleVoiceEnd: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@karna/agent/orchestration/orchestrator.js", () => ({
+  Orchestrator: class {},
+}));
 import {
   handleMessage,
   resetProtocolTestState,
