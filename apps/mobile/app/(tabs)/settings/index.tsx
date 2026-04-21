@@ -26,12 +26,20 @@ export default function SettingsScreen() {
   const setUrl = useAppStore((s) => s.setUrl);
   const token = useAppStore((s) => s.token);
   const setToken = useAppStore((s) => s.setToken);
+  const liveVoiceEnabled = useAppStore((s) => s.liveVoiceEnabled);
+  const setLiveVoiceEnabled = useAppStore((s) => s.setLiveVoiceEnabled);
+  const liveVoicePeerChannelId = useAppStore((s) => s.liveVoicePeerChannelId);
+  const setLiveVoicePeerChannelId = useAppStore(
+    (s) => s.setLiveVoicePeerChannelId,
+  );
   const connectionStatus = useAppStore((s) => s.status);
   const clearChat = useAppStore((s) => s.clearChat);
   const colors = getColors(darkMode ? 'dark' : 'light');
 
   const [editingUrl, setEditingUrl] = useState(url);
   const [editingToken, setEditingToken] = useState(token);
+  const [editingLiveVoicePeerChannelId, setEditingLiveVoicePeerChannelId] =
+    useState(liveVoicePeerChannelId);
 
   const handleSaveConnection = useCallback(() => {
     setUrl(editingUrl);
@@ -222,6 +230,81 @@ export default function SettingsScreen() {
               placeholder="Karna"
               placeholderTextColor={colors.textTertiary}
             />
+          </View>
+        </View>
+      </View>
+
+      {/* Live Voice Beta */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
+          Live Voice Beta
+        </Text>
+        <View
+          style={[
+            styles.card,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View style={styles.row}>
+            <View style={styles.rowLabel}>
+              <Feather name="radio" size={18} color={colors.textSecondary} />
+              <View>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  Enable Live Voice
+                </Text>
+                <Text
+                  style={[
+                    styles.helpText,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Use WebRTC signaling for low-latency voice sessions.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={liveVoiceEnabled}
+              onValueChange={(val) => {
+                setLiveVoiceEnabled(val);
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              trackColor={{
+                false: colors.surfaceAlt,
+                true: colors.primary + '60',
+              }}
+              thumbColor={liveVoiceEnabled ? colors.primary : colors.textTertiary}
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.inputRow}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+              Peer Channel ID
+            </Text>
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  color: colors.text,
+                  backgroundColor: colors.inputBackground,
+                  borderColor: colors.border,
+                },
+              ]}
+              value={editingLiveVoicePeerChannelId}
+              onChangeText={(value) => {
+                setEditingLiveVoicePeerChannelId(value);
+                setLiveVoicePeerChannelId(value);
+              }}
+              placeholder="web-voice-peer"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Text style={[styles.helpText, { color: colors.textSecondary }]}>
+              Set the target peer channel the mobile app should call during live
+              voice sessions.
+            </Text>
           </View>
         </View>
       </View>
@@ -420,6 +503,10 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     fontWeight: '600',
     marginBottom: Spacing.xs,
+  },
+  helpText: {
+    ...Typography.caption,
+    marginTop: Spacing.xs,
   },
   input: {
     ...Typography.input,
