@@ -215,4 +215,77 @@ describe("WebRTCVoiceSession", () => {
       },
     });
   });
+
+  it("subscribes to WebSocket rtc messages through listen()", async () => {
+    let messageHandler: ((message: unknown) => void) | null = null;
+    const sent: unknown[] = [];
+    const wsClient = {
+      currentSessionId: "session-5",
+      send: vi.fn((message: unknown) => {
+        sent.push(message);
+      }),
+      onMessage: vi.fn((handler: (message: unknown) => void) => {
+        messageHandler = handler;
+        return () => {
+          messageHandler = null;
+        };
+      }),
+    };
+    const session = new WebRTCVoiceSession({
+      wsClient: wsClient as never,
+      peerConnectionFactory: () => createPeerConnectionStub().peer as never,
+      getUserMedia: vi.fn().mockResolvedValue(createStream(["track-5"])),
+    });
+
+    session.listen();
+    messageHandler?.({
+      type: "rtc.offer",
+      payload: {
+        sourceChannelId: "voice-peer",
+        description: {
+          type: "offer",
+          sdp: "offer-from-signal",
+        },
+      },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(wsClient.onMessage).toHaveBeenCalledTimes(1);
+    expect(sent[0]).toMatchObject({
+      type: "rtc.answer",
+      payload: {
+        targetChannelId: "voice-peer",
+      },
+    });
+  });
+
+  it("sends rtc.hangup and stops local tracks when ending a call", async () => {
+    const sent: unknown[] = [];
+    const stream = createStream(["track-6"]);
+    const { peer } = createPeerConnectionStub();
+    const session = new WebRTCVoiceSession({
+      wsClient: {
+        currentSessionId: "session-6",
+        send: vi.fn((message: unknown) => {
+          sent.push(message);
+        }),
+        onMessage: vi.fn(() => () => {}),
+      } as never,
+      peerConnectionFactory: () => peer as never,
+      getUserMedia: vi.fn().mockResolvedValue(stream),
+    });
+
+    await session.startCall("mobile-peer");
+    session.endCall();
+
+    expect(sent.at(-1)).toMatchObject({
+      type: "rtc.hangup",
+      payload: {
+        targetChannelId: "mobile-peer",
+      },
+    });
+    expect(peer.close).toHaveBeenCalledTimes(1);
+    expect((stream as unknown as { tracks: Array<{ stop: ReturnType<typeof vi.fn> }> }).tracks[0]?.stop).toHaveBeenCalledTimes(1);
+    expect(session.currentState).toBe("ended");
+  });
 });
