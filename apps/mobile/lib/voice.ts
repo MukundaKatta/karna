@@ -5,6 +5,7 @@ let currentRecording: Audio.Recording | null = null;
 let currentSound: Audio.Sound | null = null;
 
 const RECORDING_OPTIONS: Audio.RecordingOptions = {
+  isMeteringEnabled: true,
   android: {
     extension: '.m4a',
     outputFormat: Audio.AndroidOutputFormat.MPEG_4,

@@ -15,8 +15,14 @@ import { Feather } from '@expo/vector-icons';
 import { startRecording, stopRecording, getRecordingStatus } from '@/lib/voice';
 import { gatewayClient } from '@/lib/gateway-client';
 import { getMobileWebRTCSession, type MobileWebRTCState } from '@/lib/webrtc';
+import {
+  normalizeMeteringLevel,
+  shouldAutoStopRecording,
+} from '@/lib/vad';
 import { useAppStore } from '@/lib/store';
 import { getColors, Spacing, BorderRadius } from '@/lib/theme';
+
+type MobileVoiceMode = 'push-to-talk' | 'continuous';
 
 export function VoiceInput() {
   const darkMode = useAppStore((s) => s.darkMode);
@@ -26,8 +32,10 @@ export function VoiceInput() {
   const [recording, setRecording] = useState(false);
   const [audioLevel, setAudioLevel] = useState(0);
   const [rtcState, setRtcState] = useState<MobileWebRTCState>('idle');
+  const [voiceMode, setVoiceMode] = useState<MobileVoiceMode>('push-to-talk');
   const levelPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rtcSessionRef = useRef(getMobileWebRTCSession());
+  const silenceStartedAtRef = useRef<number | null>(null);
 
   const pulseScale = useSharedValue(1);
   const ringOpacity = useSharedValue(0);
@@ -90,29 +98,13 @@ export function VoiceInput() {
       if (levelPollRef.current) {
         clearInterval(levelPollRef.current);
       }
+      silenceStartedAtRef.current = null;
       rtc.endCall(false);
       unsubscribe();
     };
   }, []);
 
-  const handlePressIn = useCallback(async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    const started = await startRecording();
-    if (started) {
-      setRecording(true);
-      startPulse();
-
-      levelPollRef.current = setInterval(async () => {
-        const status = await getRecordingStatus();
-        if (status && 'metering' in status && typeof status.metering === 'number') {
-          const normalized = Math.max(0, Math.min(1, (status.metering + 60) / 60));
-          setAudioLevel(normalized);
-        }
-      }, 100);
-    }
-  }, [startPulse]);
-
-  const handlePressOut = useCallback(async () => {
+  const finishRecording = useCallback(async () => {
     if (!recording) return;
 
     if (levelPollRef.current) {
@@ -120,6 +112,7 @@ export function VoiceInput() {
       levelPollRef.current = null;
     }
 
+    silenceStartedAtRef.current = null;
     stopPulse();
     setRecording(false);
     setAudioLevel(0);
@@ -132,6 +125,58 @@ export function VoiceInput() {
       });
     }
   }, [recording, stopPulse]);
+
+  const startVoiceRecording = useCallback(async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const started = await startRecording();
+    if (started) {
+      setRecording(true);
+      startPulse();
+      silenceStartedAtRef.current = null;
+
+      levelPollRef.current = setInterval(async () => {
+        const status = await getRecordingStatus();
+        if (status && 'metering' in status && typeof status.metering === 'number') {
+          const normalized = normalizeMeteringLevel(status.metering);
+          setAudioLevel(normalized);
+
+          if (voiceMode === 'continuous') {
+            const nextState = shouldAutoStopRecording({
+              normalizedLevel: normalized,
+              silenceStartedAt: silenceStartedAtRef.current,
+              now: Date.now(),
+            });
+            silenceStartedAtRef.current = nextState.nextSilenceStartedAt;
+            if (nextState.shouldStop) {
+              void finishRecording();
+            }
+          }
+        }
+      }, 100);
+    }
+  }, [finishRecording, startPulse, voiceMode]);
+
+  const handleMicPress = useCallback(() => {
+    if (voiceMode === 'continuous') {
+      if (recording) {
+        void finishRecording();
+      } else {
+        void startVoiceRecording();
+      }
+    }
+  }, [finishRecording, recording, startVoiceRecording, voiceMode]);
+
+  const handlePressIn = useCallback(() => {
+    if (voiceMode === 'push-to-talk') {
+      void startVoiceRecording();
+    }
+  }, [startVoiceRecording, voiceMode]);
+
+  const handlePressOut = useCallback(() => {
+    if (voiceMode === 'push-to-talk' && recording) {
+      void finishRecording();
+    }
+  }, [finishRecording, recording, voiceMode]);
 
   const handleLiveCallPress = useCallback(async () => {
     if (!isLiveCallConfigured) {
@@ -199,6 +244,40 @@ export function VoiceInput() {
   return (
     <View style={styles.container}>
       <View style={styles.controlsRow}>
+        <Pressable
+          onPress={() =>
+            setVoiceMode((current) =>
+              current === 'push-to-talk' ? 'continuous' : 'push-to-talk',
+            )
+          }
+          disabled={recording}
+          style={[
+            styles.modeButton,
+            {
+              backgroundColor:
+                voiceMode === 'continuous' ? colors.primary : colors.surfaceAlt,
+              opacity: recording ? 0.5 : 1,
+            },
+          ]}
+        >
+          <Feather
+            name={voiceMode === 'continuous' ? 'radio' : 'corner-down-right'}
+            size={14}
+            color={voiceMode === 'continuous' ? '#FFFFFF' : colors.textSecondary}
+          />
+          <Text
+            style={[
+              styles.modeButtonText,
+              {
+                color:
+                  voiceMode === 'continuous' ? '#FFFFFF' : colors.textSecondary,
+              },
+            ]}
+          >
+            {voiceMode === 'continuous' ? 'Continuous' : 'Push'}
+          </Text>
+        </Pressable>
+
         <View style={styles.buttonWrapper}>
           <Animated.View
             style={[
@@ -209,6 +288,7 @@ export function VoiceInput() {
           />
           <Animated.View style={pulseAnimatedStyle}>
             <Pressable
+              onPress={handleMicPress}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
               style={[
@@ -265,7 +345,7 @@ export function VoiceInput() {
             />
           </View>
           <Text style={[styles.recordingLabel, { color: colors.error }]}>
-            Recording...
+            {voiceMode === 'continuous' ? 'Listening until you pause...' : 'Recording...'}
           </Text>
         </View>
       )}
@@ -293,6 +373,19 @@ const styles = StyleSheet.create({
     height: 48,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  modeButton: {
+    height: 36,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.xs,
+  },
+  modeButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   ring: {
     position: 'absolute',
