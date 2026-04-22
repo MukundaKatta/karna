@@ -4,25 +4,28 @@ const logger = pino({ name: "audit-logger" });
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type AuditEventType =
-  | "auth.login"
-  | "auth.login_failed"
-  | "auth.register"
-  | "auth.token_refresh"
-  | "session.created"
-  | "session.terminated"
-  | "session.expired"
-  | "tool.executed"
-  | "tool.approved"
-  | "tool.rejected"
-  | "tool.failed"
-  | "config.updated"
-  | "agent.created"
-  | "agent.updated"
-  | "agent.deleted"
-  | "skill.invoked"
-  | "api_key.created"
-  | "api_key.revoked";
+export const AUDIT_EVENT_TYPES = [
+  "auth.login",
+  "auth.login_failed",
+  "auth.register",
+  "auth.token_refresh",
+  "session.created",
+  "session.terminated",
+  "session.expired",
+  "tool.executed",
+  "tool.approved",
+  "tool.rejected",
+  "tool.failed",
+  "config.updated",
+  "agent.created",
+  "agent.updated",
+  "agent.deleted",
+  "skill.invoked",
+  "api_key.created",
+  "api_key.revoked",
+] as const;
+
+export type AuditEventType = typeof AUDIT_EVENT_TYPES[number];
 
 export interface AuditEvent {
   id: string;

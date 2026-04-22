@@ -25,6 +25,7 @@ import { Orchestrator } from "@karna/agent/orchestration/orchestrator.js";
 import type { AgentDefinition, DelegationRecord } from "@karna/shared/types/orchestration.js";
 import type { Session } from "@karna/shared/types/session.js";
 import type { AccessPolicyManager } from "../access/policies.js";
+import type { AuditLogger } from "../audit/logger.js";
 
 const logger = pino({ name: "message-handler" });
 const ACCESS_CONTROLLED_CHANNELS = new Set([
@@ -163,6 +164,7 @@ export interface ConnectionContext {
   heartbeatScheduler: HeartbeatScheduler;
   accessPolicies: AccessPolicyManager;
   connectedClients: Map<string, ConnectedClient>;
+  auditLogger?: AuditLogger;
 }
 
 export interface ConnectedClient {
@@ -379,6 +381,13 @@ async function handleConnect(
     deriveUserId(channelId, metadata),
     metadata,
     message.sessionId,
+  );
+
+  await context.auditLogger?.logSession(
+    "session.created",
+    session.id,
+    session.userId,
+    { channelType, channelId },
   );
 
   // Track the connected client

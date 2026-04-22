@@ -18,6 +18,9 @@ import { registerMemoryRoutes } from "./routes/memory.js";
 import { AccessPolicyManager } from "./access/policies.js";
 import { registerAccessRoutes } from "./routes/access.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
+import { registerActivityRoutes } from "./routes/activity.js";
+import { registerOpenApiRoutes } from "./routes/openapi.js";
+import { AuditLogger } from "./audit/logger.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -59,6 +62,7 @@ async function main(): Promise<void> {
   const accessPolicies = new AccessPolicyManager({
     storagePath: join(homedir(), ".karna", "access", "policies.json"),
   });
+  const auditLogger = new AuditLogger();
 
   if (
     config.memory.enabled &&
@@ -186,7 +190,9 @@ async function main(): Promise<void> {
 
   registerMemoryRoutes(server, memoryStore);
   registerAccessRoutes(server, accessPolicies);
-  registerSessionRoutes(server, sessionManager);
+  registerSessionRoutes(server, sessionManager, auditLogger);
+  registerActivityRoutes(server, auditLogger);
+  registerOpenApiRoutes(server);
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
 
@@ -201,6 +207,7 @@ async function main(): Promise<void> {
       heartbeatScheduler,
       accessPolicies,
       connectedClients,
+      auditLogger,
     };
 
     socket.on("message", (rawData: Buffer | string) => {

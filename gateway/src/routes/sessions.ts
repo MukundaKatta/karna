@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
 import { SessionStatusSchema, type SessionStatus } from "@karna/shared/types/session.js";
 import { SessionManager, type SessionFilter } from "../session/manager.js";
+import type { AuditLogger } from "../audit/logger.js";
 import {
   appendToTranscript,
   deleteTranscript,
@@ -39,7 +40,11 @@ interface SessionMessageBody {
   metadata?: Record<string, unknown>;
 }
 
-export function registerSessionRoutes(app: FastifyInstance, sessionManager: SessionManager): void {
+export function registerSessionRoutes(
+  app: FastifyInstance,
+  sessionManager: SessionManager,
+  auditLogger?: AuditLogger,
+): void {
   app.get<{ Querystring: SessionQuerystring }>("/api/sessions", async (request, reply) => {
     const parsed = parseSessionQuery(request.query);
     if (!parsed.ok) {
@@ -200,10 +205,18 @@ export function registerSessionRoutes(app: FastifyInstance, sessionManager: Sess
   );
 
   app.delete<{ Params: SessionParams }>("/api/sessions/:sessionId", async (request, reply) => {
+    const session = sessionManager.getSession(request.params.sessionId);
     const removed = sessionManager.terminateSession(request.params.sessionId);
     if (!removed) {
       return reply.status(404).send({ error: "Session not found" });
     }
+
+    await auditLogger?.logSession(
+      "session.terminated",
+      request.params.sessionId,
+      session?.userId,
+      session ? { channelType: session.channelType, channelId: session.channelId } : undefined,
+    );
 
     return reply.send({ removed: true, sessionId: request.params.sessionId });
   });
@@ -221,9 +234,22 @@ export function registerSessionRoutes(app: FastifyInstance, sessionManager: Sess
       });
     }
 
+    const sessionsToRemove = shouldRemoveAll
+      ? sessionManager.querySessions({})
+      : sessionManager.querySessions(parsed.filter);
+
     const removed = shouldRemoveAll
       ? sessionManager.terminateSessions({})
       : sessionManager.terminateSessions(parsed.filter);
+
+    await Promise.all(
+      sessionsToRemove.map((session) =>
+        auditLogger?.logSession("session.terminated", session.id, session.userId, {
+          channelType: session.channelType,
+          channelId: session.channelId,
+        }) ?? Promise.resolve(),
+      ),
+    );
 
     return reply.send({ removed });
   });
