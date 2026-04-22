@@ -56,9 +56,15 @@ interface MatrixEvent {
   room_id?: string;
 }
 
-interface PendingResponse {
+interface MatrixConversationInfo {
   roomId: string;
   senderUserId: string;
+  isDirectMessage: boolean;
+  conversationType: "dm" | "room";
+}
+
+interface PendingResponse {
+  roomId: string;
   chunks: string[];
   streamComplete: boolean;
 }
@@ -73,9 +79,9 @@ export class MatrixAdapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
-  private sessionMap = new Map<string, string>(); // senderUserId -> sessionId
+  private sessionMap = new Map<string, string>(); // roomId -> sessionId
+  private roomDirectness = new Map<string, boolean>(); // roomId -> isDirectMessage
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
-  private senderToRoom = new Map<string, string>(); // senderUserId -> roomId
   private isShuttingDown = false;
   private syncToken: string | null = null;
 
@@ -169,7 +175,7 @@ export class MatrixAdapter {
           for (const [roomId, roomData] of Object.entries(response.rooms.join)) {
             const events = roomData.timeline?.events ?? [];
             for (const event of events) {
-              this.handleMatrixEvent(roomId, event);
+              await this.handleMatrixEvent(roomId, event);
             }
           }
         }
@@ -193,7 +199,7 @@ export class MatrixAdapter {
     void doSync();
   }
 
-  private handleMatrixEvent(roomId: string, event: MatrixEvent): void {
+  private async handleMatrixEvent(roomId: string, event: MatrixEvent): Promise<void> {
     // Ignore our own messages
     if (event.sender === this.config.userId) return;
 
@@ -205,42 +211,54 @@ export class MatrixAdapter {
     if (!text) return;
 
     const senderUserId = event.sender;
+    const conversation = await this.resolveConversationInfo(roomId, senderUserId);
 
     this.logger.debug(
-      { senderUserId, roomId, textLength: text.length },
+      {
+        senderUserId,
+        roomId,
+        isDirectMessage: conversation.isDirectMessage,
+        textLength: text.length,
+      },
       "Received Matrix message",
     );
 
-    this.senderToRoom.set(senderUserId, roomId);
-    void this.forwardToGateway(senderUserId, text, roomId);
+    await this.forwardToGateway(conversation, text);
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
 
   private async forwardToGateway(
-    senderUserId: string,
+    conversation: MatrixConversationInfo,
     content: string,
-    roomId: string,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.logger.warn({ senderUserId }, "Gateway not connected, cannot forward message");
+      this.logger.warn({ roomId: conversation.roomId }, "Gateway not connected, cannot forward message");
       return;
     }
 
-    let sessionId = this.sessionMap.get(senderUserId);
+    let sessionId = this.sessionMap.get(conversation.roomId);
 
     if (!sessionId) {
       sessionId = randomUUID();
-      this.sessionMap.set(senderUserId, sessionId);
+      this.sessionMap.set(conversation.roomId, sessionId);
 
       const connectMsg: ProtocolMessage = {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "matrix",
-          channelId: senderUserId,
-          metadata: { roomId, userId: senderUserId },
+          channelId: conversation.roomId,
+          metadata: {
+            roomId: conversation.roomId,
+            userId: conversation.senderUserId,
+            senderUserId: conversation.senderUserId,
+            isDirectMessage: conversation.isDirectMessage,
+            isGroup: !conversation.isDirectMessage,
+            conversationType: conversation.conversationType,
+          },
         },
       };
 
@@ -255,11 +273,22 @@ export class MatrixAdapter {
       payload: {
         content,
         role: "user" as const,
+        metadata: {
+          senderUserId: conversation.senderUserId,
+          userId: conversation.senderUserId,
+          roomId: conversation.roomId,
+          isDirectMessage: conversation.isDirectMessage,
+          isGroup: !conversation.isDirectMessage,
+          conversationType: conversation.conversationType,
+        },
       },
     };
 
     this.ws.send(JSON.stringify(chatMessage));
-    this.logger.debug({ senderUserId, sessionId }, "Forwarded message to gateway");
+    this.logger.debug(
+      { roomId: conversation.roomId, senderUserId: conversation.senderUserId, sessionId },
+      "Forwarded message to gateway",
+    );
   }
 
   private async connectToGateway(): Promise<void> {
@@ -344,27 +373,17 @@ export class MatrixAdapter {
 
     const { sessionId } = message.payload;
     this.logger.info({ sessionId }, "Session acknowledged by gateway");
-
-    for (const [senderUserId, sid] of this.sessionMap.entries()) {
-      if (sid === message.sessionId || !this.sessionMap.has(senderUserId)) {
-        this.sessionMap.set(senderUserId, sessionId);
-        break;
-      }
-    }
   }
 
   private async handleAgentResponse(message: AgentResponseMessage): Promise<void> {
-    const senderUserId = this.findRecipientBySession(message.sessionId);
-    if (!senderUserId) {
-      this.logger.warn({ sessionId: message.sessionId }, "No recipient found for session");
+    const roomId = this.findRoomIdBySession(message.sessionId);
+    if (!roomId) {
+      this.logger.warn({ sessionId: message.sessionId }, "No room found for session");
       return;
     }
 
     const content = message.payload.content;
     if (!content) return;
-
-    const roomId = this.senderToRoom.get(senderUserId);
-    if (!roomId) return;
 
     await this.sendToChannel(roomId, content);
   }
@@ -375,17 +394,13 @@ export class MatrixAdapter {
     const sessionId = message.sessionId;
     if (!sessionId) return;
 
-    const senderUserId = this.findRecipientBySession(sessionId);
-    if (!senderUserId) return;
-
-    const roomId = this.senderToRoom.get(senderUserId);
+    const roomId = this.findRoomIdBySession(sessionId);
     if (!roomId) return;
 
     let pending = this.pendingResponses.get(sessionId);
     if (!pending) {
       pending = {
         roomId,
-        senderUserId,
         chunks: [],
         streamComplete: false,
       };
@@ -406,10 +421,7 @@ export class MatrixAdapter {
   private async handleToolApprovalRequest(
     message: ToolApprovalRequestedMessage,
   ): Promise<void> {
-    const senderUserId = this.findRecipientBySession(message.sessionId);
-    if (!senderUserId) return;
-
-    const roomId = this.senderToRoom.get(senderUserId);
+    const roomId = this.findRoomIdBySession(message.sessionId);
     if (!roomId) return;
 
     const { toolName, description, riskLevel, toolCallId } = message.payload;
@@ -446,10 +458,7 @@ export class MatrixAdapter {
   }
 
   private async handleStatusUpdate(message: StatusMessage): Promise<void> {
-    const senderUserId = this.findRecipientBySession(message.sessionId);
-    if (!senderUserId) return;
-
-    const roomId = this.senderToRoom.get(senderUserId);
+    const roomId = this.findRoomIdBySession(message.sessionId);
     if (!roomId) return;
 
     // Send typing notification via Matrix API
@@ -463,10 +472,7 @@ export class MatrixAdapter {
   }
 
   private async handleError(message: ErrorMessage): Promise<void> {
-    const senderUserId = this.findRecipientBySession(message.sessionId);
-    if (!senderUserId) return;
-
-    const roomId = this.senderToRoom.get(senderUserId);
+    const roomId = this.findRoomIdBySession(message.sessionId);
     if (!roomId) return;
 
     const { code, message: errorMsg } = message.payload;
@@ -617,14 +623,51 @@ export class MatrixAdapter {
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 
-  private findRecipientBySession(sessionId: string | undefined): string | null {
+  private findRoomIdBySession(sessionId: string | undefined): string | null {
     if (!sessionId) return null;
 
-    for (const [senderUserId, sid] of this.sessionMap.entries()) {
-      if (sid === sessionId) return senderUserId;
+    for (const [roomId, sid] of this.sessionMap.entries()) {
+      if (sid === sessionId) return roomId;
     }
 
     return null;
+  }
+
+  private async resolveConversationInfo(
+    roomId: string,
+    senderUserId: string,
+  ): Promise<MatrixConversationInfo> {
+    const isDirectMessage = await this.detectDirectMessageRoom(roomId);
+    const conversation: MatrixConversationInfo = {
+      roomId,
+      senderUserId,
+      isDirectMessage,
+      conversationType: isDirectMessage ? "dm" : "room",
+    };
+    return conversation;
+  }
+
+  private async detectDirectMessageRoom(roomId: string): Promise<boolean> {
+    const cached = this.roomDirectness.get(roomId);
+    if (cached !== undefined) return cached;
+
+    try {
+      const response = await this.matrixRequest<{ joined?: Record<string, unknown> }>(
+        "GET",
+        `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/joined_members`,
+      );
+      const memberCount = Object.keys(response.joined ?? {}).length;
+      const isDirectMessage = memberCount > 0 && memberCount <= 2;
+      this.roomDirectness.set(roomId, isDirectMessage);
+      return isDirectMessage;
+    } catch (error) {
+      this.logger.warn(
+        { error: String(error), roomId },
+        "Failed to determine Matrix room type, defaulting to group routing",
+      );
+      this.roomDirectness.set(roomId, false);
+      return false;
+    }
   }
 }
 

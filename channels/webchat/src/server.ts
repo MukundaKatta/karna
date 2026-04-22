@@ -212,6 +212,7 @@ export class WebChatServer {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "webchat",
           channelId: clientId,

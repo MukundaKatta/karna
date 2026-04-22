@@ -224,10 +224,18 @@ export class SMSAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "sms",
           channelId: fromNumber,
-          metadata: { phoneNumber: fromNumber },
+          metadata: {
+            phoneNumber: fromNumber,
+            userId: fromNumber,
+            senderUserId: fromNumber,
+            isDirectMessage: true,
+            isGroup: false,
+            conversationType: "dm",
+          },
         },
       };
 
@@ -237,6 +245,14 @@ export class SMSAdapter {
     const payload: Record<string, unknown> = {
       content,
       role: "user" as const,
+      metadata: {
+        phoneNumber: fromNumber,
+        userId: fromNumber,
+        senderUserId: fromNumber,
+        isDirectMessage: true,
+        isGroup: false,
+        conversationType: "dm",
+      },
     };
     if (attachments && attachments.length > 0) {
       payload["attachments"] = attachments;

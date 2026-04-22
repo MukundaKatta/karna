@@ -256,6 +256,7 @@ export class TelegramAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "telegram",
           channelId: String(chatId),

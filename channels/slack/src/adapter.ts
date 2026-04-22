@@ -228,6 +228,7 @@ export class SlackAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "slack",
           channelId: channel,

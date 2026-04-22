@@ -310,10 +310,18 @@ export class IMessageAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "imessage",
           channelId: handle,
-          metadata: { handle },
+          metadata: {
+            handle,
+            userId: handle,
+            senderUserId: handle,
+            isDirectMessage: true,
+            isGroup: false,
+            conversationType: "dm",
+          },
         },
       };
 
@@ -328,6 +336,14 @@ export class IMessageAdapter {
       payload: {
         content,
         role: "user" as const,
+        metadata: {
+          handle,
+          userId: handle,
+          senderUserId: handle,
+          isDirectMessage: true,
+          isGroup: false,
+          conversationType: "dm",
+        },
       },
     };
 

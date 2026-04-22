@@ -307,6 +307,7 @@ async function handleConnect(
     channelType,
     deriveUserId(channelId, metadata),
     metadata,
+    message.sessionId,
   );
 
   // Track the connected client

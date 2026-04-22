@@ -291,6 +291,7 @@ export class TeamsAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "teams",
           channelId: conversationId,

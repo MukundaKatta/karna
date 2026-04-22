@@ -90,6 +90,51 @@ describe("gateway websocket protocol", () => {
     expect(context.connectedClients.size).toBe(1);
   });
 
+  it("preserves adapter-provided session ids on connect and reuse", async () => {
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-connect-session",
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId: "adapter-session-1",
+        payload: {
+          channelType: "telegram",
+          channelId: "chat-1",
+          metadata: { userId: "user-1" },
+        },
+      },
+      context,
+    );
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-connect-session-reuse",
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId: "adapter-session-1",
+        payload: {
+          channelType: "telegram",
+          channelId: "chat-1",
+          metadata: { userId: "user-1", isDirectMessage: true },
+        },
+      },
+      context,
+    );
+
+    expect((ws.sent[0]?.payload as Record<string, unknown>)?.["sessionId"]).toBe("adapter-session-1");
+    expect((ws.sent[1]?.payload as Record<string, unknown>)?.["sessionId"]).toBe("adapter-session-1");
+    expect(context.sessionManager.activeSessionCount).toBe(1);
+    expect(context.sessionManager.getSession("adapter-session-1")?.metadata).toMatchObject({
+      userId: "user-1",
+      isDirectMessage: true,
+    });
+  });
+
   it("returns an auth challenge when production auth is not satisfied", async () => {
     process.env["NODE_ENV"] = "production";
     delete process.env["GATEWAY_AUTH_TOKEN"];

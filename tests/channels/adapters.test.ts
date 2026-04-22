@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const KARNA_ROOT = "/Users/ubl/karna";
+const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
+const KARNA_ROOT = resolve(TESTS_DIR, "../..");
 
 const CHANNELS = [
   "telegram",
@@ -145,6 +147,21 @@ describe("Channel Adapters — Structure & Protocol Compliance", () => {
         expect(
           src.match(/stream|chunk|partial|pending/i),
           `${channel} should handle streaming responses`,
+        ).toBeTruthy();
+      }
+    });
+
+    it("all channels include a client session id in connect messages", () => {
+      for (const channel of CHANNELS) {
+        const adapterPath =
+          channel === "webchat"
+            ? join(KARNA_ROOT, "channels", channel, "src", "server.ts")
+            : join(KARNA_ROOT, "channels", channel, "src", "adapter.ts");
+        const src = readFileSync(adapterPath, "utf-8");
+
+        expect(
+          src.match(/type:\s*["']connect["'][\s\S]{0,200}sessionId/),
+          `${channel} should preserve adapter session ids during connect`,
         ).toBeTruthy();
       }
     });

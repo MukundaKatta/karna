@@ -46,6 +46,15 @@ interface RetryableMessage {
   retries: number;
 }
 
+interface WhatsAppRoutingMetadata extends Record<string, unknown> {
+  jid: string;
+  userId: string;
+  senderUserId: string;
+  isDirectMessage: boolean;
+  isGroup: boolean;
+  conversationType: "dm" | "group";
+}
+
 // ─── WhatsAppAdapter ────────────────────────────────────────────────────────
 
 export class WhatsAppAdapter {
@@ -203,6 +212,7 @@ export class WhatsAppAdapter {
   private async processMessage(msg: WAMessage, jid: string): Promise<void> {
     const messageContent = msg.message;
     if (!messageContent) return;
+    const routing = this.createRoutingMetadata(msg, jid);
 
     // Handle text messages
     const text =
@@ -212,7 +222,7 @@ export class WhatsAppAdapter {
 
     if (text) {
       this.logger.debug({ jid, textLength: text.length }, "Received text message");
-      await this.forwardToGateway(jid, text);
+      await this.forwardToGateway(jid, text, undefined, routing);
       return;
     }
 
@@ -222,7 +232,7 @@ export class WhatsAppAdapter {
       this.logger.debug({ jid }, "Received image message");
       await this.forwardToGateway(jid, caption, [
         { type: "image", name: "image" },
-      ]);
+      ], routing);
       return;
     }
 
@@ -232,7 +242,7 @@ export class WhatsAppAdapter {
       this.logger.debug({ jid }, "Received video message");
       await this.forwardToGateway(jid, caption, [
         { type: "video", name: "video" },
-      ]);
+      ], routing);
       return;
     }
 
@@ -244,7 +254,7 @@ export class WhatsAppAdapter {
       this.logger.debug({ jid, fileName }, "Received document message");
       await this.forwardToGateway(jid, caption, [
         { type: "document", name: fileName },
-      ]);
+      ], routing);
       return;
     }
 
@@ -253,7 +263,7 @@ export class WhatsAppAdapter {
       this.logger.debug({ jid }, "Received audio message");
       await this.forwardToGateway(jid, "User sent an audio message.", [
         { type: "audio", name: "audio" },
-      ]);
+      ], routing);
       return;
     }
   }
@@ -264,6 +274,7 @@ export class WhatsAppAdapter {
     jid: string,
     content: string,
     attachments?: Array<{ type: string; url?: string; data?: string; name?: string }>,
+    routing?: WhatsAppRoutingMetadata,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn({ jid }, "Gateway not connected, cannot forward message");
@@ -284,10 +295,11 @@ export class WhatsAppAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "whatsapp",
           channelId: jid,
-          metadata: { jid },
+          metadata: routing ?? this.createFallbackRoutingMetadata(jid),
         },
       };
 
@@ -297,6 +309,7 @@ export class WhatsAppAdapter {
     const payload: Record<string, unknown> = {
       content,
       role: "user" as const,
+      metadata: routing ?? this.createFallbackRoutingMetadata(jid),
     };
     if (attachments && attachments.length > 0) {
       payload["attachments"] = attachments;
@@ -564,6 +577,31 @@ export class WhatsAppAdapter {
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────
+
+  private createRoutingMetadata(msg: WAMessage, jid: string): WhatsAppRoutingMetadata {
+    const isGroup = jid.endsWith("@g.us");
+    const senderUserId = msg.key.participant ?? jid;
+    return {
+      jid,
+      userId: senderUserId,
+      senderUserId,
+      isDirectMessage: !isGroup,
+      isGroup,
+      conversationType: isGroup ? "group" : "dm",
+    };
+  }
+
+  private createFallbackRoutingMetadata(jid: string): WhatsAppRoutingMetadata {
+    const isGroup = jid.endsWith("@g.us");
+    return {
+      jid,
+      userId: jid,
+      senderUserId: jid,
+      isDirectMessage: !isGroup,
+      isGroup,
+      conversationType: isGroup ? "group" : "dm",
+    };
+  }
 
   private findJidBySession(sessionId: string | undefined): string | null {
     if (!sessionId) return null;

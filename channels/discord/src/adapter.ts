@@ -230,6 +230,7 @@ export class DiscordAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "discord",
           channelId,

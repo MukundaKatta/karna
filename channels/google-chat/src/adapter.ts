@@ -317,6 +317,7 @@ export class GoogleChatAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "google-chat",
           channelId: senderName,

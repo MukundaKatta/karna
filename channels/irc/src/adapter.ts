@@ -322,6 +322,7 @@ export class IrcAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "irc",
           channelId: sessionKey,

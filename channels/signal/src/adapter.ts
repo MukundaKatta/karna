@@ -189,10 +189,18 @@ export class SignalAdapter {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "signal",
           channelId: senderNumber,
-          metadata: { phoneNumber: senderNumber },
+          metadata: {
+            phoneNumber: senderNumber,
+            userId: senderNumber,
+            senderUserId: senderNumber,
+            isDirectMessage: true,
+            isGroup: false,
+            conversationType: "dm",
+          },
         },
       };
 
@@ -202,6 +210,14 @@ export class SignalAdapter {
     const payload: Record<string, unknown> = {
       content,
       role: "user" as const,
+      metadata: {
+        phoneNumber: senderNumber,
+        userId: senderNumber,
+        senderUserId: senderNumber,
+        isDirectMessage: true,
+        isGroup: false,
+        conversationType: "dm",
+      },
     };
     if (attachments && attachments.length > 0) {
       payload["attachments"] = attachments;

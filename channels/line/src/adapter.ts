@@ -53,8 +53,15 @@ interface LineEvent {
   };
 }
 
+interface LineConversationInfo {
+  conversationId: string;
+  senderUserId: string;
+  isDirectMessage: boolean;
+  conversationType: "user" | "group" | "room";
+}
+
 interface PendingResponse {
-  userId: string;
+  conversationId: string;
   replyToken: string | null;
   chunks: string[];
   streamComplete: boolean;
@@ -70,7 +77,7 @@ export class LineAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // lineUserId -> sessionId
+  private sessionMap = new Map<string, string>(); // conversationId -> sessionId
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private replyTokens = new Map<string, string>(); // sessionId -> replyToken
   private isShuttingDown = false;
@@ -207,49 +214,67 @@ export class LineAdapter {
       return;
     }
 
-    const userId = event.source.userId;
-    if (!userId) {
-      this.logger.warn("Received message without userId");
+    const text = event.message.text;
+    const replyToken = event.replyToken ?? null;
+    let conversation: LineConversationInfo;
+    try {
+      conversation = this.resolveConversationInfo(event);
+    } catch (error) {
+      this.logger.warn({ error: String(error) }, "Ignoring LINE event without a valid conversation target");
       return;
     }
 
-    const text = event.message.text;
-    const replyToken = event.replyToken ?? null;
-
     this.logger.debug(
-      { userId, textLength: text.length, hasReplyToken: !!replyToken },
+      {
+        conversationId: conversation.conversationId,
+        senderUserId: conversation.senderUserId,
+        isDirectMessage: conversation.isDirectMessage,
+        textLength: text.length,
+        hasReplyToken: !!replyToken,
+      },
       "Received LINE message",
     );
 
-    void this.forwardToGateway(userId, text, replyToken);
+    void this.forwardToGateway(conversation, text, replyToken);
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
 
   private async forwardToGateway(
-    userId: string,
+    conversation: LineConversationInfo,
     content: string,
     replyToken: string | null,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.logger.warn({ userId }, "Gateway not connected, cannot forward message");
+      this.logger.warn(
+        { conversationId: conversation.conversationId },
+        "Gateway not connected, cannot forward message",
+      );
       return;
     }
 
-    let sessionId = this.sessionMap.get(userId);
+    let sessionId = this.sessionMap.get(conversation.conversationId);
 
     if (!sessionId) {
       sessionId = randomUUID();
-      this.sessionMap.set(userId, sessionId);
+      this.sessionMap.set(conversation.conversationId, sessionId);
 
       const connectMsg: ProtocolMessage = {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
+        sessionId,
         payload: {
           channelType: "line",
-          channelId: userId,
-          metadata: { userId },
+          channelId: conversation.conversationId,
+          metadata: {
+            conversationId: conversation.conversationId,
+            userId: conversation.senderUserId,
+            senderUserId: conversation.senderUserId,
+            isDirectMessage: conversation.isDirectMessage,
+            isGroup: !conversation.isDirectMessage,
+            conversationType: conversation.conversationType,
+          },
         },
       };
 
@@ -269,11 +294,26 @@ export class LineAdapter {
       payload: {
         content,
         role: "user" as const,
+        metadata: {
+          conversationId: conversation.conversationId,
+          senderUserId: conversation.senderUserId,
+          userId: conversation.senderUserId,
+          isDirectMessage: conversation.isDirectMessage,
+          isGroup: !conversation.isDirectMessage,
+          conversationType: conversation.conversationType,
+        },
       },
     };
 
     this.ws.send(JSON.stringify(chatMessage));
-    this.logger.debug({ userId, sessionId }, "Forwarded message to gateway");
+    this.logger.debug(
+      {
+        conversationId: conversation.conversationId,
+        senderUserId: conversation.senderUserId,
+        sessionId,
+      },
+      "Forwarded message to gateway",
+    );
   }
 
   private async connectToGateway(): Promise<void> {
@@ -358,26 +398,19 @@ export class LineAdapter {
 
     const { sessionId } = message.payload;
     this.logger.info({ sessionId }, "Session acknowledged by gateway");
-
-    for (const [userId, sid] of this.sessionMap.entries()) {
-      if (sid === message.sessionId || !this.sessionMap.has(userId)) {
-        this.sessionMap.set(userId, sessionId);
-        break;
-      }
-    }
   }
 
   private async handleAgentResponse(message: AgentResponseMessage): Promise<void> {
-    const userId = this.findRecipientBySession(message.sessionId);
-    if (!userId) {
-      this.logger.warn({ sessionId: message.sessionId }, "No recipient found for session");
+    const conversationId = this.findConversationBySession(message.sessionId);
+    if (!conversationId) {
+      this.logger.warn({ sessionId: message.sessionId }, "No conversation found for session");
       return;
     }
 
     const content = message.payload.content;
     if (!content) return;
 
-    await this.sendToChannel(userId, content, message.sessionId);
+    await this.sendToChannel(conversationId, content, message.sessionId);
   }
 
   private async handleAgentStreamResponse(
@@ -386,13 +419,13 @@ export class LineAdapter {
     const sessionId = message.sessionId;
     if (!sessionId) return;
 
-    const userId = this.findRecipientBySession(sessionId);
-    if (!userId) return;
+    const conversationId = this.findConversationBySession(sessionId);
+    if (!conversationId) return;
 
     let pending = this.pendingResponses.get(sessionId);
     if (!pending) {
       pending = {
-        userId,
+        conversationId,
         replyToken: this.replyTokens.get(sessionId) ?? null,
         chunks: [],
         streamComplete: false,
@@ -407,15 +440,15 @@ export class LineAdapter {
       const fullContent = pending.chunks.join("");
       this.pendingResponses.delete(sessionId);
 
-      await this.sendToChannel(userId, fullContent, sessionId);
+      await this.sendToChannel(conversationId, fullContent, sessionId);
     }
   }
 
   private async handleToolApprovalRequest(
     message: ToolApprovalRequestedMessage,
   ): Promise<void> {
-    const userId = this.findRecipientBySession(message.sessionId);
-    if (!userId) return;
+    const conversationId = this.findConversationBySession(message.sessionId);
+    if (!conversationId) return;
 
     const { toolName, description, riskLevel, toolCallId } = message.payload;
 
@@ -431,7 +464,7 @@ export class LineAdapter {
       .filter(Boolean)
       .join("\n");
 
-    await this.sendToChannel(userId, text, message.sessionId);
+    await this.sendToChannel(conversationId, text, message.sessionId);
 
     // Auto-approve low-risk tools
     if (riskLevel === "low" && this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -455,15 +488,15 @@ export class LineAdapter {
   }
 
   private async handleError(message: ErrorMessage): Promise<void> {
-    const userId = this.findRecipientBySession(message.sessionId);
-    if (!userId) return;
+    const conversationId = this.findConversationBySession(message.sessionId);
+    if (!conversationId) return;
 
     const { code, message: errorMsg } = message.payload;
 
     this.logger.error({ code, errorMsg, sessionId: message.sessionId }, "Gateway error");
 
     await this.sendToChannel(
-      userId,
+      conversationId,
       `An error occurred: ${errorMsg}\nPlease try again.`,
       message.sessionId,
     );
@@ -488,7 +521,7 @@ export class LineAdapter {
   // ─── LINE Message Sending ─────────────────────────────────────────────
 
   private async sendToChannel(
-    userId: string,
+    conversationId: string,
     text: string,
     sessionId?: string,
   ): Promise<void> {
@@ -499,7 +532,7 @@ export class LineAdapter {
       this.replyTokens.delete(sessionId!);
       await this.replyMessage(replyToken, text);
     } else {
-      await this.pushMessage(userId, text);
+      await this.pushMessage(conversationId, text);
     }
   }
 
@@ -512,9 +545,9 @@ export class LineAdapter {
     return this.lineApiRequest("/v2/bot/message/reply", body);
   }
 
-  private async pushMessage(userId: string, text: string): Promise<void> {
+  private async pushMessage(conversationId: string, text: string): Promise<void> {
     const body = JSON.stringify({
-      to: userId,
+      to: conversationId,
       messages: [{ type: "text", text: this.truncateLineMessage(text) }],
     });
 
@@ -620,14 +653,55 @@ export class LineAdapter {
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 
-  private findRecipientBySession(sessionId: string | undefined): string | null {
+  private findConversationBySession(sessionId: string | undefined): string | null {
     if (!sessionId) return null;
 
-    for (const [userId, sid] of this.sessionMap.entries()) {
-      if (sid === sessionId) return userId;
+    for (const [conversationId, sid] of this.sessionMap.entries()) {
+      if (sid === sessionId) return conversationId;
     }
 
     return null;
+  }
+
+  private resolveConversationInfo(event: LineEvent): LineConversationInfo {
+    switch (event.source.type) {
+      case "group": {
+        const conversationId = event.source.groupId;
+        if (!conversationId) {
+          throw new Error("LINE group message missing groupId");
+        }
+        return {
+          conversationId,
+          senderUserId: event.source.userId ?? conversationId,
+          isDirectMessage: false,
+          conversationType: "group",
+        };
+      }
+      case "room": {
+        const conversationId = event.source.roomId;
+        if (!conversationId) {
+          throw new Error("LINE room message missing roomId");
+        }
+        return {
+          conversationId,
+          senderUserId: event.source.userId ?? conversationId,
+          isDirectMessage: false,
+          conversationType: "room",
+        };
+      }
+      default: {
+        const conversationId = event.source.userId;
+        if (!conversationId) {
+          throw new Error("LINE direct message missing userId");
+        }
+        return {
+          conversationId,
+          senderUserId: conversationId,
+          isDirectMessage: true,
+          conversationType: "user",
+        };
+      }
+    }
   }
 }
 

@@ -94,6 +94,7 @@ export class SessionManager {
     channelType: string,
     userId?: string,
     metadata?: Record<string, unknown>,
+    preferredSessionId?: string,
   ): Session {
     // Evict expired sessions if we're at capacity
     if (this.sessions.size >= this.maxSessions) {
@@ -106,8 +107,30 @@ export class SessionManager {
     }
 
     const now = Date.now();
+    const existingPreferredSession = preferredSessionId
+      ? this.sessions.get(preferredSessionId)
+      : null;
+
+    if (existingPreferredSession) {
+      existingPreferredSession.channelId = agentId;
+      existingPreferredSession.channelType = channelType;
+      existingPreferredSession.userId = userId;
+      existingPreferredSession.status = "active";
+      existingPreferredSession.updatedAt = now;
+      existingPreferredSession.expiresAt = now + this.sessionTimeoutMs;
+      existingPreferredSession.metadata = metadata ? { ...metadata } : {};
+      this.dirtySessionIds.add(existingPreferredSession.id);
+
+      logger.info(
+        { sessionId: existingPreferredSession.id, agentId, channelType, userId },
+        "Session reconnected",
+      );
+
+      return existingPreferredSession;
+    }
+
     const session: Session = {
-      id: nanoid(),
+      id: preferredSessionId ?? nanoid(),
       channelType,
       channelId: agentId,
       userId,
