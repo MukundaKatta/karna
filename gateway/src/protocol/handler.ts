@@ -39,7 +39,6 @@ const ACCESS_CONTROLLED_CHANNELS = new Set([
   "sms",
   "teams",
   "telegram",
-  "webchat",
   "whatsapp",
 ]);
 
