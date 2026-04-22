@@ -374,6 +374,7 @@ export class TelegramAdapter {
         this.logger.info("Connected to gateway");
         this.reconnectAttempts = 0;
         this.startHeartbeat();
+        this.reregisterSessions();
         resolve();
       });
 
@@ -660,6 +661,30 @@ export class TelegramAdapter {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+  }
+
+  private reregisterSessions(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    for (const [chatId, sessionId] of this.sessionMap.entries()) {
+      const connectMsg: ProtocolMessage = {
+        id: randomUUID(),
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId,
+        payload: {
+          channelType: "telegram",
+          channelId: String(chatId),
+          metadata: { chatId },
+        },
+      };
+
+      this.ws.send(JSON.stringify(connectMsg));
+    }
+
+    if (this.sessionMap.size > 0) {
+      this.logger.info({ sessionCount: this.sessionMap.size }, "Re-registered Telegram sessions");
     }
   }
 

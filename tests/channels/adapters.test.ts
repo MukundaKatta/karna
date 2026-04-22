@@ -165,6 +165,21 @@ describe("Channel Adapters — Structure & Protocol Compliance", () => {
         ).toBeTruthy();
       }
     });
+
+    it("all channels can re-register active sessions after reconnect", () => {
+      for (const channel of CHANNELS) {
+        const adapterPath =
+          channel === "webchat"
+            ? join(KARNA_ROOT, "channels", channel, "src", "server.ts")
+            : join(KARNA_ROOT, "channels", channel, "src", "adapter.ts");
+        const src = readFileSync(adapterPath, "utf-8");
+
+        expect(
+          src.match(/reregister/i),
+          `${channel} should restore active sessions when the gateway reconnects`,
+        ).toBeTruthy();
+      }
+    });
   });
 });
 

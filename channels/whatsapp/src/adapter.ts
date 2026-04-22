@@ -339,6 +339,7 @@ export class WhatsAppAdapter {
         this.logger.info("Connected to gateway");
         this.reconnectAttempts = 0;
         this.startHeartbeat();
+        this.reregisterSessions();
         resolve();
       });
 
@@ -573,6 +574,30 @@ export class WhatsAppAdapter {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+  }
+
+  private reregisterSessions(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    for (const [jid, sessionId] of this.sessionMap.entries()) {
+      const connectMsg: ProtocolMessage = {
+        id: randomUUID(),
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId,
+        payload: {
+          channelType: "whatsapp",
+          channelId: jid,
+          metadata: this.createFallbackRoutingMetadata(jid),
+        },
+      };
+
+      this.ws.send(JSON.stringify(connectMsg));
+    }
+
+    if (this.sessionMap.size > 0) {
+      this.logger.info({ sessionCount: this.sessionMap.size }, "Re-registered WhatsApp sessions");
     }
   }
 

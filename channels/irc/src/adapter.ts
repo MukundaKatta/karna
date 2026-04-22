@@ -370,6 +370,7 @@ export class IrcAdapter {
         this.logger.info("Connected to gateway");
         this.reconnectAttempts = 0;
         this.startHeartbeat();
+        this.reregisterSessions();
         resolve();
       });
 
@@ -621,6 +622,37 @@ export class IrcAdapter {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+  }
+
+  private reregisterSessions(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    for (const [sessionKey, sessionId] of this.sessionMap.entries()) {
+      const separatorIndex = sessionKey.indexOf("!");
+      const replyTarget =
+        separatorIndex === -1 ? sessionKey : sessionKey.slice(separatorIndex + 1);
+
+      const connectMsg: ProtocolMessage = {
+        id: randomUUID(),
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId,
+        payload: {
+          channelType: "irc",
+          channelId: sessionKey,
+          metadata: {
+            replyTarget,
+            server: this.config.server,
+          },
+        },
+      };
+
+      this.ws.send(JSON.stringify(connectMsg));
+    }
+
+    if (this.sessionMap.size > 0) {
+      this.logger.info({ sessionCount: this.sessionMap.size }, "Re-registered IRC sessions");
     }
   }
 

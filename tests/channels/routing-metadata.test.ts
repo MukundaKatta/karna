@@ -3,6 +3,12 @@ import { LineAdapter } from "../../channels/line/src/adapter.js";
 import { MatrixAdapter } from "../../channels/matrix/src/adapter.js";
 import { GoogleChatAdapter } from "../../channels/google-chat/src/adapter.js";
 import { WebChatServer } from "../../channels/webchat/src/server.js";
+import { SlackAdapter } from "../../channels/slack/src/adapter.js";
+import { DiscordAdapter } from "../../channels/discord/src/adapter.js";
+import { TelegramAdapter } from "../../channels/telegram/src/adapter.js";
+import { WhatsAppAdapter } from "../../channels/whatsapp/src/adapter.js";
+import { SignalAdapter } from "../../channels/signal/src/adapter.js";
+import { SMSAdapter } from "../../channels/sms/src/adapter.js";
 
 function createGatewaySocket() {
   const sent: Record<string, unknown>[] = [];
@@ -236,6 +242,167 @@ describe("channel routing metadata", () => {
       payload: {
         channelType: "webchat",
         channelId: "client-1",
+      },
+    });
+  });
+
+  it("re-registers active Slack sessions when the gateway reconnects", () => {
+    const adapter = new SlackAdapter({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+      signingSecret: "secret",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+    (adapter as any).sessionMap.set("C123:thread-1", {
+      sessionId: "session-1",
+      threadTs: "thread-1",
+    });
+
+    (adapter as any).reregisterSessions();
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "slack",
+        channelId: "C123",
+        metadata: {
+          channel: "C123",
+          threadTs: "thread-1",
+        },
+      },
+    });
+  });
+
+  it("re-registers active Discord sessions when the gateway reconnects", () => {
+    const adapter = new DiscordAdapter({
+      botToken: "discord-token",
+      clientId: "client-id",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+    (adapter as any).sessionMap.set("channel-1", "session-1");
+
+    (adapter as any).reregisterSessions();
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "discord",
+        channelId: "channel-1",
+        metadata: { channelId: "channel-1" },
+      },
+    });
+  });
+
+  it("re-registers active Telegram sessions when the gateway reconnects", () => {
+    const adapter = new TelegramAdapter({
+      botToken: "123456:telegram-test-token",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+    (adapter as any).sessionMap.set(123456789, "session-1");
+
+    (adapter as any).reregisterSessions();
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "telegram",
+        channelId: "123456789",
+        metadata: { chatId: 123456789 },
+      },
+    });
+  });
+
+  it("re-registers active WhatsApp sessions when the gateway reconnects", () => {
+    const adapter = new WhatsAppAdapter({
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+    (adapter as any).sessionMap.set("15551234567@s.whatsapp.net", "session-1");
+
+    (adapter as any).reregisterSessions();
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "whatsapp",
+        channelId: "15551234567@s.whatsapp.net",
+        metadata: {
+          jid: "15551234567@s.whatsapp.net",
+          conversationType: "dm",
+          isDirectMessage: true,
+        },
+      },
+    });
+  });
+
+  it("re-registers active Signal sessions when the gateway reconnects", () => {
+    const adapter = new SignalAdapter({
+      signalApiUrl: "http://localhost:8080",
+      signalNumber: "+15557654321",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+    (adapter as any).sessionMap.set("+15551234567", "session-1");
+
+    (adapter as any).reregisterSessions();
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "signal",
+        channelId: "+15551234567",
+        metadata: {
+          phoneNumber: "+15551234567",
+          conversationType: "dm",
+          isDirectMessage: true,
+        },
+      },
+    });
+  });
+
+  it("re-registers active SMS sessions when the gateway reconnects", () => {
+    const adapter = new SMSAdapter({
+      accountSid: "AC123",
+      authToken: "token",
+      phoneNumber: "+15550000000",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+    (adapter as any).sessionMap.set("+15551234567", "session-1");
+
+    (adapter as any).reregisterSessions();
+
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "sms",
+        channelId: "+15551234567",
+        metadata: {
+          phoneNumber: "+15551234567",
+          conversationType: "dm",
+          isDirectMessage: true,
+        },
       },
     });
   });
