@@ -6,7 +6,7 @@ const OPENAPI_SPEC = {
     title: "Karna Gateway API",
     version: "0.1.0",
     description:
-      "REST API for the Karna AI Agent Platform gateway. Covers health, metrics, session operations, access control, memory, analytics, activity, and API docs.",
+      "REST API for the Karna AI Agent Platform gateway. Covers health, metrics, session operations, access control, memory, analytics, activity, traces, and API docs.",
   },
   servers: [
     { url: "http://localhost:18789", description: "Local development" },
@@ -18,6 +18,7 @@ const OPENAPI_SPEC = {
     { name: "Memory", description: "Agent memory storage and retrieval" },
     { name: "Analytics", description: "Aggregated usage analytics" },
     { name: "Activity", description: "Audit-backed operator activity feed" },
+    { name: "Traces", description: "Recent agent-turn traces, spans, and latency diagnostics" },
     { name: "Docs", description: "OpenAPI specification and Swagger UI" },
   ],
   paths: {
@@ -72,6 +73,52 @@ const OPENAPI_SPEC = {
         responses: {
           "200": { description: "Filtered activity events" },
           "400": { description: "Invalid activity filters" },
+        },
+      },
+    },
+    "/api/traces": {
+      get: {
+        tags: ["Traces"],
+        summary: "List recent traces",
+        parameters: [
+          queryParam("sessionId", "string", "Filter by session id"),
+          queryParam("agentId", "string", "Filter by agent id"),
+          queryParam("limit", "integer", "Maximum number of traces to return"),
+          queryParam("offset", "integer", "Offset into the trace list"),
+          queryParam("since", "integer", "Only return traces since this timestamp"),
+          queryParam("minDurationMs", "integer", "Only return traces at or above this duration"),
+          queryParam("success", "boolean", "Filter completed traces by success value"),
+          queryParam("includeActive", "boolean", "Include active in-flight traces"),
+          queryParam("hasErrors", "boolean", "Only return traces with top-level or span errors"),
+          queryParam("toolName", "string", "Filter traces that include a matching tool span"),
+        ],
+        responses: {
+          "200": { description: "Filtered trace list" },
+          "400": { description: "Invalid trace filters" },
+        },
+      },
+    },
+    "/api/traces/stats": {
+      get: {
+        tags: ["Traces"],
+        summary: "Trace latency and reliability stats",
+        parameters: [
+          queryParam("periodMs", "integer", "Stats window in milliseconds"),
+        ],
+        responses: {
+          "200": { description: "Trace stats payload" },
+          "400": { description: "Invalid period" },
+        },
+      },
+    },
+    "/api/traces/{traceId}": {
+      get: {
+        tags: ["Traces"],
+        summary: "Get a single trace",
+        parameters: [pathParam("traceId", "Trace id")],
+        responses: {
+          "200": { description: "Trace detail" },
+          "404": { description: "Trace not found" },
         },
       },
     },

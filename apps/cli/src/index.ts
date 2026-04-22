@@ -13,6 +13,7 @@ import { registerAgentsCommand } from "./commands/agents.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerAccessCommand } from "./commands/access.js";
 import { registerSessionsCommand } from "./commands/sessions.js";
+import { registerTracesCommand } from "./commands/traces.js";
 
 // ─── Version ────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   registerDoctorCommand(program);
   registerAccessCommand(program);
   registerSessionsCommand(program);
+  registerTracesCommand(program);
 
   // Logs command (simple shortcut)
   program

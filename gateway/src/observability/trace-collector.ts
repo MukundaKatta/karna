@@ -63,6 +63,24 @@ export interface TraceStats {
   tracesPerMinute: number;
 }
 
+export interface TraceQueryOptions {
+  sessionId?: string;
+  agentId?: string;
+  limit?: number;
+  offset?: number;
+  since?: number;
+  includeActive?: boolean;
+  success?: boolean;
+  minDurationMs?: number;
+  hasErrors?: boolean;
+  toolName?: string;
+}
+
+export interface TraceQueryResult {
+  traces: Trace[];
+  total: number;
+}
+
 /**
  * Collects and stores structured traces for agent operations.
  * Uses an in-memory ring buffer with optional persistence.
@@ -78,7 +96,7 @@ export class TraceCollector {
 
   // ─── Trace Lifecycle ─────────────────────────────────────────────────
 
-  startTrace(sessionId: string, agentId: string): string {
+  startTrace(sessionId: string, agentId = "pending"): string {
     const traceId = randomUUID();
     const trace: Trace = {
       traceId,
@@ -100,6 +118,7 @@ export class TraceCollector {
 
   endTrace(traceId: string, result: {
     success: boolean;
+    agentId?: string;
     model: string;
     inputTokens: number;
     outputTokens: number;
@@ -112,6 +131,9 @@ export class TraceCollector {
     trace.endedAt = Date.now();
     trace.durationMs = trace.endedAt - trace.startedAt;
     trace.success = result.success;
+    if (result.agentId) {
+      trace.agentId = result.agentId;
+    }
     trace.model = result.model;
     trace.inputTokens = result.inputTokens;
     trace.outputTokens = result.outputTokens;
@@ -207,24 +229,49 @@ export class TraceCollector {
     return this.traces.find((t) => t.traceId === traceId) ?? this.activeTraces.get(traceId);
   }
 
-  getTraces(options?: {
-    sessionId?: string;
-    agentId?: string;
-    limit?: number;
-    offset?: number;
-    since?: number;
-  }): Trace[] {
-    let result = [...this.traces];
+  getTraces(options?: TraceQueryOptions): Trace[] {
+    return this.queryTraces(options).traces;
+  }
 
-    if (options?.sessionId) result = result.filter((t) => t.sessionId === options.sessionId);
-    if (options?.agentId) result = result.filter((t) => t.agentId === options.agentId);
-    if (options?.since) result = result.filter((t) => t.startedAt >= options.since!);
+  queryTraces(options: TraceQueryOptions = {}): TraceQueryResult {
+    let result = [
+      ...this.traces,
+      ...(options.includeActive ? Array.from(this.activeTraces.values()) : []),
+    ];
+
+    if (options.sessionId) result = result.filter((t) => t.sessionId === options.sessionId);
+    if (options.agentId) result = result.filter((t) => t.agentId === options.agentId);
+    if (options.since !== undefined) {
+      const since = options.since;
+      result = result.filter((t) => t.startedAt >= since);
+    }
+    if (typeof options.success === "boolean") {
+      result = result.filter((t) => t.endedAt !== undefined && t.success === options.success);
+    }
+    if (typeof options.minDurationMs === "number") {
+      const minDurationMs = options.minDurationMs;
+      result = result.filter((t) => this.resolveDurationMs(t) >= minDurationMs);
+    }
+    if (options.hasErrors) {
+      result = result.filter(
+        (t) => !t.success || t.spans.some((span) => span.status === "error"),
+      );
+    }
+    if (options.toolName) {
+      result = result.filter((t) =>
+        t.spans.some((span) => span.kind === "tool" && span.name === options.toolName),
+      );
+    }
 
     result.sort((a, b) => b.startedAt - a.startedAt);
+    const total = result.length;
 
-    const offset = options?.offset ?? 0;
-    const limit = options?.limit ?? 50;
-    return result.slice(offset, offset + limit);
+    const offset = options.offset ?? 0;
+    const limit = options.limit ?? 50;
+    return {
+      traces: result.slice(offset, offset + limit),
+      total,
+    };
   }
 
   getStats(periodMs = 3600000): TraceStats {
@@ -288,5 +335,13 @@ export class TraceCollector {
 
   get activeCount(): number {
     return this.activeTraces.size;
+  }
+
+  private resolveDurationMs(trace: Trace): number {
+    if (typeof trace.durationMs === "number") {
+      return trace.durationMs;
+    }
+
+    return Math.max(0, Date.now() - trace.startedAt);
   }
 }

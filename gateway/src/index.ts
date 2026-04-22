@@ -20,7 +20,9 @@ import { registerAccessRoutes } from "./routes/access.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerActivityRoutes } from "./routes/activity.js";
 import { registerOpenApiRoutes } from "./routes/openapi.js";
+import { registerTraceRoutes } from "./routes/traces.js";
 import { AuditLogger } from "./audit/logger.js";
+import { TraceCollector } from "./observability/trace-collector.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -63,6 +65,7 @@ async function main(): Promise<void> {
     storagePath: join(homedir(), ".karna", "access", "policies.json"),
   });
   const auditLogger = new AuditLogger();
+  const traceCollector = new TraceCollector();
 
   if (
     config.memory.enabled &&
@@ -190,8 +193,9 @@ async function main(): Promise<void> {
 
   registerMemoryRoutes(server, memoryStore);
   registerAccessRoutes(server, accessPolicies);
-  registerSessionRoutes(server, sessionManager, auditLogger);
+  registerSessionRoutes(server, sessionManager, auditLogger, traceCollector);
   registerActivityRoutes(server, auditLogger);
+  registerTraceRoutes(server, traceCollector);
   registerOpenApiRoutes(server);
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
@@ -208,6 +212,7 @@ async function main(): Promise<void> {
       accessPolicies,
       connectedClients,
       auditLogger,
+      traceCollector,
     };
 
     socket.on("message", (rawData: Buffer | string) => {

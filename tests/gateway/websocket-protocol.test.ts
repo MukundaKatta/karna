@@ -17,6 +17,7 @@ import {
 } from "../../gateway/src/protocol/handler.js";
 import { createAuthContext } from "../../gateway/src/protocol/auth.js";
 import { appendToTranscript, readTranscript } from "../../gateway/src/session/store.js";
+import { TraceCollector } from "../../gateway/src/observability/trace-collector.js";
 
 vi.mock("../../gateway/src/session/store.js", () => ({
   appendToTranscript: vi.fn().mockResolvedValue(undefined),
@@ -44,6 +45,7 @@ function createContext(overrides?: Partial<ConnectionContext>): ConnectionContex
     heartbeatScheduler: overrides?.heartbeatScheduler ?? ({ stopAll() {} } as never),
     accessPolicies: overrides?.accessPolicies ?? new AccessPolicyManager({ storagePath: false }),
     connectedClients: overrides?.connectedClients ?? new Map(),
+    traceCollector: overrides?.traceCollector,
   };
 }
 
@@ -185,7 +187,8 @@ describe("gateway websocket protocol", () => {
 
   it("routes authenticated chat messages through the orchestrator and streams results", async () => {
     const ws = createSocket();
-    const context = createContext({ ws: ws as never });
+    const traceCollector = new TraceCollector();
+    const context = createContext({ ws: ws as never, traceCollector });
     const session = context.sessionManager.createSession("agent-1", "webchat", "user-1");
     context.auth = createAuthContext("device-1", "operator", "token");
 
@@ -261,6 +264,12 @@ describe("gateway websocket protocol", () => {
 
     expect(appendToTranscript).toHaveBeenCalledTimes(2);
     expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
+
+    const traces = traceCollector.getTraces();
+    expect(traces).toHaveLength(1);
+    expect(traces[0]?.sessionId).toBe(session.id);
+    expect(traces[0]?.agentId).toBe("karna-coder");
+    expect(traces[0]?.spans.some((span) => span.kind === "model")).toBe(true);
   });
 
   it("gates external DMs with a pairing code before running the agent", async () => {

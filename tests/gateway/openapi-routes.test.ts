@@ -21,6 +21,8 @@ describe("openapi routes", () => {
     const spec = response.json();
     expect(spec.openapi).toBe("3.1.0");
     expect(spec.paths["/api/activity"]).toBeDefined();
+    expect(spec.paths["/api/traces"]).toBeDefined();
+    expect(spec.paths["/api/traces/stats"]).toBeDefined();
     expect(spec.paths["/api/sessions/{sessionId}/history"]).toBeDefined();
     expect(spec.paths["/api/sessions/{sessionId}/message"]).toBeDefined();
     expect(spec.paths["/api/access/policies/{channel}/pairings/approve"]).toBeDefined();

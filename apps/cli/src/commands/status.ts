@@ -3,6 +3,7 @@ import chalk from "chalk";
 import ora from "ora";
 import { loadConfig, resolveGatewayHttpUrl } from "../lib/config.js";
 import { fetchSessionSummary } from "../lib/sessions.js";
+import { fetchTraceStats } from "../lib/traces.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,15 @@ async function showStatus(options: { gateway?: string }): Promise<void> {
     } catch {
       // Keep status output resilient even if the operator API is unavailable.
     }
+
+    try {
+      const traceStats = await fetchTraceStats(gatewayUrl, 3_600_000);
+      console.log(
+        chalk.dim("  Traces:       ") + formatTraceHealth(traceStats),
+      );
+    } catch {
+      // Keep status output resilient even if trace APIs are unavailable.
+    }
   } catch {
     spinner.fail("Gateway is not reachable");
     console.log(
@@ -166,4 +176,22 @@ function formatCounts(counts: Record<string, number>): string {
     .filter(([, count]) => count > 0)
     .map(([name, count]) => `${name}=${count}`)
     .join(", ");
+}
+
+function formatTraceHealth(
+  stats: Awaited<ReturnType<typeof fetchTraceStats>>,
+): string {
+  const parts = [
+    `${stats.stats.totalTraces} recent`,
+    `${stats.activeTraces} active`,
+    `p95 ${formatLatency(stats.stats.p95DurationMs)}`,
+    `${(stats.stats.errorRate * 100).toFixed(1)}% errors`,
+  ];
+
+  return parts.join(", ");
+}
+
+function formatLatency(durationMs: number): string {
+  if (durationMs < 1000) return `${Math.round(durationMs)}ms`;
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }

@@ -26,6 +26,7 @@ import type { AgentDefinition, DelegationRecord } from "@karna/shared/types/orch
 import type { Session } from "@karna/shared/types/session.js";
 import type { AccessPolicyManager } from "../access/policies.js";
 import type { AuditLogger } from "../audit/logger.js";
+import type { TraceCollector } from "../observability/trace-collector.js";
 
 const logger = pino({ name: "message-handler" });
 const ACCESS_CONTROLLED_CHANNELS = new Set([
@@ -165,6 +166,7 @@ export interface ConnectionContext {
   accessPolicies: AccessPolicyManager;
   connectedClients: Map<string, ConnectedClient>;
   auditLogger?: AuditLogger;
+  traceCollector?: TraceCollector;
 }
 
 export interface ConnectedClient {
@@ -183,6 +185,7 @@ interface ChatRoutingContext {
 
 export interface SessionTurnExecutionOptions {
   historyLimit?: number;
+  traceCollector?: TraceCollector;
   streamCallback?: StreamCallback;
   approvalCallback?: (request: { toolCallId: string }) => Promise<{
     toolCallId: string;
@@ -228,22 +231,117 @@ export async function runSessionTurn(
   delegations: DelegationRecord[];
   activeAgentCount: number;
 }> {
+  const traceId = options.traceCollector?.startTrace(session.id);
+  const historySpanId = traceId
+    ? options.traceCollector?.startSpan(traceId, "load-history", "context")
+    : "";
   const orch = await getOrCreateOrchestrator();
   const history = await readTranscript(session.id, options.historyLimit ?? 50);
+  if (traceId && historySpanId) {
+    options.traceCollector?.endSpan(traceId, historySpanId, {
+      historyMessages: history.length,
+    });
+  }
 
-  orch.setStreamCallback(options.streamCallback ?? (() => {}));
+  const modelSpanId = traceId
+    ? options.traceCollector?.startSpan(traceId, "agent-turn", "model")
+    : "";
+  const toolSpanIds = new Map<string, string>();
+
+  orch.setStreamCallback((event) => {
+    if (traceId && modelSpanId) {
+      switch (event.type) {
+        case "tool_use": {
+          const toolSpanId = options.traceCollector?.startSpan(
+            traceId,
+            event.name,
+            "tool",
+            modelSpanId,
+          );
+          if (toolSpanId) {
+            toolSpanIds.set(event.id, toolSpanId);
+            options.traceCollector?.addSpanEvent(traceId, toolSpanId, "requested", {
+              toolCallId: event.id,
+            });
+            options.traceCollector?.endSpan(traceId, toolSpanId, {
+              toolCallId: event.id,
+              requested: true,
+            });
+          }
+          break;
+        }
+        case "usage":
+          options.traceCollector?.addSpanEvent(traceId, modelSpanId, "usage", {
+            inputTokens: event.inputTokens,
+            outputTokens: event.outputTokens,
+          });
+          break;
+        case "done":
+          options.traceCollector?.addSpanEvent(traceId, modelSpanId, "stream.complete");
+          break;
+      }
+    }
+
+    options.streamCallback?.(event);
+  });
   orch.setDelegationCallback(options.delegationCallback ?? (() => {}));
   orch.setApprovalCallback(
-    options.approvalCallback
-      ?? (async (request) => ({
-        toolCallId: request.toolCallId,
-        approved: false,
-        reason: "Injected session turns cannot request tool approval",
-        respondedAt: Date.now(),
-      })),
+    async (request) => {
+      const result = await (
+        options.approvalCallback
+          ?? (async (pendingRequest) => ({
+            toolCallId: pendingRequest.toolCallId,
+            approved: false,
+            reason: "Injected session turns cannot request tool approval",
+            respondedAt: Date.now(),
+          }))
+      )(request);
+
+      if (traceId) {
+        const toolSpanId = toolSpanIds.get(request.toolCallId);
+        if (toolSpanId) {
+          options.traceCollector?.addSpanEvent(
+            traceId,
+            toolSpanId,
+            result.approved ? "approved" : "rejected",
+            {
+              toolCallId: request.toolCallId,
+            },
+          );
+          if (!result.approved) {
+            options.traceCollector?.setSpanError(
+              traceId,
+              toolSpanId,
+              result.reason ?? "Tool request rejected",
+            );
+          }
+        }
+      }
+
+      return result;
+    },
   );
 
-  const result = await orch.handleMessage(session, content, history);
+  let result: Awaited<ReturnType<OrchestratorLike["handleMessage"]>>;
+  try {
+    result = await orch.handleMessage(session, content, history);
+  } catch (error) {
+    if (traceId && modelSpanId) {
+      options.traceCollector?.setSpanError(traceId, modelSpanId, String(error));
+      options.traceCollector?.endSpan(traceId, modelSpanId, {
+        historyMessages: history.length,
+      });
+      options.traceCollector?.endTrace(traceId, {
+        success: false,
+        model: "",
+        inputTokens: 0,
+        outputTokens: 0,
+        error: String(error),
+      });
+    }
+
+    throw error;
+  }
 
   if (result.success) {
     await appendToTranscript(session.id, {
@@ -265,6 +363,33 @@ export async function runSessionTurn(
       result.totalTokens.outputTokens,
       0,
     );
+  }
+
+  if (traceId && modelSpanId) {
+    if (!result.success && result.error) {
+      options.traceCollector?.setSpanError(traceId, modelSpanId, result.error);
+    }
+    if (result.delegations.length > 0) {
+      options.traceCollector?.addSpanEvent(traceId, modelSpanId, "delegations", {
+        count: result.delegations.length,
+      });
+    }
+    options.traceCollector?.endSpan(traceId, modelSpanId, {
+      agentId: result.agentId,
+      historyMessages: history.length,
+      delegationCount: result.delegations.length,
+      inputTokens: result.totalTokens.inputTokens,
+      outputTokens: result.totalTokens.outputTokens,
+      success: result.success,
+    });
+    options.traceCollector?.endTrace(traceId, {
+      success: result.success,
+      agentId: result.agentId,
+      model: "",
+      inputTokens: result.totalTokens.inputTokens,
+      outputTokens: result.totalTokens.outputTokens,
+      error: result.error,
+    });
   }
 
   return {
@@ -586,6 +711,7 @@ async function handleChatMessage(
     };
     const result = await runSessionTurn(session, content, context, {
       historyLimit: 50,
+      traceCollector: context.traceCollector,
       streamCallback,
       approvalCallback: async (request) => {
         return new Promise((resolve) => {
@@ -785,8 +911,45 @@ async function handleSkillInvoke(
     }
 
     const skillPrompt = `[Skill Invocation] Execute skill "${skillId}" with action "${action}". Parameters: ${JSON.stringify(parameters ?? {})}`;
+    const traceId = context.traceCollector?.startTrace(session.id);
+    const skillSpanId = traceId
+      ? context.traceCollector?.startSpan(traceId, `${skillId}:${action}`, "skill")
+      : "";
+    let result: Awaited<ReturnType<OrchestratorLike["handleMessage"]>>;
+    try {
+      result = await orch.handleMessage(session, skillPrompt, []);
+    } catch (error) {
+      if (traceId && skillSpanId) {
+        context.traceCollector?.setSpanError(traceId, skillSpanId, String(error));
+        context.traceCollector?.endSpan(traceId, skillSpanId, { success: false });
+        context.traceCollector?.endTrace(traceId, {
+          success: false,
+          model: "",
+          inputTokens: 0,
+          outputTokens: 0,
+          error: String(error),
+        });
+      }
+      throw error;
+    }
 
-    const result = await orch.handleMessage(session, skillPrompt, []);
+    if (traceId && skillSpanId) {
+      if (!result.success && result.error) {
+        context.traceCollector?.setSpanError(traceId, skillSpanId, result.error);
+      }
+      context.traceCollector?.endSpan(traceId, skillSpanId, {
+        agentId: result.agentId,
+        success: result.success,
+      });
+      context.traceCollector?.endTrace(traceId, {
+        success: result.success,
+        agentId: result.agentId,
+        model: "",
+        inputTokens: result.totalTokens.inputTokens,
+        outputTokens: result.totalTokens.outputTokens,
+        error: result.error,
+      });
+    }
 
     sendMessage(ws, {
       id: nanoid(),

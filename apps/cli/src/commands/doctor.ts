@@ -7,6 +7,7 @@ import {
 } from "../lib/access-policies.js";
 import { loadConfigWithStatus, resolveGatewayHttpUrl } from "../lib/config.js";
 import { fetchSessionSummary } from "../lib/sessions.js";
+import { fetchTraceStats } from "../lib/traces.js";
 
 type CheckStatus = "pass" | "fail" | "warn";
 
@@ -41,6 +42,7 @@ async function runDoctor(): Promise<void> {
   results.push(checkAccessPolicies(loadedConfig, loadedPolicies));
   results.push(await checkGatewayReachability());
   results.push(await checkSessionHealth());
+  results.push(await checkObservability());
   results.push(await checkPnpmAvailable());
 
   let passCount = 0;
@@ -383,6 +385,55 @@ async function checkPnpmAvailable(): Promise<CheckResult> {
       status: "warn",
       message: "Not found",
       detail: "Install with: npm install -g pnpm",
+    };
+  }
+}
+
+async function checkObservability(): Promise<CheckResult> {
+  const gatewayUrl = await resolveGatewayHttpUrl();
+
+  try {
+    const traceStats = await fetchTraceStats(gatewayUrl, 3_600_000);
+
+    if (traceStats.activeTraces > 10) {
+      return {
+        name: "Observability",
+        status: "warn",
+        message: `${traceStats.activeTraces} traces are still active`,
+        detail: "Run 'karna traces failures' or 'karna traces list --active' to inspect stuck turns.",
+      };
+    }
+
+    if (traceStats.stats.errorRate > 0.2) {
+      return {
+        name: "Observability",
+        status: "warn",
+        message: `High recent error rate (${(traceStats.stats.errorRate * 100).toFixed(1)}%)`,
+        detail: "Run 'karna traces failures' to inspect recent failed turns.",
+      };
+    }
+
+    if (traceStats.stats.totalTraces === 0) {
+      return {
+        name: "Observability",
+        status: "warn",
+        message: "No recent traces captured",
+        detail: "Send a test message, then run 'karna traces stats' to verify trace capture.",
+      };
+    }
+
+    return {
+      name: "Observability",
+      status: "pass",
+      message: `${traceStats.stats.totalTraces} recent traces, p95 ${Math.round(traceStats.stats.p95DurationMs)}ms`,
+      detail: `${(traceStats.stats.errorRate * 100).toFixed(1)}% errors, ${(traceStats.stats.toolSuccessRate * 100).toFixed(1)}% tool success`,
+    };
+  } catch {
+    return {
+      name: "Observability",
+      status: "warn",
+      message: "Trace API unavailable",
+      detail: `Start the gateway to enable trace diagnostics (expected ${gatewayUrl})`,
     };
   }
 }

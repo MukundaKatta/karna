@@ -3,6 +3,7 @@ import { nanoid } from "nanoid";
 import { SessionStatusSchema, type SessionStatus } from "@karna/shared/types/session.js";
 import { SessionManager, type SessionFilter } from "../session/manager.js";
 import type { AuditLogger } from "../audit/logger.js";
+import type { TraceCollector } from "../observability/trace-collector.js";
 import {
   appendToTranscript,
   deleteTranscript,
@@ -44,6 +45,7 @@ export function registerSessionRoutes(
   app: FastifyInstance,
   sessionManager: SessionManager,
   auditLogger?: AuditLogger,
+  traceCollector?: TraceCollector,
 ): void {
   app.get<{ Querystring: SessionQuerystring }>("/api/sessions", async (request, reply) => {
     const parsed = parseSessionQuery(request.query);
@@ -158,6 +160,7 @@ export function registerSessionRoutes(
       const prompt = role === "system" ? `[System message] ${content}` : content;
       const result = await runSessionTurn(session, prompt, { sessionManager }, {
         historyLimit: 50,
+        traceCollector,
       });
 
       if (!result.success) {
