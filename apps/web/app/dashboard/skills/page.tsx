@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Puzzle, Search, Power, Info, Tag } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Puzzle, Search, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
@@ -14,156 +14,91 @@ interface Skill {
   enabled: boolean;
   category?: string;
   author?: string;
-  triggers: Array<{ type: string; value: string; description?: string }>;
-  actions: Array<{ name: string; description: string }>;
+  triggers: number;
+  actions: number;
   tags: string[];
+  source: "builtin" | "community";
 }
 
-const demoSkills: Skill[] = [
-  {
-    id: "code-review",
-    name: "Code Review",
-    description: "Automated code review with best practices checking, security analysis, and improvement suggestions.",
-    version: "1.2.0",
-    enabled: true,
-    category: "Development",
-    author: "Karna Core",
-    triggers: [
-      { type: "command", value: "/review", description: "Trigger via /review command" },
-      { type: "pattern", value: "review (this|my) code", description: "Natural language trigger" },
-    ],
-    actions: [
-      { name: "analyze", description: "Analyze code for issues" },
-      { name: "suggest", description: "Generate improvement suggestions" },
-    ],
-    tags: ["code", "review", "quality"],
-  },
-  {
-    id: "web-research",
-    name: "Web Research",
-    description: "Search the web, scrape pages, and synthesize information into comprehensive reports.",
-    version: "1.0.3",
-    enabled: true,
-    category: "Research",
-    author: "Karna Core",
-    triggers: [
-      { type: "command", value: "/research", description: "Trigger via /research command" },
-      { type: "pattern", value: "research|look up|find out", description: "Natural language trigger" },
-    ],
-    actions: [
-      { name: "search", description: "Search the web" },
-      { name: "summarize", description: "Summarize findings" },
-    ],
-    tags: ["web", "research", "search"],
-  },
-  {
-    id: "file-manager",
-    name: "File Manager",
-    description: "Read, write, and manage files with safety checks and rollback support.",
-    version: "2.0.1",
-    enabled: true,
-    category: "System",
-    author: "Karna Core",
-    triggers: [
-      { type: "command", value: "/files", description: "Trigger via /files command" },
-      { type: "event", value: "file.requested", description: "Auto-trigger on file operations" },
-    ],
-    actions: [
-      { name: "read", description: "Read file contents" },
-      { name: "write", description: "Write to file" },
-      { name: "list", description: "List directory contents" },
-    ],
-    tags: ["files", "system", "io"],
-  },
-  {
-    id: "task-planner",
-    name: "Task Planner",
-    description: "Break down complex tasks into manageable steps and track progress.",
-    version: "0.9.0",
-    enabled: false,
-    category: "Productivity",
-    author: "Community",
-    triggers: [
-      { type: "command", value: "/plan", description: "Trigger via /plan command" },
-    ],
-    actions: [
-      { name: "create_plan", description: "Create a task plan" },
-      { name: "update_status", description: "Update task status" },
-    ],
-    tags: ["tasks", "planning", "productivity"],
-  },
-  {
-    id: "memory-manager",
-    name: "Memory Manager",
-    description: "Store, query, and manage long-term memory entries for persistent context.",
-    version: "1.1.0",
-    enabled: true,
-    category: "System",
-    author: "Karna Core",
-    triggers: [
-      { type: "command", value: "/remember", description: "Store a memory" },
-      { type: "command", value: "/recall", description: "Query memories" },
-      { type: "event", value: "session.end", description: "Auto-summarize on session end" },
-    ],
-    actions: [
-      { name: "store", description: "Store a new memory" },
-      { name: "query", description: "Search memories" },
-      { name: "forget", description: "Remove a memory" },
-    ],
-    tags: ["memory", "context", "persistence"],
-  },
-  {
-    id: "git-ops",
-    name: "Git Operations",
-    description: "Manage git repositories: commits, branches, diffs, and pull requests.",
-    version: "1.3.0",
-    enabled: false,
-    category: "Development",
-    author: "Community",
-    triggers: [
-      { type: "command", value: "/git", description: "Trigger via /git command" },
-    ],
-    actions: [
-      { name: "status", description: "Show git status" },
-      { name: "commit", description: "Create a commit" },
-      { name: "diff", description: "Show changes" },
-    ],
-    tags: ["git", "vcs", "development"],
-  },
-];
-
 export default function SkillsPage() {
-  const [skills, setSkills] = useState<Skill[]>(demoSkills);
+  const [skills, setSkills] = useState<Skill[]>([]);
   const [search, setSearch] = useState("");
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const categories = [...new Set(skills.map((s) => s.category).filter(Boolean))];
+  useEffect(() => {
+    let cancelled = false;
 
-  const filtered = skills.filter((s) => {
-    if (categoryFilter && s.category !== categoryFilter) return false;
-    if (search) {
-      const q = search.toLowerCase();
-      return (
-        s.name.toLowerCase().includes(q) ||
-        s.description.toLowerCase().includes(q) ||
-        s.tags.some((t) => t.includes(q))
-      );
+    async function fetchSkills() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const response = await fetch("/api/skills", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Skill request failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as { skills?: Skill[] };
+        if (cancelled) return;
+        setSkills(payload.skills ?? []);
+      } catch (fetchError) {
+        if (cancelled) return;
+        setSkills([]);
+        setError(
+          fetchError instanceof Error ? fetchError.message : "Failed to load live skill catalog",
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
     }
-    return true;
-  });
 
-  const toggleSkill = (id: string) => {
-    setSkills(
-      skills.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s)),
-    );
-  };
+    fetchSkills();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const categories = useMemo(
+    () => [...new Set(skills.map((skill) => skill.category).filter(Boolean))] as string[],
+    [skills],
+  );
+
+  const filtered = useMemo(
+    () =>
+      skills.filter((skill) => {
+        if (categoryFilter && skill.category !== categoryFilter) return false;
+        if (sourceFilter && skill.source !== sourceFilter) return false;
+        if (search) {
+          const query = search.toLowerCase();
+          return (
+            skill.name.toLowerCase().includes(query) ||
+            skill.description.toLowerCase().includes(query) ||
+            skill.tags.some((tag) => tag.toLowerCase().includes(query))
+          );
+        }
+        return true;
+      }),
+    [categoryFilter, search, skills, sourceFilter],
+  );
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
+      {error && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+          {error}
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-semibold text-white">Skills</h1>
-        <p className="text-sm text-dark-400 mt-1">Browse and manage installed skills</p>
+        <p className="text-sm text-dark-400 mt-1">Browse the live installed skill catalog</p>
       </div>
 
       {/* Filters */}
@@ -188,72 +123,97 @@ export default function SkillsPage() {
             <option key={c} value={c}>{c}</option>
           ))}
         </select>
+        <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value)}
+          className="px-3 py-2 text-sm bg-dark-800 border border-dark-700 rounded-lg text-dark-200 focus:outline-none focus:border-accent-500"
+        >
+          <option value="">All Sources</option>
+          <option value="builtin">Builtin</option>
+          <option value="community">Community</option>
+        </select>
       </div>
 
       {/* Skill grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filtered.map((skill) => (
-          <div
-            key={skill.id}
-            className={cn(
-              "rounded-xl border bg-dark-800 p-5 space-y-3 transition-colors",
-              skill.enabled ? "border-dark-700" : "border-dark-700/50 opacity-60",
-            )}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-dark-700">
-                  <Puzzle size={20} className="text-accent-400" />
+      {isLoading ? (
+        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+          Loading skill catalog...
+        </div>
+      ) : filtered.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filtered.map((skill) => (
+            <div
+              key={skill.id}
+              className={cn(
+                "rounded-xl border bg-dark-800 p-5 space-y-3 transition-colors",
+                skill.enabled ? "border-dark-700" : "border-dark-700/50 opacity-60",
+              )}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-dark-700">
+                    <Puzzle size={20} className="text-accent-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">{skill.name}</h3>
+                    <p className="text-xs text-dark-500">v{skill.version}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-sm font-semibold text-white">{skill.name}</h3>
-                  <p className="text-xs text-dark-500">v{skill.version}</p>
+                <div className="flex items-center gap-2">
+                  <Badge variant={skill.enabled ? "success" : "default"}>
+                    {skill.enabled ? "enabled" : "disabled"}
+                  </Badge>
+                  <Badge variant={skill.source === "builtin" ? "info" : "accent"}>
+                    {skill.source}
+                  </Badge>
                 </div>
               </div>
-              <button
-                onClick={() => toggleSkill(skill.id)}
-                className={cn(
-                  "relative w-10 h-5 rounded-full transition-colors",
-                  skill.enabled ? "bg-accent-600" : "bg-dark-600",
-                )}
-              >
-                <span
-                  className={cn(
-                    "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
-                    skill.enabled ? "left-5.5" : "left-0.5",
-                  )}
-                />
-              </button>
-            </div>
 
-            <p className="text-sm text-dark-300 line-clamp-2">{skill.description}</p>
+              <p className="text-sm text-dark-300 line-clamp-2">{skill.description}</p>
 
-            <div className="flex flex-wrap gap-1.5">
-              {skill.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="px-2 py-0.5 text-xs bg-dark-700 text-dark-400 rounded-md"
+              <div className="grid grid-cols-2 gap-3 text-xs text-dark-400">
+                <div className="rounded-lg bg-dark-700/40 px-3 py-2">
+                  <p>Actions</p>
+                  <p className="text-sm font-semibold text-white">{skill.actions}</p>
+                </div>
+                <div className="rounded-lg bg-dark-700/40 px-3 py-2">
+                  <p>Triggers</p>
+                  <p className="text-sm font-semibold text-white">{skill.triggers}</p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5">
+                {skill.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="px-2 py-0.5 text-xs bg-dark-700 text-dark-400 rounded-md"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-2 border-t border-dark-700">
+                <div className="flex items-center gap-1.5 text-xs text-dark-500">
+                  {skill.category && <Badge variant="default">{skill.category}</Badge>}
+                  {skill.author && <span>by {skill.author}</span>}
+                </div>
+                <button
+                  onClick={() => setSelectedSkill(skill)}
+                  className="p-1.5 rounded-md text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
+                  title="View details"
                 >
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            <div className="flex items-center justify-between pt-2 border-t border-dark-700">
-              <div className="flex items-center gap-1.5 text-xs text-dark-500">
-                {skill.category && <Badge variant="default">{skill.category}</Badge>}
+                  <Info size={14} />
+                </button>
               </div>
-              <button
-                onClick={() => setSelectedSkill(skill)}
-                className="p-1.5 rounded-md text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
-                title="View details"
-              >
-                <Info size={14} />
-              </button>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+          No skills matched your filters.
+        </div>
+      )}
 
       {/* Skill detail modal */}
       <Modal
@@ -274,29 +234,16 @@ export default function SkillsPage() {
             </div>
 
             <div>
-              <h4 className="text-sm font-medium text-white mb-2">Triggers</h4>
-              <div className="space-y-2">
-                {selectedSkill.triggers.map((t, i) => (
-                  <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-dark-700/50">
-                    <Badge variant="accent">{t.type}</Badge>
-                    <code className="text-xs text-dark-200">{t.value}</code>
-                    {t.description && (
-                      <span className="text-xs text-dark-500 ml-auto">{t.description}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-medium text-white mb-2">Actions</h4>
-              <div className="space-y-2">
-                {selectedSkill.actions.map((a) => (
-                  <div key={a.name} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-dark-700/50">
-                    <code className="text-xs text-accent-400 font-medium">{a.name}</code>
-                    <span className="text-xs text-dark-400">{a.description}</span>
-                  </div>
-                ))}
+              <h4 className="text-sm font-medium text-white mb-2">Capabilities</h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-dark-700/50 px-3 py-3">
+                  <p className="text-xs text-dark-400">Actions</p>
+                  <p className="text-lg font-semibold text-white">{selectedSkill.actions}</p>
+                </div>
+                <div className="rounded-lg bg-dark-700/50 px-3 py-3">
+                  <p className="text-xs text-dark-400">Triggers</p>
+                  <p className="text-lg font-semibold text-white">{selectedSkill.triggers}</p>
+                </div>
               </div>
             </div>
 

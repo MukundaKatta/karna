@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Wrench, Search, ShieldAlert, ShieldCheck, Shield } from "lucide-react";
 import { cn, riskBgColor, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
@@ -12,77 +12,130 @@ interface Tool {
   riskLevel: "low" | "medium" | "high" | "critical";
   requiresApproval: boolean;
   enabled: boolean;
-  usageCount: number;
+  totalCalls: number;
+  failedCalls: number;
+  tags: string[];
   lastUsedAt?: number;
 }
 
-interface AuditEntry {
+interface TraceResponse {
+  traces?: Array<{
+    traceId: string;
+    sessionId: string;
+    spans: Array<{
+      spanId: string;
+      name: string;
+      kind: string;
+      status: "ok" | "error" | "cancelled";
+      startedAt: number;
+      endedAt?: number;
+      durationMs?: number;
+    }>;
+  }>;
+}
+
+interface ExecutionEntry {
   id: string;
   toolName: string;
   sessionId: string;
-  status: "completed" | "failed" | "approved" | "rejected";
-  arguments: Record<string, unknown>;
+  status: "completed" | "failed";
   durationMs: number;
   timestamp: number;
 }
 
-const demoTools: Tool[] = [
-  { name: "file_read", description: "Read contents of a file", riskLevel: "low", requiresApproval: false, enabled: true, usageCount: 432, lastUsedAt: Date.now() - 60000 },
-  { name: "file_write", description: "Write or modify file contents", riskLevel: "medium", requiresApproval: true, enabled: true, usageCount: 156, lastUsedAt: Date.now() - 300000 },
-  { name: "web_search", description: "Search the internet", riskLevel: "low", requiresApproval: false, enabled: true, usageCount: 289, lastUsedAt: Date.now() - 120000 },
-  { name: "code_execute", description: "Execute code in a sandbox", riskLevel: "high", requiresApproval: true, enabled: true, usageCount: 87, lastUsedAt: Date.now() - 600000 },
-  { name: "shell_exec", description: "Execute shell commands", riskLevel: "critical", requiresApproval: true, enabled: false, usageCount: 12, lastUsedAt: Date.now() - 86400000 },
-  { name: "git_commit", description: "Create git commits", riskLevel: "medium", requiresApproval: true, enabled: true, usageCount: 45, lastUsedAt: Date.now() - 1800000 },
-  { name: "db_query", description: "Execute database queries", riskLevel: "high", requiresApproval: true, enabled: true, usageCount: 67, lastUsedAt: Date.now() - 3600000 },
-  { name: "web_scrape", description: "Scrape web page content", riskLevel: "low", requiresApproval: false, enabled: true, usageCount: 134, lastUsedAt: Date.now() - 900000 },
-];
-
-const demoAuditLog: AuditEntry[] = Array.from({ length: 25 }, (_, i) => ({
-  id: `audit-${i}`,
-  toolName: demoTools[i % demoTools.length].name,
-  sessionId: `sess-${1000 + (i % 8)}`,
-  status: (["completed", "failed", "approved", "rejected"] as const)[i % 4],
-  arguments: { path: `/tmp/file-${i}.txt` },
-  durationMs: Math.floor(50 + Math.random() * 2000),
-  timestamp: Date.now() - (i * 180000),
-}));
-
 export default function ToolsPage() {
-  const [tools, setTools] = useState<Tool[]>(demoTools);
+  const [tools, setTools] = useState<Tool[]>([]);
+  const [executions, setExecutions] = useState<ExecutionEntry[]>([]);
   const [search, setSearch] = useState("");
   const [auditFilter, setAuditFilter] = useState({ tool: "", status: "" });
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchTools() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const [toolsResponse, tracesResponse] = await Promise.all([
+          fetch("/api/tools", { cache: "no-store" }),
+          fetch("/api/traces?limit=100", { cache: "no-store" }),
+        ]);
+
+        if (!toolsResponse.ok) {
+          throw new Error(`Tool request failed with ${toolsResponse.status}`);
+        }
+
+        const toolPayload = (await toolsResponse.json()) as { tools?: Tool[] };
+        const tracePayload = tracesResponse.ok
+          ? ((await tracesResponse.json()) as TraceResponse)
+          : { traces: [] };
+
+        if (cancelled) return;
+
+        setTools(toolPayload.tools ?? []);
+        setExecutions(
+          (tracePayload.traces ?? [])
+            .flatMap((trace) =>
+              trace.spans
+                .filter((span) => span.kind === "tool")
+                .map<ExecutionEntry>((span) => {
+                  const status: ExecutionEntry["status"] =
+                    span.status === "error" ? "failed" : "completed";
+
+                  return {
+                    id: `${trace.traceId}:${span.spanId}`,
+                    toolName: span.name,
+                    sessionId: trace.sessionId,
+                    status,
+                    durationMs:
+                      span.durationMs ??
+                      Math.max((span.endedAt ?? span.startedAt) - span.startedAt, 0),
+                    timestamp: span.endedAt ?? span.startedAt,
+                  };
+                }),
+            )
+            .sort((left, right) => right.timestamp - left.timestamp),
+        );
+      } catch (fetchError) {
+        if (cancelled) return;
+        setTools([]);
+        setExecutions([]);
+        setError(fetchError instanceof Error ? fetchError.message : "Failed to load live tools");
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchTools();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredTools = useMemo(() => {
     if (!search) return tools;
     const q = search.toLowerCase();
     return tools.filter(
-      (t) => t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q),
+      (tool) =>
+        tool.name.toLowerCase().includes(q) ||
+        tool.description.toLowerCase().includes(q) ||
+        tool.tags.some((tag) => tag.toLowerCase().includes(q)),
     );
   }, [tools, search]);
 
   const filteredAudit = useMemo(() => {
-    return demoAuditLog.filter((e) => {
+    return executions.filter((e) => {
       if (auditFilter.tool && e.toolName !== auditFilter.tool) return false;
       if (auditFilter.status && e.status !== auditFilter.status) return false;
       return true;
     });
-  }, [auditFilter]);
-
-  const toggleApproval = (name: string) => {
-    setTools(
-      tools.map((t) =>
-        t.name === name ? { ...t, requiresApproval: !t.requiresApproval } : t,
-      ),
-    );
-  };
-
-  const toggleEnabled = (name: string) => {
-    setTools(
-      tools.map((t) =>
-        t.name === name ? { ...t, enabled: !t.enabled } : t,
-      ),
-    );
-  };
+  }, [auditFilter, executions]);
 
   const riskIcon = (level: string) => {
     switch (level) {
@@ -93,7 +146,7 @@ export default function ToolsPage() {
     }
   };
 
-  const auditColumns: Column<AuditEntry>[] = [
+  const auditColumns: Column<ExecutionEntry>[] = [
     {
       key: "toolName",
       label: "Tool",
@@ -111,7 +164,7 @@ export default function ToolsPage() {
       sortable: true,
       render: (val) => {
         const s = val as string;
-        const variant = s === "completed" ? "success" : s === "failed" ? "danger" : s === "approved" ? "info" : "warning";
+        const variant = s === "completed" ? "success" : "danger";
         return <Badge variant={variant}>{s}</Badge>;
       },
     },
@@ -132,9 +185,15 @@ export default function ToolsPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 sm:space-y-8 overflow-y-auto h-full">
+      {error && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+          {error}
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-semibold text-white">Tools</h1>
-        <p className="text-sm text-dark-400 mt-1">Manage tool permissions and view audit log</p>
+        <p className="text-sm text-dark-400 mt-1">Inspect live tool inventory and recent executions</p>
       </div>
 
       {/* Tool list */}
@@ -153,62 +212,80 @@ export default function ToolsPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-dark-700 bg-dark-800 divide-y divide-dark-700/50">
-          {filteredTools.map((tool) => (
-            <div
-              key={tool.name}
-              className={cn(
-                "flex items-center gap-4 px-5 py-3.5 transition-opacity",
-                !tool.enabled && "opacity-50",
-              )}
-            >
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-dark-700">
-                {riskIcon(tool.riskLevel)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <code className="text-sm font-medium text-dark-100">{tool.name}</code>
-                  <span className={cn("px-1.5 py-0.5 text-xs rounded", riskBgColor(tool.riskLevel))}>
-                    {tool.riskLevel}
-                  </span>
+        {isLoading ? (
+          <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+            Loading tool inventory...
+          </div>
+        ) : filteredTools.length > 0 ? (
+          <div className="rounded-xl border border-dark-700 bg-dark-800 divide-y divide-dark-700/50">
+            {filteredTools.map((tool) => (
+              <div
+                key={tool.name}
+                className={cn(
+                  "flex items-start gap-4 px-5 py-3.5 transition-opacity",
+                  !tool.enabled && "opacity-50",
+                )}
+              >
+                <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-dark-700">
+                  {riskIcon(tool.riskLevel)}
                 </div>
-                <p className="text-xs text-dark-400 mt-0.5">{tool.description}</p>
-              </div>
-              <div className="flex items-center gap-4 text-xs text-dark-400 shrink-0">
-                <span>{tool.usageCount} uses</span>
-                <label className="flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={tool.requiresApproval}
-                    onChange={() => toggleApproval(tool.name)}
-                    className="w-3.5 h-3.5 rounded border-dark-600 bg-dark-700 text-accent-600 focus:ring-accent-500"
-                  />
-                  <span>Approval</span>
-                </label>
-                <button
-                  onClick={() => toggleEnabled(tool.name)}
-                  className={cn(
-                    "relative w-9 h-5 rounded-full transition-colors",
-                    tool.enabled ? "bg-accent-600" : "bg-dark-600",
+                <div className="flex-1 min-w-0 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <code className="text-sm font-medium text-dark-100">{tool.name}</code>
+                    <span className={cn("px-1.5 py-0.5 text-xs rounded", riskBgColor(tool.riskLevel))}>
+                      {tool.riskLevel}
+                    </span>
+                    <Badge variant={tool.requiresApproval ? "warning" : "success"}>
+                      {tool.requiresApproval ? "approval required" : "self-serve"}
+                    </Badge>
+                    <Badge variant={tool.enabled ? "success" : "default"}>
+                      {tool.enabled ? "enabled" : "disabled"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-dark-400">{tool.description}</p>
+                  {tool.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {tool.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="px-2 py-0.5 text-xs bg-dark-700 text-dark-300 rounded-md"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   )}
-                >
-                  <span
-                    className={cn(
-                      "absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform",
-                      tool.enabled ? "left-4.5" : "left-0.5",
-                    )}
-                  />
-                </button>
+                </div>
+                <div className="grid grid-cols-3 gap-4 text-xs text-dark-400 shrink-0">
+                  <div className="text-right">
+                    <p>Total Calls</p>
+                    <p className="text-sm font-semibold text-white">{tool.totalCalls}</p>
+                  </div>
+                  <div className="text-right">
+                    <p>Failures</p>
+                    <p className="text-sm font-semibold text-white">{tool.failedCalls}</p>
+                  </div>
+                  <div className="text-right">
+                    <p>Last Used</p>
+                    <p className="text-sm font-semibold text-white">
+                      {tool.lastUsedAt ? formatDate(tool.lastUsedAt, "MMM d") : "Never"}
+                    </p>
+                  </div>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+            No tools matched your search.
+          </div>
+        )}
       </div>
 
       {/* Audit log */}
       <div>
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-medium text-white">Audit Log</h2>
+          <h2 className="text-base font-medium text-white">Recent Executions</h2>
           <div className="flex gap-2">
             <select
               value={auditFilter.tool}
@@ -228,8 +305,6 @@ export default function ToolsPage() {
               <option value="">All Statuses</option>
               <option value="completed">Completed</option>
               <option value="failed">Failed</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
             </select>
           </div>
         </div>
@@ -239,6 +314,7 @@ export default function ToolsPage() {
           data={filteredAudit}
           keyField="id"
           pageSize={8}
+          emptyMessage={isLoading ? "Loading executions..." : "No executions captured yet"}
         />
       </div>
     </div>
