@@ -6,6 +6,7 @@ import { existsSync } from "node:fs";
 import chalk from "chalk";
 import ora from "ora";
 import type { KarnaConfig } from "@karna/shared";
+import { seedAccessPolicies, type SeededChannelAccessPolicy } from "../lib/access-policies.js";
 import { setupModel } from "./model-setup.js";
 import { setupChannels } from "./channel-setup.js";
 
@@ -26,6 +27,7 @@ interface WizardState {
   supabaseAnonKey?: string;
   supabaseServiceKey?: string;
   gatewayPort: number;
+  channelAccessPolicies: SeededChannelAccessPolicy[];
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -41,6 +43,7 @@ export async function runWizard(options: WizardOptions): Promise<void> {
     anthropicApiKey: "",
     additionalChannels: [],
     gatewayPort: 3000,
+    channelAccessPolicies: [],
   };
 
   // Step 1: Welcome + name your agent
@@ -240,6 +243,7 @@ async function writeConfig(state: WizardState): Promise<void> {
     };
 
     await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+    await seedAccessPolicies(state.channelAccessPolicies);
 
     spinner.succeed(`Configuration written to ${CONFIG_FILE}`);
   } catch (error) {

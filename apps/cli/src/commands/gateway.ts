@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import chalk from "chalk";
 import ora from "ora";
+import { resolveGatewayPort } from "../lib/config.js";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -29,9 +30,9 @@ export function registerGatewayCommand(program: Command): void {
   gateway
     .command("start")
     .description("Start the gateway process")
-    .option("-p, --port <port>", "Port to listen on", process.env["GATEWAY_PORT"] ?? "18789")
+    .option("-p, --port <port>", "Port to listen on")
     .option("-d, --detach", "Run in background (detached)", false)
-    .action(async (options: { port: string; detach: boolean }) => {
+    .action(async (options: { port?: string; detach: boolean }) => {
       await startGateway(options);
     });
 
@@ -45,8 +46,8 @@ export function registerGatewayCommand(program: Command): void {
   gateway
     .command("restart")
     .description("Restart the gateway process")
-    .option("-p, --port <port>", "Port to listen on", process.env["GATEWAY_PORT"] ?? "18789")
-    .action(async (options: { port: string }) => {
+    .option("-p, --port <port>", "Port to listen on")
+    .action(async (options: { port?: string }) => {
       await stopGateway();
       await startGateway({ ...options, detach: true });
     });
@@ -62,7 +63,7 @@ export function registerGatewayCommand(program: Command): void {
 // ─── Gateway Start ──────────────────────────────────────────────────────────
 
 async function startGateway(options: {
-  port: string;
+  port?: string;
   detach: boolean;
 }): Promise<void> {
   // Check if already running
@@ -79,10 +80,12 @@ async function startGateway(options: {
   await ensureConfigDir();
 
   const spinner = ora("Starting gateway...").start();
+  const port = await resolveGatewayPort(options.port);
 
   const env = {
     ...process.env,
-    PORT: options.port,
+    PORT: port,
+    GATEWAY_PORT: port,
     NODE_ENV: process.env["NODE_ENV"] ?? "development",
   };
 
@@ -104,7 +107,7 @@ async function startGateway(options: {
     if (child.pid) {
       await writePid(child.pid);
       spinner.succeed(
-        `Gateway started (PID: ${child.pid}, port: ${options.port})`,
+        `Gateway started (PID: ${child.pid}, port: ${port})`,
       );
       console.log(chalk.dim(`  Logs: ${LOG_FILE}`));
     } else {
@@ -112,7 +115,7 @@ async function startGateway(options: {
     }
   } else {
     // Run in foreground
-    spinner.succeed(`Starting gateway on port ${options.port} (foreground)`);
+    spinner.succeed(`Starting gateway on port ${port} (foreground)`);
 
     const child = spawn("node", ["node_modules/@karna/gateway/dist/index.js"], {
       cwd: process.cwd(),

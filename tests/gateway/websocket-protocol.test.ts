@@ -335,6 +335,42 @@ describe("gateway websocket protocol", () => {
     expect(ws.sent[0]?.type).toBe("status");
   });
 
+  it("treats telegram supergroups as group chats when metadata says so", async () => {
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+    const session = context.sessionManager.createSession("-100123", "telegram", "user-1", {
+      conversationType: "supergroup",
+      isDirectMessage: false,
+      chatId: -100123,
+    });
+    context.auth = createAuthContext("telegram--100123", "operator", "token");
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-telegram-group",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "hello everyone",
+          metadata: {
+            senderUserId: "tg-user-2",
+            conversationType: "supergroup",
+            isDirectMessage: false,
+          },
+        },
+      },
+      context,
+    );
+
+    expect(appendToTranscript).not.toHaveBeenCalled();
+    expect(readTranscript).not.toHaveBeenCalled();
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]?.type).toBe("status");
+  });
+
   it("relays rtc signaling messages to the requested peer and stamps sourceChannelId", async () => {
     const sourceWs = createSocket();
     const targetWs = createSocket();

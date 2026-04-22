@@ -7,6 +7,7 @@ export * from "./types/skill.js";
 export * from "./types/memory.js";
 export * from "./types/config.js";
 export * from "./types/orchestration.js";
+export * from "./types/access.js";
 
 // ─── Utils ───────────────────────────────────────────────────────────────────
 

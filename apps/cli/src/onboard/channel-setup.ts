@@ -1,12 +1,16 @@
 import inquirer from "inquirer";
 import chalk from "chalk";
 import ora from "ora";
+import type { DmAccessMode, GroupActivationMode } from "@karna/shared";
+import { buildMentionNames, type SeededChannelAccessPolicy } from "../lib/access-policies.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface ChannelSetupState {
+  agentName: string;
   telegramBotToken?: string;
   additionalChannels: string[];
+  channelAccessPolicies: SeededChannelAccessPolicy[];
 }
 
 interface SetupOptions {
@@ -101,6 +105,68 @@ async function configureTelegram(
   if (!options.skipTest) {
     await testTelegramToken(botToken);
   }
+
+  const accessAnswers = await inquirer.prompt<{
+    dmMode: DmAccessMode;
+    groupActivation: GroupActivationMode;
+  }>([
+    {
+      type: "list",
+      name: "dmMode",
+      message: "How should Telegram DMs be handled?",
+      default: "pairing",
+      choices: [
+        {
+          name: "Pairing (recommended) — unknown senders get an approval code first",
+          value: "pairing",
+        },
+        {
+          name: "Open — accept DMs from any sender",
+          value: "open",
+        },
+        {
+          name: "Closed — ignore DMs unless you explicitly allowlist the sender",
+          value: "closed",
+        },
+      ],
+    },
+    {
+      type: "list",
+      name: "groupActivation",
+      message: "How should Karna respond in Telegram groups?",
+      default: "mention",
+      choices: [
+        {
+          name: "Mention only (recommended) — respond when mentioned or replied to",
+          value: "mention",
+        },
+        {
+          name: "Always — respond to every group message",
+          value: "always",
+        },
+        {
+          name: "Off — stay silent in groups",
+          value: "off",
+        },
+      ],
+    },
+  ]);
+
+  state.channelAccessPolicies = state.channelAccessPolicies.filter(
+    (policy) => policy.channelId !== "telegram",
+  );
+  state.channelAccessPolicies.push({
+    channelId: "telegram",
+    dmMode: accessAnswers.dmMode,
+    groupActivation: accessAnswers.groupActivation,
+    agentMentionNames: buildMentionNames(state.agentName),
+  });
+
+  console.log(
+    chalk.dim(
+      `  Telegram access set to DM=${accessAnswers.dmMode}, groups=${accessAnswers.groupActivation}.`,
+    ),
+  );
 }
 
 // ─── Token Test ─────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import chalk from "chalk";
+import { resolveGatewayHttpUrl } from "../lib/config.js";
 
 type DmMode = "pairing" | "open" | "closed";
 type GroupMode = "mention" | "always" | "off";
@@ -19,17 +20,13 @@ export function registerAccessCommand(program: Command): void {
   const access = program
     .command("access")
     .description("Manage OpenClaw-style channel access controls for Karna")
-    .option(
-      "-g, --gateway <url>",
-      "Gateway URL",
-      `http://localhost:${process.env["GATEWAY_PORT"] ?? "18789"}`,
-    );
+    .option("-g, --gateway <url>", "Gateway URL");
 
   access
     .command("list")
     .description("List channel access policies")
     .action(async () => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       const result = await apiGet<{ policies: PolicySnapshot[] }>(`${gatewayUrl}/api/access/policies`);
 
       if (!result.policies.length) {
@@ -47,7 +44,7 @@ export function registerAccessCommand(program: Command): void {
     .command("show <channel>")
     .description("Show a single channel access policy")
     .action(async (channel: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       const result = await apiGet<{ policy: PolicySnapshot }>(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}`);
       printPolicy(result.policy);
     });
@@ -56,7 +53,7 @@ export function registerAccessCommand(program: Command): void {
     .command("dm-mode <channel> <mode>")
     .description("Set DM mode: pairing, open, or closed")
     .action(async (channel: string, mode: DmMode) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       const result = await apiJson<{ policy: PolicySnapshot }>(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}`, "PATCH", { dmMode: mode });
       console.log(chalk.green(`Updated ${channel} DM mode to ${result.policy.dmMode}.`));
     });
@@ -65,7 +62,7 @@ export function registerAccessCommand(program: Command): void {
     .command("group-mode <channel> <mode>")
     .description("Set group activation mode: mention, always, or off")
     .action(async (channel: string, mode: GroupMode) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       const result = await apiJson<{ policy: PolicySnapshot }>(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}`, "PATCH", { groupActivation: mode });
       console.log(chalk.green(`Updated ${channel} group mode to ${result.policy.groupActivation}.`));
     });
@@ -74,7 +71,7 @@ export function registerAccessCommand(program: Command): void {
     .command("allow <channel> <userId>")
     .description("Allowlist a user for a channel")
     .action(async (channel: string, userId: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       await apiJson(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}/allowlist`, "POST", { userId });
       console.log(chalk.green(`Allowlisted ${userId} on ${channel}.`));
     });
@@ -83,7 +80,7 @@ export function registerAccessCommand(program: Command): void {
     .command("unallow <channel> <userId>")
     .description("Remove a user from the allowlist")
     .action(async (channel: string, userId: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       await apiDelete(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}/allowlist/${encodeURIComponent(userId)}`);
       console.log(chalk.green(`Removed ${userId} from the allowlist on ${channel}.`));
     });
@@ -92,7 +89,7 @@ export function registerAccessCommand(program: Command): void {
     .command("block <channel> <userId>")
     .description("Blocklist a user for a channel")
     .action(async (channel: string, userId: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       await apiJson(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}/blocklist`, "POST", { userId });
       console.log(chalk.green(`Blocklisted ${userId} on ${channel}.`));
     });
@@ -101,7 +98,7 @@ export function registerAccessCommand(program: Command): void {
     .command("unblock <channel> <userId>")
     .description("Remove a user from the blocklist")
     .action(async (channel: string, userId: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       await apiDelete(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}/blocklist/${encodeURIComponent(userId)}`);
       console.log(chalk.green(`Removed ${userId} from the blocklist on ${channel}.`));
     });
@@ -110,7 +107,7 @@ export function registerAccessCommand(program: Command): void {
     .command("approve <channel> <code>")
     .description("Approve a pending pairing code")
     .action(async (channel: string, code: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       const result = await apiJson<{ success: boolean; userId: string }>(
         `${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}/pairings/approve`,
         "POST",
@@ -123,7 +120,7 @@ export function registerAccessCommand(program: Command): void {
     .command("revoke <channel> <userId>")
     .description("Revoke a previously paired user")
     .action(async (channel: string, userId: string) => {
-      const gatewayUrl = access.opts().gateway as string;
+      const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       await apiDelete(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}/paired/${encodeURIComponent(userId)}`);
       console.log(chalk.green(`Revoked paired access for ${userId} on ${channel}.`));
     });

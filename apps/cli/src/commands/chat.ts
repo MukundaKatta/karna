@@ -5,12 +5,12 @@ import WebSocket from "ws";
 import chalk from "chalk";
 import ora from "ora";
 import type { ProtocolMessage } from "@karna/shared";
-import { loadConfig } from "./status.js";
+import { resolveGatewayWsUrl } from "../lib/config.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface ChatOptions {
-  gateway: string;
+  gateway?: string;
   model?: string;
 }
 
@@ -20,11 +20,7 @@ export function registerChatCommand(program: Command): void {
   program
     .command("chat")
     .description("Start an interactive chat session with Karna")
-    .option(
-      "-g, --gateway <url>",
-      "Gateway WebSocket URL",
-      "ws://localhost:3000/ws",
-    )
+    .option("-g, --gateway <url>", "Gateway WebSocket URL")
     .option("-m, --model <model>", "AI model to use")
     .action(async (options: ChatOptions) => {
       await startChat(options);
@@ -34,12 +30,7 @@ export function registerChatCommand(program: Command): void {
 // ─── Chat Implementation ────────────────────────────────────────────────────
 
 async function startChat(options: ChatOptions): Promise<void> {
-  const config = await loadConfig();
-  const gatewayUrl =
-    options.gateway ??
-    (config
-      ? `ws://${config.gateway?.host ?? "localhost"}:${config.gateway?.port ?? 3000}/ws`
-      : "ws://localhost:3000/ws");
+  const gatewayUrl = await resolveGatewayWsUrl(options.gateway);
 
   console.log(chalk.bold("\nKarna Interactive Chat"));
   console.log(chalk.dim("Type your message and press Enter. Ctrl+C to exit.\n"));

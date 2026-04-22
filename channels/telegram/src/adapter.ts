@@ -144,7 +144,7 @@ export class TelegramAdapter {
 
     this.logger.debug({ chatId, textLength: text.length }, "Received text message");
 
-    await this.forwardToGateway(chatId, text);
+    await this.forwardToGateway(chatId, text, undefined, this.buildRoutingMetadata(ctx));
   }
 
   private async handlePhotoMessage(ctx: Context): Promise<void> {
@@ -165,9 +165,12 @@ export class TelegramAdapter {
 
       this.logger.debug({ chatId, fileId: photo.file_id }, "Received photo message");
 
-      await this.forwardToGateway(chatId, caption, [
-        { type: "image", url: fileUrl, name: file.file_path },
-      ]);
+      await this.forwardToGateway(
+        chatId,
+        caption,
+        [{ type: "image", url: fileUrl, name: file.file_path }],
+        this.buildRoutingMetadata(ctx),
+      );
     } catch (error) {
       this.logger.error({ error, chatId }, "Failed to process photo");
       await ctx.reply("Sorry, I could not process that photo. Please try again.");
@@ -186,9 +189,12 @@ export class TelegramAdapter {
 
       this.logger.debug({ chatId, fileName: doc.file_name }, "Received document message");
 
-      await this.forwardToGateway(chatId, caption, [
-        { type: "document", url: fileUrl, name: doc.file_name ?? file.file_path },
-      ]);
+      await this.forwardToGateway(
+        chatId,
+        caption,
+        [{ type: "document", url: fileUrl, name: doc.file_name ?? file.file_path }],
+        this.buildRoutingMetadata(ctx),
+      );
     } catch (error) {
       this.logger.error({ error, chatId }, "Failed to process document");
       await ctx.reply("Sorry, I could not process that document. Please try again.");
@@ -206,9 +212,12 @@ export class TelegramAdapter {
 
       this.logger.debug({ chatId, duration: voice.duration }, "Received voice message");
 
-      await this.forwardToGateway(chatId, "User sent a voice message.", [
-        { type: "audio", url: fileUrl, name: file.file_path },
-      ]);
+      await this.forwardToGateway(
+        chatId,
+        "User sent a voice message.",
+        [{ type: "audio", url: fileUrl, name: file.file_path }],
+        this.buildRoutingMetadata(ctx),
+      );
     } catch (error) {
       this.logger.error({ error, chatId }, "Failed to process voice message");
       await ctx.reply("Sorry, I could not process that voice message. Please try again.");
@@ -221,6 +230,7 @@ export class TelegramAdapter {
     chatId: number,
     content: string,
     attachments?: Array<{ type: string; url?: string; data?: string; name?: string }>,
+    metadata?: Record<string, unknown>,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn({ chatId }, "Gateway not connected, cannot forward message");
@@ -249,7 +259,10 @@ export class TelegramAdapter {
         payload: {
           channelType: "telegram",
           channelId: String(chatId),
-          metadata: { chatId },
+          metadata: {
+            chatId,
+            ...metadata,
+          },
         },
       };
 
@@ -263,6 +276,9 @@ export class TelegramAdapter {
     if (attachments && attachments.length > 0) {
       payload["attachments"] = attachments;
     }
+    if (metadata) {
+      payload["metadata"] = metadata;
+    }
 
     const chatMessage = {
       id: randomUUID(),
@@ -274,6 +290,75 @@ export class TelegramAdapter {
 
     this.ws.send(JSON.stringify(chatMessage));
     this.logger.debug({ chatId, sessionId }, "Forwarded message to gateway");
+  }
+
+  private buildRoutingMetadata(ctx: Context): Record<string, unknown> {
+    const chatType = ctx.chat?.type ?? "private";
+    const senderId = String(ctx.from?.id ?? ctx.chat?.id ?? "");
+    const botId = this.bot.botInfo?.id;
+    const botUsername = this.bot.botInfo?.username?.toLowerCase();
+    const text = this.extractMessageText(ctx);
+    const entities = this.extractMessageEntities(ctx);
+    const replyFromId = ctx.message?.reply_to_message?.from?.id;
+
+    const agentMentioned = entities.some((entity) => {
+      if (entity.type === "text_mention" && botId !== undefined) {
+        return entity.user?.id === botId;
+      }
+
+      if (entity.type !== "mention" || !botUsername || !text) {
+        return false;
+      }
+
+      const mention = text
+        .slice(entity.offset, entity.offset + entity.length)
+        .trim()
+        .toLowerCase();
+      return mention === `@${botUsername}`;
+    });
+
+    return {
+      chatId: ctx.chat?.id,
+      userId: senderId,
+      senderUserId: senderId,
+      conversationType: chatType,
+      isDirectMessage: chatType === "private",
+      isGroup: chatType === "group" || chatType === "supergroup",
+      isReplyToAgent: botId !== undefined && replyFromId === botId,
+      agentMentioned,
+    };
+  }
+
+  private extractMessageText(ctx: Context): string {
+    const message = ctx.message;
+    if (!message) return "";
+    if ("text" in message && typeof message.text === "string") {
+      return message.text;
+    }
+    if ("caption" in message && typeof message.caption === "string") {
+      return message.caption;
+    }
+    return "";
+  }
+
+  private extractMessageEntities(ctx: Context): Array<{
+    type: string;
+    offset: number;
+    length: number;
+    user?: { id: number };
+  }> {
+    const message = ctx.message;
+    if (!message) return [];
+
+    if ("entities" in message && Array.isArray(message.entities)) {
+      return message.entities;
+    }
+
+    if ("caption_entities" in message && Array.isArray(message.caption_entities)) {
+      return message.caption_entities;
+    }
+
+    return [];
   }
 
   private async connectToGateway(): Promise<void> {

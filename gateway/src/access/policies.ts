@@ -6,26 +6,22 @@ import pino from "pino";
 import { randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import {
+  PersistedAccessPolicyFileSchema,
+  createDefaultPersistedAccessPolicy,
+  normalizePersistedAccessPolicyFile,
+  type AccessPolicySnapshot,
+  type DmAccessMode,
+  type GroupActivationMode,
+  type PairingRequest,
+  type PersistedAccessPolicy,
+} from "@karna/shared";
 
 const logger = pino({ name: "access-policies" });
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-/**
- * DM access policy modes:
- * - "pairing": Requires approval code before accepting DMs (default, most secure)
- * - "open": Accepts all DMs (optionally filtered by allowlist)
- * - "closed": Rejects all DMs except from allowlisted users
- */
-export type DmAccessMode = "pairing" | "open" | "closed";
-
-/**
- * Group chat activation mode:
- * - "mention": Only respond when @mentioned or reply-tagged
- * - "always": Respond to every message in the group
- * - "off": Never respond in groups
- */
-export type GroupActivationMode = "mention" | "always" | "off";
+export type { AccessPolicySnapshot, DmAccessMode, GroupActivationMode, PairingRequest };
 
 export interface AccessPolicy {
   /** DM access mode */
@@ -47,33 +43,6 @@ export interface AccessPolicy {
 export interface AccessDecision {
   allowed: boolean;
   reason: string;
-}
-
-export interface PairingRequest {
-  code: string;
-  userId: string;
-  expiresAt: number;
-}
-
-export interface AccessPolicySnapshot {
-  channelId: string;
-  dmMode: DmAccessMode;
-  allowlist: string[];
-  blocklist: string[];
-  groupActivation: GroupActivationMode;
-  agentMentionNames: string[];
-  pendingPairings: PairingRequest[];
-  pairedUsers: string[];
-}
-
-interface PersistedAccessPolicy {
-  dmMode: DmAccessMode;
-  allowlist: string[];
-  blocklist: string[];
-  groupActivation: GroupActivationMode;
-  agentMentionNames: string[];
-  pendingPairings: PairingRequest[];
-  pairedUsers: string[];
 }
 
 // ─── Access Policy Manager ─────────────────────────────────────────────────
@@ -100,14 +69,15 @@ export class AccessPolicyManager {
   getPolicy(channelId: string): AccessPolicy {
     let policy = this.policies.get(channelId);
     if (!policy) {
+      const defaults = createDefaultPersistedAccessPolicy();
       policy = {
-        dmMode: "pairing",
-        allowlist: new Set(),
-        blocklist: new Set(),
-        groupActivation: "mention",
-        agentMentionNames: ["karna", "@karna"],
+        dmMode: defaults.dmMode,
+        allowlist: new Set(defaults.allowlist),
+        blocklist: new Set(defaults.blocklist),
+        groupActivation: defaults.groupActivation,
+        agentMentionNames: [...defaults.agentMentionNames],
         pendingPairings: new Map(),
-        pairedUsers: new Set(),
+        pairedUsers: new Set(defaults.pairedUsers),
       };
       this.policies.set(channelId, policy);
     }
@@ -401,23 +371,25 @@ export class AccessPolicyManager {
 
     try {
       mkdirSync(dirname(this.storagePath), { recursive: true });
-      const serialized = Object.fromEntries(
-        Array.from(this.policies.entries()).map(([channelId, policy]) => [
-          channelId,
-          {
-            dmMode: policy.dmMode,
-            allowlist: Array.from(policy.allowlist),
-            blocklist: Array.from(policy.blocklist),
-            groupActivation: policy.groupActivation,
-            agentMentionNames: [...policy.agentMentionNames],
-            pendingPairings: Array.from(policy.pendingPairings.entries()).map(([code, pending]) => ({
-              code,
-              userId: pending.userId,
-              expiresAt: pending.expiresAt,
-            })),
-            pairedUsers: Array.from(policy.pairedUsers),
-          } satisfies PersistedAccessPolicy,
-        ]),
+      const serialized = normalizePersistedAccessPolicyFile(
+        Object.fromEntries(
+          Array.from(this.policies.entries()).map(([channelId, policy]) => [
+            channelId,
+            {
+              dmMode: policy.dmMode,
+              allowlist: Array.from(policy.allowlist),
+              blocklist: Array.from(policy.blocklist),
+              groupActivation: policy.groupActivation,
+              agentMentionNames: [...policy.agentMentionNames],
+              pendingPairings: Array.from(policy.pendingPairings.entries()).map(([code, pending]) => ({
+                code,
+                userId: pending.userId,
+                expiresAt: pending.expiresAt,
+              })),
+              pairedUsers: Array.from(policy.pairedUsers),
+            } satisfies PersistedAccessPolicy,
+          ]),
+        ),
       );
 
       writeFileSync(this.storagePath, JSON.stringify(serialized, null, 2), "utf-8");
@@ -431,9 +403,18 @@ export class AccessPolicyManager {
 
     try {
       const raw = readFileSync(this.storagePath, "utf-8");
-      const parsed = JSON.parse(raw) as Record<string, PersistedAccessPolicy>;
+      const parsedJson = JSON.parse(raw) as unknown;
+      const parsed = PersistedAccessPolicyFileSchema.safeParse(parsedJson);
 
-      for (const [channelId, snapshot] of Object.entries(parsed)) {
+      if (!parsed.success) {
+        logger.error(
+          { storagePath: this.storagePath, issues: parsed.error.issues.slice(0, 5) },
+          "Failed to validate access policies",
+        );
+        return;
+      }
+
+      for (const [channelId, snapshot] of Object.entries(normalizePersistedAccessPolicyFile(parsed.data))) {
         const policy: AccessPolicy = {
           dmMode: snapshot.dmMode,
           allowlist: new Set(snapshot.allowlist),

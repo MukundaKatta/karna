@@ -1,10 +1,7 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import type { KarnaConfig } from "@karna/shared";
+import { loadConfig, resolveGatewayHttpUrl } from "../lib/config.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -23,19 +20,15 @@ export function registerStatusCommand(program: Command): void {
   program
     .command("status")
     .description("Show system status and health information")
-    .option(
-      "-g, --gateway <url>",
-      "Gateway URL",
-      `http://localhost:${process.env["GATEWAY_PORT"] ?? "18789"}`,
-    )
-    .action(async (options: { gateway: string }) => {
+    .option("-g, --gateway <url>", "Gateway URL")
+    .action(async (options: { gateway?: string }) => {
       await showStatus(options);
     });
 }
 
 // ─── Status Implementation ──────────────────────────────────────────────────
 
-async function showStatus(options: { gateway: string }): Promise<void> {
+async function showStatus(options: { gateway?: string }): Promise<void> {
   console.log(chalk.bold("\nKarna System Status\n"));
 
   // Load config
@@ -53,7 +46,7 @@ async function showStatus(options: { gateway: string }): Promise<void> {
   console.log();
 
   // Check gateway health
-  const gatewayUrl = options.gateway;
+  const gatewayUrl = await resolveGatewayHttpUrl(options.gateway);
   const spinner = ora("Checking gateway...").start();
 
   try {
@@ -134,14 +127,4 @@ function formatUptime(seconds: number): string {
   parts.push(`${minutes}m`);
 
   return parts.join(" ");
-}
-
-export async function loadConfig(): Promise<KarnaConfig | null> {
-  try {
-    const configPath = join(homedir(), ".karna", "karna.json");
-    const raw = await readFile(configPath, "utf-8");
-    return JSON.parse(raw) as KarnaConfig;
-  } catch {
-    return null;
-  }
 }

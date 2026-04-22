@@ -65,7 +65,8 @@ This walks you through:
 1. Setting your API key (Anthropic/OpenAI)
 2. Choosing a model (Claude Sonnet 4, Opus 4, GPT-4o)
 3. Connecting channels (Telegram, Discord, Slack, WhatsApp, etc.)
-4. Installing skills from KarnaHub marketplace
+4. Choosing DM and group safety defaults for your channels
+5. Installing skills from KarnaHub marketplace
 
 Then start chatting:
 
@@ -122,6 +123,24 @@ karna skills           # List and manage skills
 karna agents           # Manage agent configurations
 karna doctor           # Diagnose installation issues
 karna logs -f          # Stream gateway logs
+```
+
+### DM Access and Group Safety
+
+Karna now treats inbound messaging channels defensively by default:
+
+- `pairing` DMs: unknown senders get a short approval code before Karna processes their messages
+- `mention` groups: Karna only responds in group chats when mentioned or replied to
+
+Useful commands:
+
+```bash
+karna access list
+karna access show telegram
+karna access approve telegram <code>
+karna access dm-mode telegram pairing
+karna access group-mode telegram mention
+karna doctor
 ```
 
 ### Connect a channel

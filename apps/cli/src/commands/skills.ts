@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
-import { loadConfig } from "./status.js";
+import { loadConfig } from "../lib/config.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
