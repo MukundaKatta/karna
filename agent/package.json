@@ -18,6 +18,7 @@
     "./memory/supabase-backend.js": "./dist/memory/supabase-backend.js",
     "./memory/embedder.js": "./dist/memory/embedder.js",
     "./voice/index.js": "./dist/voice/index.js",
+    "./workflows/engine.js": "./dist/workflows/engine.js",
     "./orchestration/orchestrator.js": "./dist/orchestration/orchestrator.js",
     "./orchestration/agent-pool.js": "./dist/orchestration/agent-pool.js",
     "./orchestration/handoff.js": "./dist/orchestration/handoff.js",

@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
-import { Plus, Play, Pause, Clock, Zap, GitBranch, Trash2, ChevronRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { cn, formatRelativeTime } from "@/lib/utils";
+import { Plus, Play, Pause, Clock, Zap, GitBranch, Trash2 } from "lucide-react";
 
 interface Workflow {
   id: string;
@@ -15,70 +14,15 @@ interface Workflow {
   lastRun?: { status: string; at: number; durationMs: number };
   runs: number;
   createdAt: number;
+  updatedAt: number;
 }
-
-const demoWorkflows: Workflow[] = [
-  {
-    id: "wf-001",
-    name: "Daily Code Review",
-    description: "Automatically review new PRs every morning and post feedback",
-    trigger: { type: "schedule", schedule: "0 9 * * 1-5" },
-    nodeCount: 5,
-    enabled: true,
-    lastRun: { status: "completed", at: Date.now() - 3600000, durationMs: 45000 },
-    runs: 23,
-    createdAt: Date.now() - 86400000 * 14,
-  },
-  {
-    id: "wf-002",
-    name: "Inbox Triage",
-    description: "Categorize and summarize unread emails, flag urgent ones",
-    trigger: { type: "schedule", schedule: "*/30 * * * *" },
-    nodeCount: 7,
-    enabled: true,
-    lastRun: { status: "completed", at: Date.now() - 1800000, durationMs: 12000 },
-    runs: 156,
-    createdAt: Date.now() - 86400000 * 30,
-  },
-  {
-    id: "wf-003",
-    name: "Bug Report Handler",
-    description: "Process incoming bug reports, create tickets, assign to team",
-    trigger: { type: "webhook" },
-    nodeCount: 6,
-    enabled: true,
-    lastRun: { status: "failed", at: Date.now() - 7200000, durationMs: 8000 },
-    runs: 42,
-    createdAt: Date.now() - 86400000 * 7,
-  },
-  {
-    id: "wf-004",
-    name: "Weekly Digest",
-    description: "Compile weekly activity report with analytics and insights",
-    trigger: { type: "schedule", schedule: "0 17 * * 5" },
-    nodeCount: 8,
-    enabled: false,
-    lastRun: { status: "completed", at: Date.now() - 86400000 * 3, durationMs: 120000 },
-    runs: 8,
-    createdAt: Date.now() - 86400000 * 60,
-  },
-  {
-    id: "wf-005",
-    name: "Customer Onboarding",
-    description: "Send welcome emails, create accounts, schedule intro call",
-    trigger: { type: "event" },
-    nodeCount: 9,
-    enabled: true,
-    runs: 0,
-    createdAt: Date.now() - 86400000,
-  },
-];
 
 function StatusBadge({ status }: { status: string }) {
   const colors: Record<string, string> = {
     completed: "bg-green-500/10 text-green-400 border-green-500/20",
     failed: "bg-red-500/10 text-red-400 border-red-500/20",
     running: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+    cancelled: "bg-dark-700 text-dark-300 border-dark-600",
   };
   return (
     <span className={cn("px-2 py-0.5 rounded-full text-xs border", colors[status] ?? "bg-dark-700 text-dark-400")}>
@@ -103,112 +47,300 @@ function TriggerBadge({ type }: { type: string }) {
 }
 
 export default function WorkflowsPage() {
-  const [workflows, setWorkflows] = useState(demoWorkflows);
-  const [showCreate, setShowCreate] = useState(false);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [busyWorkflowId, setBusyWorkflowId] = useState<string | null>(null);
 
-  const toggleEnabled = (id: string) => {
-    setWorkflows((prev) =>
-      prev.map((w) => (w.id === id ? { ...w, enabled: !w.enabled } : w))
-    );
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchWorkflows() {
+      setIsLoading(true);
+      setActionError(null);
+
+      try {
+        const response = await fetch("/api/workflows", { cache: "no-store" });
+        if (!response.ok) {
+          throw new Error(`Workflow request failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as { workflows?: Workflow[] };
+        if (cancelled) return;
+        setWorkflows(payload.workflows ?? []);
+      } catch (fetchError) {
+        if (cancelled) return;
+        setWorkflows([]);
+        setActionError(
+          fetchError instanceof Error ? fetchError.message : "Failed to load live workflows",
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    fetchWorkflows();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stats = useMemo(
+    () => ({
+      total: workflows.length,
+      active: workflows.filter((workflow) => workflow.enabled).length,
+      runs: workflows.reduce((sum, workflow) => sum + workflow.runs, 0),
+      failed: workflows.filter((workflow) => workflow.lastRun?.status === "failed").length,
+    }),
+    [workflows],
+  );
+
+  const createWorkflow = async () => {
+    setIsCreating(true);
+    setActionError(null);
+
+    try {
+      const response = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: `Starter Workflow ${workflows.length + 1}`,
+          description: "A new starter workflow created from the web dashboard.",
+          triggerType: "manual",
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Create request failed with ${response.status}`);
+      }
+
+      const payload = (await response.json()) as { workflow?: Workflow };
+      if (payload.workflow) {
+        setWorkflows((current) => [payload.workflow as Workflow, ...current]);
+      }
+    } catch (createError) {
+      setActionError(
+        createError instanceof Error ? createError.message : "Failed to create workflow",
+      );
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const deleteWorkflow = (id: string) => {
-    setWorkflows((prev) => prev.filter((w) => w.id !== id));
+  const updateWorkflow = async (workflowId: string, enabled: boolean) => {
+    setBusyWorkflowId(workflowId);
+    setActionError(null);
+
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      if (!response.ok) {
+        throw new Error(`Update request failed with ${response.status}`);
+      }
+
+      const payload = (await response.json()) as { workflow?: Workflow };
+      if (payload.workflow) {
+        setWorkflows((current) =>
+          current.map((workflow) =>
+            workflow.id === workflowId ? (payload.workflow as Workflow) : workflow,
+          ),
+        );
+      }
+    } catch (updateError) {
+      setActionError(
+        updateError instanceof Error ? updateError.message : "Failed to update workflow",
+      );
+    } finally {
+      setBusyWorkflowId(null);
+    }
+  };
+
+  const runWorkflow = async (workflowId: string) => {
+    setBusyWorkflowId(workflowId);
+    setActionError(null);
+
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          triggerData: {
+            initiatedFrom: "web-dashboard",
+          },
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Run request failed with ${response.status}`);
+      }
+
+      const payload = (await response.json()) as { workflow?: Workflow };
+      if (payload.workflow) {
+        setWorkflows((current) =>
+          current.map((workflow) =>
+            workflow.id === workflowId ? (payload.workflow as Workflow) : workflow,
+          ),
+        );
+      }
+    } catch (runError) {
+      setActionError(runError instanceof Error ? runError.message : "Failed to run workflow");
+    } finally {
+      setBusyWorkflowId(null);
+    }
+  };
+
+  const deleteWorkflow = async (workflowId: string) => {
+    setBusyWorkflowId(workflowId);
+    setActionError(null);
+
+    try {
+      const response = await fetch(`/api/workflows/${workflowId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error(`Delete request failed with ${response.status}`);
+      }
+
+      setWorkflows((current) => current.filter((workflow) => workflow.id !== workflowId));
+    } catch (deleteError) {
+      setActionError(
+        deleteError instanceof Error ? deleteError.message : "Failed to delete workflow",
+      );
+    } finally {
+      setBusyWorkflowId(null);
+    }
   };
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
+      {actionError && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+          {actionError}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Workflows</h1>
-          <p className="text-dark-400 mt-1">Automate multi-step tasks with visual workflows</p>
+          <p className="text-dark-400 mt-1">Run and operate live workflow definitions from the gateway runtime</p>
         </div>
         <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 text-white font-medium text-sm transition-colors"
+          onClick={() => void createWorkflow()}
+          disabled={isCreating}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-600 hover:bg-accent-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-medium text-sm transition-colors"
         >
           <Plus size={16} />
-          New Workflow
+          {isCreating ? "Creating..." : "New Workflow"}
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="rounded-xl border border-dark-700 bg-dark-800 p-4">
           <p className="text-xs text-dark-400 mb-1">Total Workflows</p>
-          <p className="text-xl font-bold text-white">{workflows.length}</p>
+          <p className="text-xl font-bold text-white">{stats.total}</p>
         </div>
         <div className="rounded-xl border border-dark-700 bg-dark-800 p-4">
           <p className="text-xs text-dark-400 mb-1">Active</p>
-          <p className="text-xl font-bold text-green-400">{workflows.filter((w) => w.enabled).length}</p>
+          <p className="text-xl font-bold text-green-400">{stats.active}</p>
         </div>
         <div className="rounded-xl border border-dark-700 bg-dark-800 p-4">
           <p className="text-xs text-dark-400 mb-1">Total Runs</p>
-          <p className="text-xl font-bold text-white">{workflows.reduce((a, w) => a + w.runs, 0)}</p>
+          <p className="text-xl font-bold text-white">{stats.runs}</p>
         </div>
         <div className="rounded-xl border border-dark-700 bg-dark-800 p-4">
           <p className="text-xs text-dark-400 mb-1">Failed</p>
-          <p className="text-xl font-bold text-red-400">
-            {workflows.filter((w) => w.lastRun?.status === "failed").length}
-          </p>
+          <p className="text-xl font-bold text-red-400">{stats.failed}</p>
         </div>
       </div>
 
-      {/* Workflow Cards */}
-      <div className="space-y-3">
-        {workflows.map((wf) => (
-          <div
-            key={wf.id}
-            className={cn(
-              "rounded-xl border bg-dark-800 p-5 transition-all",
-              wf.enabled ? "border-dark-700" : "border-dark-700/50 opacity-60"
-            )}
-          >
-            <div className="flex items-start justify-between">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-1">
-                  <h3 className="text-lg font-semibold text-white">{wf.name}</h3>
-                  <TriggerBadge type={wf.trigger.type} />
-                  {wf.lastRun && <StatusBadge status={wf.lastRun.status} />}
-                </div>
-                <p className="text-sm text-dark-400 mb-3">{wf.description}</p>
-                <div className="flex items-center gap-4 text-xs text-dark-500">
-                  <span>{wf.nodeCount} nodes</span>
-                  <span>{wf.runs} runs</span>
-                  {wf.trigger.schedule && <span className="font-mono">{wf.trigger.schedule}</span>}
-                  {wf.lastRun && (
-                    <span>
-                      Last run: {Math.round(wf.lastRun.durationMs / 1000)}s ago
-                    </span>
-                  )}
+      {isLoading ? (
+        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+          Loading live workflows...
+        </div>
+      ) : workflows.length > 0 ? (
+        <div className="space-y-3">
+          {workflows.map((workflow) => {
+            const busy = busyWorkflowId === workflow.id;
+
+            return (
+              <div
+                key={workflow.id}
+                className={cn(
+                  "rounded-xl border bg-dark-800 p-5 transition-all",
+                  workflow.enabled ? "border-dark-700" : "border-dark-700/50 opacity-70",
+                )}
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-1 flex-wrap">
+                      <h3 className="text-lg font-semibold text-white">{workflow.name}</h3>
+                      <TriggerBadge type={workflow.trigger.type} />
+                      {workflow.lastRun && <StatusBadge status={workflow.lastRun.status} />}
+                    </div>
+                    <p className="text-sm text-dark-400 mb-3">{workflow.description}</p>
+                    <div className="flex items-center gap-4 text-xs text-dark-500 flex-wrap">
+                      <span>{workflow.nodeCount} nodes</span>
+                      <span>{workflow.runs} runs</span>
+                      {workflow.trigger.schedule && (
+                        <span className="font-mono">{workflow.trigger.schedule}</span>
+                      )}
+                      {workflow.lastRun ? (
+                        <span>
+                          Last run {formatRelativeTime(workflow.lastRun.at)} in{" "}
+                          {Math.max(Math.round(workflow.lastRun.durationMs / 1000), 0)}s
+                        </span>
+                      ) : (
+                        <span>Never run</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 lg:ml-4">
+                    <button
+                      onClick={() => void runWorkflow(workflow.id)}
+                      disabled={busy || !workflow.enabled}
+                      className="px-3 py-2 rounded-lg text-sm text-accent-300 bg-accent-500/10 hover:bg-accent-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Run now"
+                    >
+                      Run now
+                    </button>
+                    <button
+                      onClick={() => void updateWorkflow(workflow.id, !workflow.enabled)}
+                      disabled={busy}
+                      className={cn(
+                        "p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
+                        workflow.enabled
+                          ? "text-green-400 hover:bg-green-500/10"
+                          : "text-dark-500 hover:bg-dark-700",
+                      )}
+                      title={workflow.enabled ? "Pause" : "Resume"}
+                    >
+                      {workflow.enabled ? <Pause size={16} /> : <Play size={16} />}
+                    </button>
+                    <button
+                      onClick={() => void deleteWorkflow(workflow.id)}
+                      disabled={busy}
+                      className="p-2 rounded-lg text-dark-500 hover:text-red-400 hover:bg-red-500/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Delete"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2 ml-4">
-                <button
-                  onClick={() => toggleEnabled(wf.id)}
-                  className={cn(
-                    "p-2 rounded-lg transition-colors",
-                    wf.enabled
-                      ? "text-green-400 hover:bg-green-500/10"
-                      : "text-dark-500 hover:bg-dark-700"
-                  )}
-                  title={wf.enabled ? "Pause" : "Resume"}
-                >
-                  {wf.enabled ? <Pause size={16} /> : <Play size={16} />}
-                </button>
-                <button
-                  onClick={() => deleteWorkflow(wf.id)}
-                  className="p-2 rounded-lg text-dark-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                  title="Delete"
-                >
-                  <Trash2 size={16} />
-                </button>
-                <ChevronRight size={16} className="text-dark-500" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+          No workflows are registered yet.
+        </div>
+      )}
     </div>
   );
 }

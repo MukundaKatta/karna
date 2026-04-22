@@ -14,6 +14,7 @@ const OPENAPI_SPEC = {
   tags: [
     { name: "Health", description: "Gateway health and metrics" },
     { name: "Catalog", description: "Agent, skill, and tool inventory" },
+    { name: "Workflows", description: "Workflow definitions, execution, and lifecycle controls" },
     { name: "Sessions", description: "Live sessions, transcripts, and injected messages" },
     { name: "Access", description: "Channel access and pairing controls" },
     { name: "Memory", description: "Agent memory storage and retrieval" },
@@ -120,6 +121,64 @@ const OPENAPI_SPEC = {
         summary: "List built-in tools",
         responses: {
           "200": { description: "Tool catalog with trace-backed usage counts" },
+        },
+      },
+    },
+    "/api/workflows": {
+      get: {
+        tags: ["Workflows"],
+        summary: "List workflow definitions",
+        responses: {
+          "200": { description: "Workflow summaries and counts" },
+        },
+      },
+      post: {
+        tags: ["Workflows"],
+        summary: "Create a starter workflow",
+        responses: {
+          "201": { description: "Created workflow summary" },
+        },
+      },
+    },
+    "/api/workflows/{workflowId}": {
+      get: {
+        tags: ["Workflows"],
+        summary: "Get a workflow and recent runs",
+        parameters: [pathParam("workflowId", "Workflow id")],
+        responses: {
+          "200": { description: "Workflow detail and recent runs" },
+          "404": { description: "Workflow not found" },
+        },
+      },
+      patch: {
+        tags: ["Workflows"],
+        summary: "Update a workflow",
+        parameters: [pathParam("workflowId", "Workflow id")],
+        responses: {
+          "200": { description: "Updated workflow summary" },
+          "400": { description: "Invalid workflow update" },
+          "404": { description: "Workflow not found" },
+        },
+      },
+      delete: {
+        tags: ["Workflows"],
+        summary: "Delete a workflow",
+        parameters: [pathParam("workflowId", "Workflow id")],
+        responses: {
+          "200": { description: "Deletion result" },
+          "404": { description: "Workflow not found" },
+        },
+      },
+    },
+    "/api/workflows/{workflowId}/run": {
+      post: {
+        tags: ["Workflows"],
+        summary: "Execute a workflow immediately",
+        parameters: [pathParam("workflowId", "Workflow id")],
+        responses: {
+          "200": { description: "Workflow run result" },
+          "404": { description: "Workflow not found" },
+          "409": { description: "Workflow is disabled" },
         },
       },
     },

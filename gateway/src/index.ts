@@ -23,10 +23,13 @@ import { registerOpenApiRoutes } from "./routes/openapi.js";
 import { registerTraceRoutes } from "./routes/traces.js";
 import { registerApiRoutes } from "./routes/api.js";
 import { registerControlRoutes } from "./routes/control.js";
+import { registerWorkflowRoutes } from "./routes/workflows.js";
 import { AuditLogger } from "./audit/logger.js";
 import { TraceCollector } from "./observability/trace-collector.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { WorkflowEngine } from "@karna/agent/workflows/engine.js";
+import { createDefaultWorkflows } from "./catalog/default-workflows.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +71,10 @@ async function main(): Promise<void> {
   });
   const auditLogger = new AuditLogger();
   const traceCollector = new TraceCollector();
+  const workflowEngine = new WorkflowEngine();
+  for (const workflow of createDefaultWorkflows()) {
+    workflowEngine.register(workflow);
+  }
 
   if (
     config.memory.enabled &&
@@ -199,6 +206,7 @@ async function main(): Promise<void> {
   registerActivityRoutes(server, auditLogger);
   registerTraceRoutes(server, traceCollector);
   registerApiRoutes(server, { traceCollector, auditLogger });
+  registerWorkflowRoutes(server, workflowEngine);
   registerControlRoutes(server, { sessionManager, connectedClients, auditLogger, traceCollector });
   registerOpenApiRoutes(server);
 
