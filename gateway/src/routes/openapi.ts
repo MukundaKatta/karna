@@ -79,6 +79,17 @@ const OPENAPI_SPEC = {
         },
       },
     },
+    "/api/runtime": {
+      get: {
+        tags: ["Operations"],
+        summary: "Read the live runtime configuration snapshot",
+        responses: {
+          "200": {
+            description: "Redacted runtime config, channel state, access policy counts, and workflow summary",
+          },
+        },
+      },
+    },
     "/api/agents": {
       get: {
         tags: ["Catalog"],

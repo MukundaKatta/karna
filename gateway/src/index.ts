@@ -7,7 +7,7 @@ import { parseMessage } from "./protocol/schema.js";
 import { handleMessage, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
 import { SessionManager } from "./session/manager.js";
 import { HeartbeatScheduler } from "./heartbeat/scheduler.js";
-import { loadConfig } from "./config/loader.js";
+import { getConfigPath, loadConfig } from "./config/loader.js";
 import { getSystemHealth, setConnectionCounter, setSessionCounter } from "./health/status.js";
 import { MetricsCollector } from "./health/metrics.js";
 import { validateGatewayEnv } from "./config/validate-env.js";
@@ -24,6 +24,7 @@ import { registerTraceRoutes } from "./routes/traces.js";
 import { registerApiRoutes } from "./routes/api.js";
 import { registerControlRoutes } from "./routes/control.js";
 import { registerWorkflowRoutes } from "./routes/workflows.js";
+import { registerRuntimeRoutes } from "./routes/runtime.js";
 import { AuditLogger } from "./audit/logger.js";
 import { TraceCollector } from "./observability/trace-collector.js";
 import {
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
 
   // Load configuration
   const config = await loadConfig();
+  const configPath = getConfigPath();
   const port = Number(process.env["GATEWAY_PORT"]) || config.gateway.port;
   const host = process.env["GATEWAY_HOST"] ?? config.gateway.host;
 
@@ -204,6 +206,14 @@ async function main(): Promise<void> {
   registerActivityRoutes(server, auditLogger);
   registerTraceRoutes(server, traceCollector);
   registerApiRoutes(server, { traceCollector, auditLogger });
+  registerRuntimeRoutes(server, {
+    config,
+    configPath,
+    sessionManager,
+    connectedClients,
+    accessPolicies,
+    workflowEngine,
+  });
   registerWorkflowRoutes(server, workflowEngine);
   registerControlRoutes(server, { sessionManager, connectedClients, auditLogger, traceCollector });
   registerOpenApiRoutes(server);

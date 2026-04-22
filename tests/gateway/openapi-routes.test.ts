@@ -28,6 +28,7 @@ describe("openapi routes", () => {
     expect(spec.paths["/api/workflows/{workflowId}"]).toBeDefined();
     expect(spec.paths["/api/workflows/{workflowId}/run"]).toBeDefined();
     expect(spec.paths["/api/analytics/history"]).toBeDefined();
+    expect(spec.paths["/api/runtime"]).toBeDefined();
     expect(spec.paths["/api/activity"]).toBeDefined();
     expect(spec.paths["/api/traces"]).toBeDefined();
     expect(spec.paths["/api/traces/stats"]).toBeDefined();
