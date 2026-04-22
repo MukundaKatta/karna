@@ -37,6 +37,17 @@ describe("CLI access policy helpers", () => {
     expect(result.detail).toContain("always-on");
   });
 
+  it("warns when allowlist group mode has no approved users yet", () => {
+    const result = auditAccessPolicies(["telegram"], {
+      telegram: createDefaultPersistedAccessPolicy({
+        groupActivation: "allowlist",
+      }),
+    });
+
+    expect(result.status).toBe("warn");
+    expect(result.detail).toContain("allowlist is empty");
+  });
+
   it("filters out local-only channels from access audits", () => {
     expect(getAccessManagedChannels(["telegram", "webchat", "cli", "discord"])).toEqual([
       "telegram",

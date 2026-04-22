@@ -131,6 +131,7 @@ Karna now treats inbound messaging channels defensively by default:
 
 - `pairing` DMs: unknown senders get a short approval code before Karna processes their messages
 - `mention` groups: Karna only responds in group chats when mentioned or replied to
+- `allowlist` groups: Karna only responds to explicitly approved people in shared channels
 
 Useful commands:
 
@@ -140,6 +141,7 @@ karna access show telegram
 karna access approve telegram <code>
 karna access dm-mode telegram pairing
 karna access group-mode telegram mention
+karna access group-mode telegram allowlist
 karna doctor
 ```
 

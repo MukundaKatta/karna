@@ -335,6 +335,59 @@ describe("gateway websocket protocol", () => {
     expect(ws.sent[0]?.type).toBe("status");
   });
 
+  it("allows group messages from allowlisted senders when group mode is allowlist", async () => {
+    const ws = createSocket();
+    const accessPolicies = new AccessPolicyManager({ storagePath: false });
+    accessPolicies.setGroupActivation("discord", "allowlist");
+    accessPolicies.addToAllowlist("discord", "guild-user-2");
+    const context = createContext({ ws: ws as never, accessPolicies });
+    const session = context.sessionManager.createSession("discord-channel", "discord", "user-1", {
+      isDirectMessage: false,
+      channelId: "discord-channel",
+    });
+    context.auth = createAuthContext("discord-channel", "operator", "token");
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      setStreamCallback() {},
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "Handled allowlisted group message",
+          totalTokens: { inputTokens: 5, outputTokens: 8 },
+          agentId: "karna-general",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-group-allowlist",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "hello from a trusted teammate",
+          metadata: {
+            senderUserId: "guild-user-2",
+            isDirectMessage: false,
+          },
+        },
+      },
+      context,
+    );
+
+    expect(appendToTranscript).toHaveBeenCalledTimes(2);
+    expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
+    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(true);
+  });
+
   it("treats telegram supergroups as group chats when metadata says so", async () => {
     const ws = createSocket();
     const context = createContext({ ws: ws as never });

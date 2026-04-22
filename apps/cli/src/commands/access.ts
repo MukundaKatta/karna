@@ -3,7 +3,7 @@ import chalk from "chalk";
 import { resolveGatewayHttpUrl } from "../lib/config.js";
 
 type DmMode = "pairing" | "open" | "closed";
-type GroupMode = "mention" | "always" | "off";
+type GroupMode = "mention" | "always" | "allowlist" | "off";
 
 interface PolicySnapshot {
   channelId: string;
@@ -60,7 +60,7 @@ export function registerAccessCommand(program: Command): void {
 
   access
     .command("group-mode <channel> <mode>")
-    .description("Set group activation mode: mention, always, or off")
+    .description("Set group activation mode: mention, always, allowlist, or off")
     .action(async (channel: string, mode: GroupMode) => {
       const gatewayUrl = await resolveGatewayHttpUrl(access.opts().gateway as string | undefined);
       const result = await apiJson<{ policy: PolicySnapshot }>(`${gatewayUrl}/api/access/policies/${encodeURIComponent(channel)}`, "PATCH", { groupActivation: mode });

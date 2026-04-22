@@ -203,6 +203,12 @@ export class AccessPolicyManager {
       case "always":
         return { allowed: true, reason: "Group mode is always-on" };
 
+      case "allowlist":
+        if (policy.allowlist.has(userId)) {
+          return { allowed: true, reason: "Group sender is allowlisted" };
+        }
+        return { allowed: false, reason: "Group mode is allowlist-only" };
+
       case "off":
         return { allowed: false, reason: "Group mode is off" };
 

@@ -145,6 +145,10 @@ async function configureTelegram(
           value: "always",
         },
         {
+          name: "Allowlist — only respond to explicitly approved people",
+          value: "allowlist",
+        },
+        {
           name: "Off — stay silent in groups",
           value: "off",
         },

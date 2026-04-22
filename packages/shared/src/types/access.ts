@@ -3,7 +3,7 @@ import { z } from "zod";
 export const DmAccessModeSchema = z.enum(["pairing", "open", "closed"]);
 export type DmAccessMode = z.infer<typeof DmAccessModeSchema>;
 
-export const GroupActivationModeSchema = z.enum(["mention", "always", "off"]);
+export const GroupActivationModeSchema = z.enum(["mention", "always", "allowlist", "off"]);
 export type GroupActivationMode = z.infer<typeof GroupActivationModeSchema>;
 
 export const PairingRequestSchema = z.object({

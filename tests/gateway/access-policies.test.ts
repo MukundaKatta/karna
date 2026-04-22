@@ -93,6 +93,14 @@ describe("AccessPolicyManager", () => {
       expect(result.allowed).toBe(true);
     });
 
+    it("allows only allowlisted users in allowlist mode", () => {
+      apm.setGroupActivation("ch-1", "allowlist");
+      apm.addToAllowlist("ch-1", "trusted-user");
+
+      expect(apm.checkGroupAccess("ch-1", "trusted-user", "hello team", false).allowed).toBe(true);
+      expect(apm.checkGroupAccess("ch-1", "stranger", "hello team", false).allowed).toBe(false);
+    });
+
     it("rejects all messages in off mode", () => {
       apm.setGroupActivation("ch-1", "off");
       const result = apm.checkGroupAccess("ch-1", "user-1", "@karna help", false);

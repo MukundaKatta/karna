@@ -215,6 +215,10 @@ function describeAccessWarnings(
     warnings.push(`${channelId}: group replies are always-on`);
   }
 
+  if (policy.groupActivation === "allowlist" && policy.allowlist.length === 0) {
+    warnings.push(`${channelId}: group allowlist mode is enabled but the allowlist is empty`);
+  }
+
   return warnings;
 }
 
