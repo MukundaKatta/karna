@@ -57,8 +57,12 @@ const OPENAPI_SPEC = {
       get: {
         tags: ["Analytics"],
         summary: "Analytics overview",
+        parameters: [
+          queryParam("period", "string", "Analytics window: 7d, 14d, or 30d"),
+        ],
         responses: {
-          "200": { description: "Aggregated session and token analytics" },
+          "200": { description: "Aggregated live session analytics plus trace-backed breakdowns" },
+          "400": { description: "Invalid analytics period" },
         },
       },
     },

@@ -26,6 +26,11 @@ import { registerControlRoutes } from "./routes/control.js";
 import { registerWorkflowRoutes } from "./routes/workflows.js";
 import { AuditLogger } from "./audit/logger.js";
 import { TraceCollector } from "./observability/trace-collector.js";
+import {
+  buildAnalyticsSummary,
+  getAnalyticsWindowStart,
+  parseAnalyticsPeriod,
+} from "./analytics/summary.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { WorkflowEngine } from "@karna/agent/workflows/engine.js";
@@ -162,42 +167,35 @@ async function main(): Promise<void> {
 
   // ─── Analytics REST API ───────────────────────────────────────────────
 
-  server.get("/api/analytics", async (_request, reply) => {
-    const sessions = sessionManager.listAllSessions();
-    const metrics = metricsCollector.getMetrics();
-
-    let totalMessages = 0;
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let totalCostUsd = 0;
-
-    for (const session of sessions) {
-      if (session.stats) {
-        totalMessages += session.stats.messageCount;
-        totalInputTokens += session.stats.totalInputTokens;
-        totalOutputTokens += session.stats.totalOutputTokens;
-        totalCostUsd += session.stats.totalCostUsd;
-      }
+  server.get<{ Querystring: { period?: string } }>("/api/analytics", async (request, reply) => {
+    const periodDays = parseAnalyticsPeriod(request.query?.period);
+    if (!periodDays) {
+      return reply.status(400).send({ error: "period must be one of 7d, 14d, or 30d" });
     }
 
-    return reply.send({
-      overview: {
-        activeSessions: sessions.length,
-        activeConnections: connectedClients.size,
-        totalMessages,
-        totalInputTokens,
-        totalOutputTokens,
-        totalCostUsd: Math.round(totalCostUsd * 10000) / 10000,
-      },
-      metrics,
-      sessionsByChannel: sessions.reduce(
-        (acc, s) => {
-          acc[s.channelType] = (acc[s.channelType] ?? 0) + 1;
-          return acc;
-        },
-        {} as Record<string, number>,
-      ),
+    const sessions = sessionManager.listAllSessions();
+    const metrics = metricsCollector.getMetrics();
+    const since = getAnalyticsWindowStart(periodDays);
+    const traces = traceCollector.queryTraces({
+      limit: 10_000,
+      since,
+    }).traces;
+    const sessionEvents = await auditLogger.query({
+      eventType: "session.created",
+      since,
+      limit: 10_000,
     });
+
+    return reply.send(
+      buildAnalyticsSummary({
+        sessions,
+        connectedClients: connectedClients.size,
+        metrics,
+        traces,
+        sessionsCreated: sessionEvents.length,
+        periodDays,
+      }),
+    );
   });
 
   registerMemoryRoutes(server, memoryStore);

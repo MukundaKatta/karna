@@ -1,304 +1,555 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { cn } from "@/lib/utils";
-import { Activity, Clock, Zap, AlertTriangle, DollarSign, Cpu, ChevronRight, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  ChevronRight,
+  Clock,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Zap,
+} from "lucide-react";
+import { Badge } from "@/components/Badge";
+import { StatsCard } from "@/components/StatsCard";
+import { cn, formatCost, formatDate, formatRelativeTime, formatTokens } from "@/lib/utils";
 
-// Demo trace data
-function generateDemoTraces() {
-  const models = ["claude-sonnet-4-20250514", "claude-opus-4-20250514", "gpt-4o"];
-  const tools = ["file_read", "file_write", "web_search", "code_exec", "shell_exec", "memory_search"];
-  const agents = ["karna-default", "code-reviewer", "research-assistant"];
-  const statuses: ("ok" | "error")[] = ["ok", "ok", "ok", "ok", "error"];
+type StatusFilter = "all" | "ok" | "error" | "active";
+type TraceRange = "1h" | "24h" | "7d";
 
-  return Array.from({ length: 50 }, (_, i) => {
-    const startedAt = Date.now() - (i * 180000) - Math.random() * 60000;
-    const durationMs = 200 + Math.random() * 5000;
-    const model = models[Math.floor(Math.random() * models.length)];
-    const numTools = Math.floor(Math.random() * 4);
-    const inputTokens = 500 + Math.floor(Math.random() * 3000);
-    const outputTokens = 100 + Math.floor(Math.random() * 2000);
-    const status = statuses[Math.floor(Math.random() * statuses.length)];
-
-    const spans = [
-      {
-        spanId: `span-${i}-ctx`,
-        name: "build_context",
-        kind: "context" as const,
-        startedAt,
-        durationMs: 20 + Math.random() * 50,
-        status: "ok" as const,
-      },
-      {
-        spanId: `span-${i}-model`,
-        name: `${model}`,
-        kind: "model" as const,
-        startedAt: startedAt + 50,
-        durationMs: durationMs * 0.6,
-        status: status,
-      },
-      ...Array.from({ length: numTools }, (_, j) => ({
-        spanId: `span-${i}-tool-${j}`,
-        name: tools[Math.floor(Math.random() * tools.length)],
-        kind: "tool" as const,
-        startedAt: startedAt + durationMs * 0.6 + j * 300,
-        durationMs: 50 + Math.random() * 1500,
-        status: (Math.random() > 0.85 ? "error" : "ok") as "ok" | "error",
-      })),
-    ];
-
-    return {
-      traceId: `trace-${1000 + i}`,
-      sessionId: `sess-${1000 + Math.floor(i / 3)}`,
-      agentId: agents[Math.floor(Math.random() * agents.length)],
-      startedAt,
-      durationMs,
-      model,
-      inputTokens,
-      outputTokens,
-      costUsd: (inputTokens * 0.003 + outputTokens * 0.015) / 1000,
-      toolCalls: numTools,
-      success: status === "ok",
-      error: status === "error" ? "Tool execution failed" : undefined,
-      spans,
-    };
-  });
+interface TraceSpan {
+  spanId: string;
+  name: string;
+  kind: "context" | "model" | "tool" | "memory" | "skill" | "handoff" | "custom";
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  status: "ok" | "error" | "cancelled";
 }
 
-const kindColors: Record<string, string> = {
+interface Trace {
+  traceId: string;
+  sessionId: string;
+  agentId: string;
+  startedAt: number;
+  endedAt?: number;
+  durationMs?: number;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  toolCalls: number;
+  success: boolean;
+  error?: string;
+  spans: TraceSpan[];
+}
+
+interface TraceListResponse {
+  traces?: Trace[];
+  total?: number;
+  active?: number;
+}
+
+interface TraceDetailResponse {
+  trace?: Trace;
+  active?: boolean;
+}
+
+interface TraceStatsResponse {
+  stats?: {
+    totalTraces?: number;
+    avgDurationMs?: number;
+    p50DurationMs?: number;
+    p95DurationMs?: number;
+    p99DurationMs?: number;
+    totalTokens?: number;
+    totalCostUsd?: number;
+    toolSuccessRate?: number;
+    errorRate?: number;
+    tracesPerMinute?: number;
+  };
+  activeTraces?: number;
+  storedTraces?: number;
+}
+
+const kindColors: Record<TraceSpan["kind"], string> = {
   context: "bg-blue-500/20 text-blue-400 border-blue-500/30",
   model: "bg-purple-500/20 text-purple-400 border-purple-500/30",
   tool: "bg-green-500/20 text-green-400 border-green-500/30",
   memory: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   skill: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
   handoff: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+  custom: "bg-dark-700 text-dark-300 border-dark-600",
+};
+
+const traceRanges: Record<TraceRange, number> = {
+  "1h": 3_600_000,
+  "24h": 86_400_000,
+  "7d": 604_800_000,
 };
 
 export default function ObservabilityPage() {
-  const [traces] = useState(generateDemoTraces);
-  const [selectedTrace, setSelectedTrace] = useState<string | null>(null);
+  const [traces, setTraces] = useState<Trace[]>([]);
+  const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
+  const [selectedTraceDetail, setSelectedTraceDetail] = useState<Trace | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ok" | "error">("all");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [range, setRange] = useState<TraceRange>("24h");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [traceStats, setTraceStats] = useState<TraceStatsResponse["stats"]>();
+  const [activeTraces, setActiveTraces] = useState(0);
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const periodMs = traceRanges[range];
+    const since = Date.now() - periodMs;
+
+    async function fetchObservability() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const [listRes, statsRes] = await Promise.all([
+          fetch(`/api/traces?includeActive=true&limit=80&since=${since}`, {
+            cache: "no-store",
+          }),
+          fetch(`/api/traces/stats?periodMs=${periodMs}`, {
+            cache: "no-store",
+          }),
+        ]);
+
+        if (!listRes.ok) {
+          throw new Error(`Trace list request failed with ${listRes.status}`);
+        }
+        if (!statsRes.ok) {
+          throw new Error(`Trace stats request failed with ${statsRes.status}`);
+        }
+
+        const listPayload = (await listRes.json()) as TraceListResponse;
+        const statsPayload = (await statsRes.json()) as TraceStatsResponse;
+
+        if (cancelled) return;
+
+        const nextTraces = listPayload.traces ?? [];
+        setTraces(nextTraces);
+        setTraceStats(statsPayload.stats);
+        setActiveTraces(statsPayload.activeTraces ?? listPayload.active ?? 0);
+
+        const hasSelectedTrace = selectedTraceId
+          ? nextTraces.some((trace) => trace.traceId === selectedTraceId)
+          : false;
+        if (!hasSelectedTrace) {
+          setSelectedTraceId(nextTraces[0]?.traceId ?? null);
+        }
+      } catch (fetchError) {
+        if (cancelled) return;
+        setTraces([]);
+        setTraceStats(undefined);
+        setActiveTraces(0);
+        setSelectedTraceDetail(null);
+        setError(
+          fetchError instanceof Error
+            ? fetchError.message
+            : "Failed to load live traces",
+        );
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
+      }
+    }
+
+    fetchObservability();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [range, refreshKey]);
+
+  useEffect(() => {
+    if (!selectedTraceId) {
+      setSelectedTraceDetail(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function fetchTraceDetail() {
+      try {
+        const response = await fetch(`/api/traces/${selectedTraceId}`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Trace detail request failed with ${response.status}`);
+        }
+
+        const payload = (await response.json()) as TraceDetailResponse;
+        if (!cancelled) {
+          setSelectedTraceDetail(payload.trace ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          const fallback = traces.find((trace) => trace.traceId === selectedTraceId) ?? null;
+          setSelectedTraceDetail(fallback);
+        }
+      }
+    }
+
+    fetchTraceDetail();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTraceId, traces]);
 
   const filteredTraces = useMemo(() => {
-    let result = traces;
-    if (searchQuery) {
-      result = result.filter(
-        (t) =>
-          t.traceId.includes(searchQuery) ||
-          t.sessionId.includes(searchQuery) ||
-          t.agentId.includes(searchQuery) ||
-          t.model.includes(searchQuery)
-      );
-    }
-    if (statusFilter !== "all") {
-      result = result.filter((t) => (statusFilter === "ok" ? t.success : !t.success));
-    }
-    return result;
-  }, [traces, searchQuery, statusFilter]);
+    const query = searchQuery.trim().toLowerCase();
+    return traces.filter((trace) => {
+      if (query) {
+        const haystack = [
+          trace.traceId,
+          trace.sessionId,
+          trace.agentId,
+          trace.model,
+          ...trace.spans.map((span) => span.name),
+        ]
+          .join(" ")
+          .toLowerCase();
+        if (!haystack.includes(query)) {
+          return false;
+        }
+      }
 
-  const stats = useMemo(() => {
-    const durations = traces.map((t) => t.durationMs).sort((a, b) => a - b);
-    const p = (arr: number[], pct: number) => arr[Math.ceil(arr.length * pct) - 1] || 0;
-    const errorCount = traces.filter((t) => !t.success).length;
-    const toolSpans = traces.flatMap((t) => t.spans.filter((s) => s.kind === "tool"));
-    const failedTools = toolSpans.filter((s) => s.status === "error").length;
+      if (statusFilter === "ok") return Boolean(trace.endedAt) && trace.success;
+      if (statusFilter === "error") return Boolean(trace.endedAt) && !trace.success;
+      if (statusFilter === "active") return trace.endedAt === undefined;
+      return true;
+    });
+  }, [searchQuery, statusFilter, traces]);
 
-    return {
-      totalTraces: traces.length,
-      avgDuration: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length),
-      p50: Math.round(p(durations, 0.5)),
-      p95: Math.round(p(durations, 0.95)),
-      p99: Math.round(p(durations, 0.99)),
-      errorRate: ((errorCount / traces.length) * 100).toFixed(1),
-      toolSuccessRate: toolSpans.length > 0
-        ? (((toolSpans.length - failedTools) / toolSpans.length) * 100).toFixed(1)
-        : "100.0",
-      totalCost: traces.reduce((a, t) => a + t.costUsd, 0).toFixed(2),
-      totalTokens: traces.reduce((a, t) => a + t.inputTokens + t.outputTokens, 0),
-    };
-  }, [traces]);
+  const selectedTrace =
+    selectedTraceDetail ??
+    traces.find((trace) => trace.traceId === selectedTraceId) ??
+    filteredTraces[0] ??
+    null;
 
-  const selected = selectedTrace ? traces.find((t) => t.traceId === selectedTrace) : null;
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-full text-dark-400">
+        Loading traces...
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
-      <div>
-        <h1 className="text-2xl font-bold text-white">Observability</h1>
-        <p className="text-dark-400 mt-1">Real-time agent traces and performance metrics</p>
-      </div>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {[
-          { label: "Total Traces", value: stats.totalTraces, icon: Activity },
-          { label: "Avg Latency", value: `${stats.avgDuration}ms`, icon: Clock },
-          { label: "P95 Latency", value: `${stats.p95}ms`, icon: Zap },
-          { label: "Error Rate", value: `${stats.errorRate}%`, icon: AlertTriangle },
-          { label: "Tool Success", value: `${stats.toolSuccessRate}%`, icon: Cpu },
-          { label: "P99 Latency", value: `${stats.p99}ms`, icon: Clock },
-          { label: "Total Tokens", value: stats.totalTokens.toLocaleString(), icon: Zap },
-          { label: "Total Cost", value: `$${stats.totalCost}`, icon: DollarSign },
-        ].map(({ label, value, icon: Icon }) => (
-          <div
-            key={label}
-            className="rounded-xl border border-dark-700 bg-dark-800 p-4"
-          >
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs text-dark-400">{label}</p>
-              <Icon size={14} className="text-dark-500" />
-            </div>
-            <p className="text-lg font-bold text-white">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div className="flex gap-3 items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400" />
-          <input
-            type="text"
-            placeholder="Search traces..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-dark-800 border border-dark-700 text-dark-200 text-sm focus:outline-none focus:border-accent-500"
-          />
+      {error && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
+          {error}
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as "all" | "ok" | "error")}
-          className="px-3 py-2 rounded-lg bg-dark-800 border border-dark-700 text-dark-200 text-sm"
-        >
-          <option value="all">All Status</option>
-          <option value="ok">Success</option>
-          <option value="error">Error</option>
-        </select>
-      </div>
+      )}
 
-      <div className="flex gap-4">
-        {/* Trace List */}
-        <div className="flex-1 space-y-2">
-          {filteredTraces.slice(0, 20).map((trace) => (
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-white">Observability</h1>
+          <p className="text-sm text-dark-400 mt-1">
+            Live trace explorer for agent runs, spans, and failures
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {(["1h", "24h", "7d"] as const).map((option) => (
             <button
-              key={trace.traceId}
-              onClick={() => setSelectedTrace(trace.traceId === selectedTrace ? null : trace.traceId)}
+              key={option}
+              onClick={() => setRange(option)}
               className={cn(
-                "w-full text-left rounded-xl border p-4 transition-colors",
-                selectedTrace === trace.traceId
-                  ? "border-accent-500 bg-accent-600/10"
-                  : "border-dark-700 bg-dark-800 hover:border-dark-600"
+                "px-3 py-1.5 text-xs font-medium rounded-lg transition-colors",
+                range === option
+                  ? "bg-accent-600 text-white"
+                  : "bg-dark-700 text-dark-400 hover:text-white",
               )}
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className={cn(
-                    "w-2 h-2 rounded-full",
-                    trace.success ? "bg-green-400" : "bg-red-400"
-                  )} />
-                  <span className="text-sm font-mono text-dark-200">{trace.traceId}</span>
-                </div>
-                <ChevronRight size={14} className="text-dark-500" />
-              </div>
-              <div className="flex items-center gap-4 text-xs text-dark-400">
-                <span>{trace.agentId}</span>
-                <span>{Math.round(trace.durationMs)}ms</span>
-                <span>{trace.toolCalls} tools</span>
-                <span>{(trace.inputTokens + trace.outputTokens).toLocaleString()} tokens</span>
-                <span>${trace.costUsd.toFixed(4)}</span>
-              </div>
-
-              {/* Mini span waterfall */}
-              <div className="mt-3 h-6 relative bg-dark-900 rounded overflow-hidden">
-                {trace.spans.map((span) => {
-                  const offset = ((span.startedAt - trace.startedAt) / trace.durationMs) * 100;
-                  const width = Math.max(2, ((span.durationMs ?? 0) / trace.durationMs) * 100);
-                  const colors: Record<string, string> = {
-                    context: "bg-blue-500/60",
-                    model: "bg-purple-500/60",
-                    tool: span.status === "error" ? "bg-red-500/60" : "bg-green-500/60",
-                  };
-                  return (
-                    <div
-                      key={span.spanId}
-                      className={cn("absolute top-1 h-4 rounded-sm", colors[span.kind] ?? "bg-dark-500/60")}
-                      style={{ left: `${offset}%`, width: `${width}%` }}
-                      title={`${span.name}: ${Math.round(span.durationMs ?? 0)}ms`}
-                    />
-                  );
-                })}
-              </div>
+              {option}
             </button>
           ))}
+          <button
+            onClick={() => {
+              setIsRefreshing(true);
+              setRefreshKey((value) => value + 1);
+            }}
+            className="inline-flex items-center gap-2 rounded-lg bg-dark-700 px-3 py-1.5 text-xs font-medium text-dark-200 transition-colors hover:bg-dark-600"
+          >
+            <RefreshCw size={14} className={cn(isRefreshing && "animate-spin")} />
+            Refresh
+          </button>
         </div>
+      </div>
 
-        {/* Detail Panel */}
-        {selected && (
-          <div className="w-96 shrink-0 rounded-xl border border-dark-700 bg-dark-800 p-4 space-y-4 sticky top-0">
-            <h3 className="font-semibold text-white">Trace Detail</h3>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between">
-                <span className="text-dark-400">Trace ID</span>
-                <span className="font-mono text-dark-200">{selected.traceId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Session</span>
-                <span className="font-mono text-dark-200">{selected.sessionId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Agent</span>
-                <span className="text-dark-200">{selected.agentId}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Model</span>
-                <span className="text-dark-200">{selected.model}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Duration</span>
-                <span className="text-dark-200">{Math.round(selected.durationMs)}ms</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Tokens</span>
-                <span className="text-dark-200">{selected.inputTokens} in / {selected.outputTokens} out</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Cost</span>
-                <span className="text-dark-200">${selected.costUsd.toFixed(4)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-dark-400">Status</span>
-                <span className={selected.success ? "text-green-400" : "text-red-400"}>
-                  {selected.success ? "Success" : "Error"}
-                </span>
-              </div>
-            </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+        <StatsCard
+          title="Traces"
+          value={(traceStats?.totalTraces ?? 0).toLocaleString()}
+          icon={<Activity size={18} />}
+        />
+        <StatsCard
+          title="Active"
+          value={activeTraces}
+          icon={<Sparkles size={18} />}
+        />
+        <StatsCard
+          title="Avg Duration"
+          value={`${Math.round(traceStats?.avgDurationMs ?? 0)}ms`}
+          icon={<Clock size={18} />}
+        />
+        <StatsCard
+          title="P95"
+          value={`${Math.round(traceStats?.p95DurationMs ?? 0)}ms`}
+          icon={<Zap size={18} />}
+        />
+        <StatsCard
+          title="Tokens"
+          value={formatTokens(traceStats?.totalTokens ?? 0)}
+          icon={<Sparkles size={18} />}
+        />
+        <StatsCard
+          title="Error Rate"
+          value={`${((traceStats?.errorRate ?? 0) * 100).toFixed(1)}%`}
+          icon={<AlertTriangle size={18} />}
+        />
+      </div>
 
-            <h4 className="font-medium text-white mt-4">Spans ({selected.spans.length})</h4>
-            <div className="space-y-2">
-              {selected.spans.map((span) => (
-                <div
-                  key={span.spanId}
-                  className={cn(
-                    "rounded-lg border px-3 py-2",
-                    kindColors[span.kind] ?? "bg-dark-700 text-dark-300 border-dark-600"
-                  )}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-medium uppercase">{span.kind}</span>
-                      <span className="text-sm">{span.name}</span>
-                    </div>
-                    <span className="text-xs opacity-70">{Math.round(span.durationMs ?? 0)}ms</span>
-                  </div>
-                  {span.status === "error" && (
-                    <p className="text-xs text-red-400 mt-1">Error during execution</p>
-                  )}
-                </div>
-              ))}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_360px] gap-6">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-dark-700 bg-dark-800 p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="relative flex-1 max-w-xl">
+                <Search
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Search traces, sessions, agents, tools..."
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  className="w-full rounded-lg border border-dark-700 bg-dark-900 pl-9 pr-3 py-2 text-sm text-dark-100 placeholder:text-dark-500 focus:outline-none focus:border-accent-500"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+                className="rounded-lg border border-dark-700 bg-dark-900 px-3 py-2 text-sm text-dark-200"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="ok">Success</option>
+                <option value="error">Error</option>
+              </select>
             </div>
           </div>
-        )}
+
+          {filteredTraces.length > 0 ? (
+            <div className="space-y-2">
+              {filteredTraces.map((trace) => {
+                const isSelected = selectedTrace?.traceId === trace.traceId;
+                return (
+                  <button
+                    key={trace.traceId}
+                    onClick={() => setSelectedTraceId(trace.traceId)}
+                    className={cn(
+                      "w-full rounded-xl border p-4 text-left transition-colors",
+                      isSelected
+                        ? "border-accent-500 bg-accent-600/10"
+                        : "border-dark-700 bg-dark-800 hover:border-dark-600",
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={trace.endedAt === undefined ? "info" : trace.success ? "success" : "danger"}>
+                            {trace.endedAt === undefined ? "active" : trace.success ? "ok" : "error"}
+                          </Badge>
+                          <code className="text-xs text-dark-200">{trace.traceId}</code>
+                          <span className="text-xs text-dark-500">
+                            {formatRelativeTime(trace.startedAt)}
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium text-white">
+                          {trace.agentId} on {trace.model || "unknown model"}
+                        </p>
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-dark-400">
+                          <span>session {trace.sessionId}</span>
+                          <span>{Math.round(trace.durationMs ?? 0)}ms</span>
+                          <span>{trace.toolCalls} tools</span>
+                          <span>{formatTokens(trace.inputTokens + trace.outputTokens)}</span>
+                          <span>{formatCost(trace.costUsd)}</span>
+                        </div>
+                      </div>
+                      <ChevronRight size={16} className="text-dark-500 shrink-0" />
+                    </div>
+
+                    <div className="mt-3 h-6 relative overflow-hidden rounded bg-dark-900">
+                      {trace.spans.map((span) => {
+                        const totalDuration = Math.max(trace.durationMs ?? 0, 1);
+                        const offset = ((span.startedAt - trace.startedAt) / totalDuration) * 100;
+                        const width = Math.max(
+                          2,
+                          (((span.durationMs ?? 0) || 1) / totalDuration) * 100,
+                        );
+                        const color =
+                          span.kind === "tool"
+                            ? span.status === "error"
+                              ? "bg-red-500/60"
+                              : "bg-green-500/60"
+                            : span.kind === "model"
+                              ? "bg-purple-500/60"
+                              : "bg-blue-500/60";
+
+                        return (
+                          <div
+                            key={span.spanId}
+                            className={cn("absolute top-1 h-4 rounded-sm", color)}
+                            style={{ left: `${offset}%`, width: `${width}%` }}
+                            title={`${span.name}: ${Math.round(span.durationMs ?? 0)}ms`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
+              No traces matched the current filters.
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-dark-700 bg-dark-800 p-4 space-y-4 h-fit lg:sticky lg:top-4">
+          {selectedTrace ? (
+            <>
+              <div>
+                <h3 className="text-base font-semibold text-white">Trace Detail</h3>
+                <p className="text-xs text-dark-400 mt-1">
+                  {selectedTrace.traceId} • started {formatDate(selectedTrace.startedAt)}
+                </p>
+              </div>
+
+              <div className="space-y-2 text-sm">
+                <DetailRow label="Agent" value={selectedTrace.agentId} />
+                <DetailRow label="Model" value={selectedTrace.model || "unknown"} />
+                <DetailRow label="Session" value={selectedTrace.sessionId} mono />
+                <DetailRow
+                  label="Duration"
+                  value={`${Math.round(selectedTrace.durationMs ?? 0)}ms`}
+                />
+                <DetailRow
+                  label="Tokens"
+                  value={`${selectedTrace.inputTokens} in / ${selectedTrace.outputTokens} out`}
+                />
+                <DetailRow label="Cost" value={formatCost(selectedTrace.costUsd)} />
+                <DetailRow
+                  label="Status"
+                  value={
+                    selectedTrace.endedAt === undefined
+                      ? "active"
+                      : selectedTrace.success
+                        ? "success"
+                        : "error"
+                  }
+                  valueClassName={
+                    selectedTrace.endedAt === undefined
+                      ? "text-blue-400"
+                      : selectedTrace.success
+                        ? "text-green-400"
+                        : "text-red-400"
+                  }
+                />
+              </div>
+
+              {selectedTrace.error && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 text-sm text-red-300">
+                  {selectedTrace.error}
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-white">Spans</h4>
+                  <Badge variant="default">{selectedTrace.spans.length}</Badge>
+                </div>
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {selectedTrace.spans.map((span) => (
+                    <div
+                      key={span.spanId}
+                      className={cn(
+                        "rounded-lg border px-3 py-2",
+                        kindColors[span.kind] ?? kindColors.custom,
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide">
+                              {span.kind}
+                            </span>
+                            <span className="truncate text-sm">{span.name}</span>
+                          </div>
+                          <p className="mt-1 text-[11px] opacity-75">
+                            {formatDate(span.startedAt, "HH:mm:ss.SSS")}
+                          </p>
+                        </div>
+                        <div className="text-right text-xs opacity-80">
+                          <p>{Math.round(span.durationMs ?? 0)}ms</p>
+                          <p>{span.status}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex min-h-[320px] items-center justify-center text-sm text-dark-400">
+              Select a trace to inspect span-level details.
+            </div>
+          )}
+        </div>
       </div>
+    </div>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  mono = false,
+  valueClassName,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+  valueClassName?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-dark-400">{label}</span>
+      <span
+        className={cn(
+          "text-right text-dark-200",
+          mono && "font-mono text-xs",
+          valueClassName,
+        )}
+      >
+        {value}
+      </span>
     </div>
   );
 }
