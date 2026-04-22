@@ -71,6 +71,34 @@ describe("catalog api routes", () => {
     });
   });
 
+  it("returns detailed skill metadata for a single skill", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/skills/code-reviewer",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().skill).toMatchObject({
+      id: "code-reviewer",
+      source: "builtin",
+    });
+    expect(response.json().skill.triggerDefinitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "command",
+          value: "/review",
+        }),
+      ]),
+    );
+    expect(response.json().skill.actionDefinitions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "review",
+        }),
+      ]),
+    );
+  });
+
   it("builds analytics history from real traces and audit events", async () => {
     const traceId = traceCollector.startTrace("session-1", "karna-general");
     const spanId = traceCollector.startSpan(traceId, "calendar_create", "tool");
@@ -113,5 +141,11 @@ describe("catalog api routes", () => {
       url: "/api/agents/not-real",
     });
     expect(missing.statusCode).toBe(404);
+
+    const missingSkill = await app.inject({
+      method: "GET",
+      url: "/api/skills/not-real",
+    });
+    expect(missingSkill.statusCode).toBe(404);
   });
 });

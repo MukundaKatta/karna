@@ -41,6 +41,14 @@ describe("memory routes", () => {
     expect(get.statusCode).toBe(200);
     expect(get.json().memory.id).toBe(created.id);
 
+    const list = await app.inject({
+      method: "GET",
+      url: "/api/memory?agentId=agent-1&query=concise",
+    });
+    expect(list.statusCode).toBe(200);
+    expect(list.json().entries).toHaveLength(1);
+    expect(list.json().entries[0].agentId).toBe("agent-1");
+
     const search = await app.inject({
       method: "POST",
       url: "/api/memory/search",
@@ -86,5 +94,11 @@ describe("memory routes", () => {
       },
     });
     expect(badSearch.statusCode).toBe(400);
+
+    const badList = await app.inject({
+      method: "GET",
+      url: "/api/memory?limit=0",
+    });
+    expect(badList.statusCode).toBe(400);
   });
 });

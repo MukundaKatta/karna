@@ -34,6 +34,26 @@ interface SkillCatalogEntry {
   source: "builtin" | "community";
 }
 
+interface SkillTriggerDefinition {
+  type: string;
+  value: string;
+  description?: string;
+}
+
+interface SkillActionDefinition {
+  name: string;
+  description?: string;
+  riskLevel?: string;
+}
+
+interface SkillCatalogDetail extends SkillCatalogEntry {
+  instructions?: string;
+  triggerDefinitions: SkillTriggerDefinition[];
+  actionDefinitions: SkillActionDefinition[];
+  dependencies: string[];
+  requiredTools: string[];
+}
+
 export function registerApiRoutes(
   app: FastifyInstance,
   services: {
@@ -69,6 +89,16 @@ export function registerApiRoutes(
     return {
       skills: await loadSkillCatalog(),
     };
+  });
+
+  app.get<{ Params: AgentParams }>("/api/skills/:id", async (request, reply) => {
+    const skill = await loadSkillCatalogDetail(request.params.id);
+
+    if (!skill) {
+      return reply.status(404).send({ error: "Skill not found" });
+    }
+
+    return reply.send({ skill });
   });
 
   app.get<{ Querystring: AnalyticsHistoryQuery }>(
@@ -194,11 +224,7 @@ async function loadBuiltinSkillCatalog(): Promise<SkillCatalogEntry[]> {
       const skillPath = join(BUILTIN_SKILLS_DIR, entry, "SKILL.md");
       try {
         const raw = await readFile(skillPath, "utf-8");
-        const parsed = parseSkillMarkdown(entry, raw);
-        return {
-          ...parsed,
-          source: "builtin" as const,
-        };
+        return toSkillCatalogEntry(parseSkillMarkdown(entry, raw, "builtin"));
       } catch {
         return null;
       }
@@ -243,9 +269,69 @@ async function loadCommunitySkillCatalog(): Promise<SkillCatalogEntry[]> {
   }
 }
 
-function parseSkillMarkdown(id: string, raw: string): Omit<SkillCatalogEntry, "source"> {
-  const frontmatterMatch = raw.match(/^---\n([\s\S]*?)\n---/);
-  const frontmatter = frontmatterMatch?.[1] ?? "";
+async function loadSkillCatalogDetail(id: string): Promise<SkillCatalogDetail | null> {
+  const builtinPath = join(BUILTIN_SKILLS_DIR, id, "SKILL.md");
+
+  try {
+    const raw = await readFile(builtinPath, "utf-8");
+    return parseSkillMarkdown(id, raw, "builtin");
+  } catch {
+    return loadCommunitySkillDetail(id);
+  }
+}
+
+async function loadCommunitySkillDetail(id: string): Promise<SkillCatalogDetail | null> {
+  try {
+    const raw = await readFile(COMMUNITY_SKILLS_DB, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      installed?: Array<{
+        name: string;
+        version: string;
+        manifest?: {
+          displayName?: string;
+          description?: string;
+          author?: string;
+          tags?: string[];
+          category?: string;
+        };
+      }>;
+    };
+
+    const skill = (parsed.installed ?? []).find((entry) => entry.name === id);
+    if (!skill) {
+      return null;
+    }
+
+    return {
+      id: skill.name,
+      name: skill.manifest?.displayName ?? skill.name,
+      description: skill.manifest?.description ?? "",
+      version: skill.version,
+      enabled: true,
+      actions: 0,
+      triggers: 0,
+      category: skill.manifest?.category ?? skill.manifest?.tags?.[0],
+      author: skill.manifest?.author,
+      tags: skill.manifest?.tags ?? [],
+      source: "community",
+      instructions: undefined,
+      triggerDefinitions: [],
+      actionDefinitions: [],
+      dependencies: [],
+      requiredTools: [],
+    };
+  } catch (error) {
+    logger.warn({ error: String(error), skillId: id }, "Failed to load community skill detail");
+    return null;
+  }
+}
+
+function parseSkillMarkdown(
+  id: string,
+  raw: string,
+  source: SkillCatalogEntry["source"],
+): SkillCatalogDetail {
+  const { frontmatter, body } = splitFrontmatter(raw);
 
   const name = readScalar(frontmatter, "name") ?? id;
   const description = readScalar(frontmatter, "description") ?? "";
@@ -255,6 +341,10 @@ function parseSkillMarkdown(id: string, raw: string): Omit<SkillCatalogEntry, "s
   const enabledValue = readScalar(frontmatter, "enabled");
   const enabled = enabledValue === undefined ? true : enabledValue === "true";
   const tags = readList(frontmatter, "tags");
+  const triggerDefinitions = readTriggerDefinitions(frontmatter);
+  const actionDefinitions = readActionDefinitions(frontmatter);
+  const dependencies = readList(frontmatter, "dependencies");
+  const requiredTools = readList(frontmatter, "requiredTools");
 
   return {
     id,
@@ -262,11 +352,42 @@ function parseSkillMarkdown(id: string, raw: string): Omit<SkillCatalogEntry, "s
     description,
     version,
     enabled,
-    actions: countSectionItems(frontmatter, "actions", "name"),
-    triggers: countSectionItems(frontmatter, "triggers", "type"),
+    actions: actionDefinitions.length,
+    triggers: triggerDefinitions.length,
     category,
     author,
     tags,
+    source,
+    instructions: body || undefined,
+    triggerDefinitions,
+    actionDefinitions,
+    dependencies,
+    requiredTools,
+  };
+}
+
+function toSkillCatalogEntry(skill: SkillCatalogDetail): SkillCatalogEntry {
+  return {
+    id: skill.id,
+    name: skill.name,
+    description: skill.description,
+    version: skill.version,
+    enabled: skill.enabled,
+    actions: skill.actions,
+    triggers: skill.triggers,
+    category: skill.category,
+    author: skill.author,
+    tags: skill.tags,
+    source: skill.source,
+  };
+}
+
+function splitFrontmatter(raw: string): { frontmatter: string; body: string } {
+  const match = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+
+  return {
+    frontmatter: match?.[1] ?? "",
+    body: (match?.[2] ?? "").trim(),
   };
 }
 
@@ -303,14 +424,84 @@ function readList(frontmatter: string, key: string): string[] {
   return values;
 }
 
-function countSectionItems(frontmatter: string, section: string, markerKey: string): number {
-  const sectionMatch = frontmatter.match(
-    new RegExp(`^${escapeRegex(section)}:\\n([\\s\\S]*?)(?=^[a-zA-Z][a-zA-Z0-9]*:|$)`, "m"),
-  );
-  if (!sectionMatch?.[1]) return 0;
+function readTriggerDefinitions(frontmatter: string): SkillTriggerDefinition[] {
+  return readObjectList(frontmatter, "triggers", "type").flatMap((entry) => {
+    if (!entry.type || !entry.value) {
+      return [];
+    }
 
-  const itemRegex = new RegExp(`^\\s*-\\s+${escapeRegex(markerKey)}:`, "gm");
-  return sectionMatch[1].match(itemRegex)?.length ?? 0;
+    return [
+      {
+        type: entry.type,
+        value: entry.value,
+        description: entry.description,
+      },
+    ];
+  });
+}
+
+function readActionDefinitions(frontmatter: string): SkillActionDefinition[] {
+  return readObjectList(frontmatter, "actions", "name").flatMap((entry) => {
+    if (!entry.name) {
+      return [];
+    }
+
+    return [
+      {
+        name: entry.name,
+        description: entry.description,
+        riskLevel: entry.riskLevel,
+      },
+    ];
+  });
+}
+
+function readObjectList(
+  frontmatter: string,
+  section: string,
+  markerKey: string,
+): Array<Record<string, string>> {
+  const lines = frontmatter.split("\n");
+  const values: Array<Record<string, string>> = [];
+  let collecting = false;
+  let current: Record<string, string> | null = null;
+
+  for (const line of lines) {
+    if (!collecting && line.startsWith(`${section}:`)) {
+      collecting = true;
+      continue;
+    }
+
+    if (!collecting) continue;
+
+    if (/^[a-zA-Z][a-zA-Z0-9]*:/.test(line)) {
+      break;
+    }
+
+    const itemMatch = line.match(
+      new RegExp(`^\\s*-\\s+${escapeRegex(markerKey)}:\\s*(.+)$`),
+    );
+    if (itemMatch?.[1]) {
+      if (current) {
+        values.push(current);
+      }
+      current = {
+        [markerKey]: stripQuotes(itemMatch[1].trim()),
+      };
+      continue;
+    }
+
+    const fieldMatch = line.match(/^\s{4}([a-zA-Z][a-zA-Z0-9]*):\s*(.+)$/);
+    if (current && fieldMatch?.[1] && fieldMatch[2]) {
+      current[fieldMatch[1]] = stripQuotes(fieldMatch[2].trim());
+    }
+  }
+
+  if (current) {
+    values.push(current);
+  }
+
+  return values;
 }
 
 function stripQuotes(value: string): string {

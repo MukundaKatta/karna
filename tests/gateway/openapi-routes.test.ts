@@ -22,6 +22,7 @@ describe("openapi routes", () => {
     expect(spec.openapi).toBe("3.1.0");
     expect(spec.paths["/api/agents"]).toBeDefined();
     expect(spec.paths["/api/skills"]).toBeDefined();
+    expect(spec.paths["/api/skills/{id}"]).toBeDefined();
     expect(spec.paths["/api/tools"]).toBeDefined();
     expect(spec.paths["/api/analytics/history"]).toBeDefined();
     expect(spec.paths["/api/activity"]).toBeDefined();
@@ -33,6 +34,7 @@ describe("openapi routes", () => {
     expect(spec.paths["/api/sessions/{sessionId}/history"]).toBeDefined();
     expect(spec.paths["/api/sessions/{sessionId}/message"]).toBeDefined();
     expect(spec.paths["/api/access/policies/{channel}/pairings/approve"]).toBeDefined();
+    expect(spec.paths["/api/memory"]).toBeDefined();
     expect(spec.paths["/api/memory/search"]).toBeDefined();
   });
 

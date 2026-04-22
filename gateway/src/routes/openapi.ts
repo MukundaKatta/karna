@@ -103,6 +103,17 @@ const OPENAPI_SPEC = {
         },
       },
     },
+    "/api/skills/{id}": {
+      get: {
+        tags: ["Catalog"],
+        summary: "Get a single skill",
+        parameters: [pathParam("id", "Skill id")],
+        responses: {
+          "200": { description: "Skill detail with actions and triggers" },
+          "404": { description: "Skill not found" },
+        },
+      },
+    },
     "/api/tools": {
       get: {
         tags: ["Catalog"],
@@ -404,6 +415,22 @@ const OPENAPI_SPEC = {
       },
     },
     "/api/memory": {
+      get: {
+        tags: ["Memory"],
+        summary: "List memory entries",
+        parameters: [
+          queryParam("agentId", "string", "Filter by agent id"),
+          queryParam("query", "string", "Filter by matching text"),
+          queryParam("category", "string", "Filter by memory category"),
+          queryParam("source", "string", "Filter by memory source"),
+          queryParam("limit", "integer", "Maximum entries to return"),
+          queryParam("offset", "integer", "Offset into the memory list"),
+        ],
+        responses: {
+          "200": { description: "Memory entries and pagination metadata" },
+          "400": { description: "Invalid memory list filters" },
+        },
+      },
       post: {
         tags: ["Memory"],
         summary: "Create a memory entry",

@@ -2,8 +2,10 @@ import type { FastifyInstance } from "fastify";
 import {
   CreateMemoryInputSchema,
   type CreateMemoryInput,
+  MemorySourceSchema,
 } from "@karna/shared/types/memory.js";
 import type { MemoryStore } from "@karna/agent/memory/store.js";
+import { DEFAULT_AGENTS } from "../catalog/default-agents.js";
 
 interface MemorySearchBody {
   agentId: string;
@@ -19,7 +21,84 @@ interface MemoryCreateBody extends CreateMemoryInput {
   agentId: string;
 }
 
+interface MemoryListQuerystring {
+  agentId?: string;
+  query?: string;
+  category?: string;
+  source?: string;
+  limit?: string | number;
+  offset?: string | number;
+}
+
 export function registerMemoryRoutes(app: FastifyInstance, memoryStore: MemoryStore): void {
+  app.get<{ Querystring: MemoryListQuerystring }>("/api/memory", async (request, reply) => {
+    const limit = parsePositiveInt(request.query?.limit, 100);
+    const offset = parseNonNegativeInt(request.query?.offset, 0);
+    const query = request.query?.query?.trim();
+    const category = request.query?.category?.trim();
+    const agentId = request.query?.agentId?.trim();
+    const source = request.query?.source?.trim();
+
+    if (limit === null) {
+      return reply.status(400).send({ error: "limit must be a positive integer" });
+    }
+    if (offset === null) {
+      return reply.status(400).send({ error: "offset must be a non-negative integer" });
+    }
+    if (source) {
+      const parsedSource = MemorySourceSchema.safeParse(source);
+      if (!parsedSource.success) {
+        return reply.status(400).send({ error: "source must be a valid memory source" });
+      }
+    }
+
+    const agentIds = agentId ? [agentId] : DEFAULT_AGENTS.map((agent) => agent.id);
+    const allEntries = (
+      await Promise.all(
+        agentIds.map(async (currentAgentId) => {
+          const entries = await memoryStore.listByAgent(currentAgentId);
+          return entries.map((entry) => ({
+            ...entry,
+            agentId: currentAgentId,
+          }));
+        }),
+      )
+    )
+      .flat()
+      .sort((left, right) => right.createdAt - left.createdAt);
+
+    const normalizedQuery = query?.toLowerCase();
+    const filteredEntries = allEntries.filter((entry) => {
+      if (category && entry.category !== category) return false;
+      if (source && entry.source !== source) return false;
+      if (!normalizedQuery) return true;
+
+      const fields = [
+        entry.content,
+        entry.summary,
+        entry.category,
+        entry.source,
+        ...entry.tags,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .map((value) => value.toLowerCase());
+
+      return fields.some((value) => value.includes(normalizedQuery));
+    });
+
+    return reply.send({
+      entries: filteredEntries.slice(offset, offset + limit),
+      total: filteredEntries.length,
+      hasMore: offset + limit < filteredEntries.length,
+      filters: {
+        agentId: agentId ?? null,
+        query: query ?? null,
+        category: category ?? null,
+        source: source ?? null,
+      },
+    });
+  });
+
   app.post<{ Body: MemoryCreateBody }>("/api/memory", async (request, reply) => {
     const body = request.body;
     const parsed = CreateMemoryInputSchema.safeParse(body);
@@ -88,4 +167,22 @@ export function registerMemoryRoutes(app: FastifyInstance, memoryStore: MemorySt
     }
     return reply.status(204).send();
   });
+}
+
+function parsePositiveInt(value: string | number | undefined, fallback: number): number | null {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function parseNonNegativeInt(value: string | number | undefined, fallback: number): number | null {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return null;
+  }
+  return parsed;
 }
