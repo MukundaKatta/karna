@@ -179,6 +179,18 @@ interface ChatRoutingContext {
   agentMentioned: boolean;
 }
 
+export interface SessionTurnExecutionOptions {
+  historyLimit?: number;
+  streamCallback?: StreamCallback;
+  approvalCallback?: (request: { toolCallId: string }) => Promise<{
+    toolCallId: string;
+    approved: boolean;
+    reason?: string;
+    respondedAt: number;
+  }>;
+  delegationCallback?: (record: DelegationRecord) => void;
+}
+
 // ─── Send Helper ────────────────────────────────────────────────────────────
 
 function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
@@ -198,6 +210,65 @@ function sendError(ws: WebSocket, code: string, message: string, retryable = fal
     timestamp: Date.now(),
     payload: { code, message, retryable },
   });
+}
+
+export async function runSessionTurn(
+  session: Session,
+  content: string,
+  context: Pick<ConnectionContext, "sessionManager">,
+  options: SessionTurnExecutionOptions = {},
+): Promise<{
+  success: boolean;
+  response: string;
+  error?: string;
+  totalTokens: { inputTokens: number; outputTokens: number };
+  agentId: string;
+  delegations: DelegationRecord[];
+  activeAgentCount: number;
+}> {
+  const orch = await getOrCreateOrchestrator();
+  const history = await readTranscript(session.id, options.historyLimit ?? 50);
+
+  orch.setStreamCallback(options.streamCallback ?? (() => {}));
+  orch.setDelegationCallback(options.delegationCallback ?? (() => {}));
+  orch.setApprovalCallback(
+    options.approvalCallback
+      ?? (async (request) => ({
+        toolCallId: request.toolCallId,
+        approved: false,
+        reason: "Injected session turns cannot request tool approval",
+        respondedAt: Date.now(),
+      })),
+  );
+
+  const result = await orch.handleMessage(session, content, history);
+
+  if (result.success) {
+    await appendToTranscript(session.id, {
+      id: nanoid(),
+      sessionId: session.id,
+      role: "assistant",
+      content: result.response,
+      timestamp: Date.now(),
+      metadata: {
+        inputTokens: result.totalTokens.inputTokens,
+        outputTokens: result.totalTokens.outputTokens,
+        model: result.agentId,
+      },
+    });
+
+    context.sessionManager.updateSessionStats(
+      session.id,
+      result.totalTokens.inputTokens,
+      result.totalTokens.outputTokens,
+      0,
+    );
+  }
+
+  return {
+    ...result,
+    activeAgentCount: orch.activeAgentCount,
+  };
 }
 
 // ─── Message Router ─────────────────────────────────────────────────────────
@@ -471,11 +542,6 @@ async function handleChatMessage(
 
   // Forward to orchestrator
   try {
-    const orch = await getOrCreateOrchestrator();
-
-    // Load conversation history from transcript
-    const history = await readTranscript(sessionId, 50);
-
     // Set up streaming callback to forward deltas to the client
     let streamIndex = 0;
     const streamCallback: StreamCallback = (event) => {
@@ -509,53 +575,48 @@ async function handleChatMessage(
           break;
       }
     };
-
-    orch.setStreamCallback(streamCallback);
-
-    // Set up approval callback to forward requests to the client
-    orch.setApprovalCallback(async (request) => {
-      return new Promise((resolve) => {
-        const timer = setTimeout(() => {
-          pendingApprovals.delete(request.toolCallId);
-          resolve({
-            toolCallId: request.toolCallId,
-            approved: false, // Reject on timeout — never auto-approve
-            reason: "Rejected: approval request timed out (60s)",
-            respondedAt: Date.now(),
-          });
-        }, 60_000);
-
-        pendingApprovals.set(request.toolCallId, {
-          resolve: (approved: boolean) => {
+    const result = await runSessionTurn(session, content, context, {
+      historyLimit: 50,
+      streamCallback,
+      approvalCallback: async (request) => {
+        return new Promise((resolve) => {
+          const timer = setTimeout(() => {
+            pendingApprovals.delete(request.toolCallId);
             resolve({
               toolCallId: request.toolCallId,
-              approved,
+              approved: false,
+              reason: "Rejected: approval request timed out (60s)",
               respondedAt: Date.now(),
             });
-          },
-          timer,
+          }, 60_000);
+
+          pendingApprovals.set(request.toolCallId, {
+            resolve: (approved: boolean) => {
+              resolve({
+                toolCallId: request.toolCallId,
+                approved,
+                respondedAt: Date.now(),
+              });
+            },
+            timer,
+          });
         });
-      });
+      },
+      delegationCallback: (record: DelegationRecord) => {
+        sendMessage(ws, {
+          id: nanoid(),
+          type: "agent.handoff",
+          timestamp: Date.now(),
+          sessionId,
+          payload: {
+            fromAgentId: record.fromAgentId,
+            toAgentId: record.toAgentId,
+            reason: record.reason,
+            contextSummary: record.task,
+          },
+        });
+      },
     });
-
-    // Set up delegation callback to emit agent.handoff messages to the client
-    orch.setDelegationCallback((record: DelegationRecord) => {
-      sendMessage(ws, {
-        id: nanoid(),
-        type: "agent.handoff",
-        timestamp: Date.now(),
-        sessionId,
-        payload: {
-          fromAgentId: record.fromAgentId,
-          toAgentId: record.toAgentId,
-          reason: record.reason,
-          contextSummary: record.task,
-        },
-      });
-    });
-
-    // Execute via orchestrator (handles delegation transparently)
-    const result = await orch.handleMessage(session, content, history);
 
     if (result.success) {
       // Send final response
@@ -572,20 +633,6 @@ async function handleChatMessage(
         },
       });
 
-      // Persist assistant message to transcript
-      await appendToTranscript(sessionId, {
-        id: nanoid(),
-        sessionId,
-        role: "assistant",
-        content: result.response,
-        timestamp: Date.now(),
-        metadata: {
-          inputTokens: result.totalTokens.inputTokens,
-          outputTokens: result.totalTokens.outputTokens,
-          model: result.agentId,
-        },
-      });
-
       // Send orchestration status if any delegations occurred
       if (result.delegations.length > 0) {
         sendMessage(ws, {
@@ -594,7 +641,7 @@ async function handleChatMessage(
           timestamp: Date.now(),
           sessionId,
           payload: {
-            activeAgents: orch.activeAgentCount,
+            activeAgents: result.activeAgentCount,
             delegations: result.delegations.map((d) => ({
               fromAgentId: d.fromAgentId,
               toAgentId: d.toAgentId,
@@ -605,14 +652,6 @@ async function handleChatMessage(
           },
         });
       }
-
-      // Update session stats
-      context.sessionManager.updateSessionStats(
-        sessionId,
-        result.totalTokens.inputTokens,
-        result.totalTokens.outputTokens,
-        0,
-      );
     } else {
       sendError(ws, "AGENT_ERROR", result.error ?? "Agent processing failed", true);
     }

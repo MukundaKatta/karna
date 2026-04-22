@@ -1,4 +1,5 @@
 import type { Session, SessionStatus } from "@karna/shared/types/session.js";
+import type { ConversationMessage } from "@karna/shared/types/session.js";
 
 export interface SessionSummary {
   total: number;
@@ -24,6 +25,34 @@ export interface SessionsListResponse {
   total: number;
 }
 
+export interface SessionHistoryResponse {
+  sessionId: string;
+  messages: ConversationMessage[];
+  totalMessages: number;
+  hasMore: boolean;
+}
+
+export interface SessionMessageResponse {
+  success: boolean;
+  queued: boolean;
+  sessionId: string;
+  replyBack: boolean;
+  response?: string;
+  usage?: {
+    inputTokens: number;
+    outputTokens: number;
+  };
+  delegations?: Array<{
+    fromAgentId: string;
+    toAgentId: string;
+    reason: string;
+    task: string;
+    timestamp: number;
+  }>;
+  agentId?: string;
+  error?: string;
+}
+
 export async function fetchSessions(
   baseUrl: string,
   filter: SessionFilterOptions = {},
@@ -47,6 +76,18 @@ export async function fetchSessionSummary(
   return data.summary;
 }
 
+export async function fetchSessionHistory(
+  baseUrl: string,
+  sessionId: string,
+  limit?: number,
+): Promise<SessionHistoryResponse> {
+  const query = typeof limit === "number" ? `?limit=${limit}` : "";
+  const response = await fetch(
+    `${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/history${query}`,
+  );
+  return handleResponse<SessionHistoryResponse>(response);
+}
+
 export async function updateSessionStatus(
   baseUrl: string,
   sessionId: string,
@@ -66,6 +107,32 @@ export async function terminateSession(baseUrl: string, sessionId: string): Prom
     method: "DELETE",
   });
   await handleResponse<{ removed: boolean }>(response);
+}
+
+export async function clearSessionHistory(baseUrl: string, sessionId: string): Promise<boolean> {
+  const response = await fetch(`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/history`, {
+    method: "DELETE",
+  });
+  const data = await handleResponse<{ cleared: boolean }>(response);
+  return data.cleared;
+}
+
+export async function sendSessionMessage(
+  baseUrl: string,
+  sessionId: string,
+  body: {
+    content: string;
+    role?: "user" | "assistant" | "system";
+    replyBack?: boolean;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<SessionMessageResponse> {
+  const response = await fetch(`${baseUrl}/api/sessions/${encodeURIComponent(sessionId)}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return handleResponse<SessionMessageResponse>(response);
 }
 
 export async function terminateSessions(

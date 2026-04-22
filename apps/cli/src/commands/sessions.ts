@@ -3,9 +3,12 @@ import chalk from "chalk";
 import type { SessionStatus } from "@karna/shared/types/session.js";
 import { resolveGatewayHttpUrl } from "../lib/config.js";
 import {
+  clearSessionHistory,
   fetchSession,
+  fetchSessionHistory,
   fetchSessions,
   fetchSessionSummary,
+  sendSessionMessage,
   terminateSession,
   terminateSessions,
   updateSessionStatus,
@@ -19,6 +22,17 @@ interface SessionFilterFlags {
   limit?: string;
   staleAfterMs?: string;
   all?: boolean;
+  json?: boolean;
+}
+
+interface SessionHistoryFlags {
+  limit?: string;
+  json?: boolean;
+}
+
+interface SessionSendFlags {
+  role?: "user" | "assistant" | "system";
+  replyBack?: boolean;
   json?: boolean;
 }
 
@@ -91,6 +105,60 @@ export function registerSessionsCommand(program: Command): void {
     });
 
   sessions
+    .command("history <sessionId>")
+    .description("Show recent transcript history for a session")
+    .option("-l, --limit <count>", "Limit transcript messages", "20")
+    .option("--json", "Print raw JSON", false)
+    .action(async (sessionId: string, options: SessionHistoryFlags) => {
+      const gatewayUrl = await resolveGatewayHttpUrl(sessions.opts().gateway as string | undefined);
+      const history = await fetchSessionHistory(
+        gatewayUrl,
+        sessionId,
+        options.limit ? Number(options.limit) : undefined,
+      );
+
+      if (options.json) {
+        console.log(JSON.stringify(history, null, 2));
+        return;
+      }
+
+      printHistory(history);
+    });
+
+  sessions
+    .command("send <sessionId> <message>")
+    .description("Inject a message into another session and optionally request a reply")
+    .option("--role <role>", "Injected message role: system, user, or assistant", "system")
+    .option("--reply-back", "Ask the target session to respond immediately", false)
+    .option("--json", "Print raw JSON", false)
+    .action(async (sessionId: string, message: string, options: SessionSendFlags) => {
+      const gatewayUrl = await resolveGatewayHttpUrl(sessions.opts().gateway as string | undefined);
+      const result = await sendSessionMessage(gatewayUrl, sessionId, {
+        content: message,
+        role: options.role,
+        replyBack: options.replyBack,
+      });
+
+      if (options.json) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+
+      console.log(
+        chalk.green(
+          result.queued
+            ? `Queued message for ${result.sessionId}.`
+            : `Delivered message to ${result.sessionId} and received a reply.`,
+        ),
+      );
+      if (result.response) {
+        console.log();
+        console.log(chalk.bold("Reply"));
+        console.log(result.response);
+      }
+    });
+
+  sessions
     .command("status <sessionId> <status>")
     .description("Update a session status to active, idle, or suspended")
     .action(async (sessionId: string, status: MutableSessionStatus) => {
@@ -106,6 +174,19 @@ export function registerSessionsCommand(program: Command): void {
       const gatewayUrl = await resolveGatewayHttpUrl(sessions.opts().gateway as string | undefined);
       await terminateSession(gatewayUrl, sessionId);
       console.log(chalk.green(`Terminated ${sessionId}.`));
+    });
+
+  sessions
+    .command("clear-history <sessionId>")
+    .description("Delete the stored transcript for a session")
+    .action(async (sessionId: string) => {
+      const gatewayUrl = await resolveGatewayHttpUrl(sessions.opts().gateway as string | undefined);
+      const cleared = await clearSessionHistory(gatewayUrl, sessionId);
+      if (cleared) {
+        console.log(chalk.green(`Cleared transcript history for ${sessionId}.`));
+      } else {
+        console.log(chalk.yellow(`No transcript history found for ${sessionId}.`));
+      }
     });
 
   sessions
@@ -171,6 +252,28 @@ function printSummary(summary: Awaited<ReturnType<typeof fetchSessionSummary>>):
   console.log(`  Newest touch: ${summary.newestUpdatedAt ? new Date(summary.newestUpdatedAt).toLocaleString() : "—"}`);
   console.log(`  Statuses:     ${formatCounts(summary.byStatus)}`);
   console.log(`  Channels:     ${formatCounts(summary.byChannelType)}`);
+  console.log();
+}
+
+function printHistory(history: Awaited<ReturnType<typeof fetchSessionHistory>>): void {
+  console.log(chalk.bold(`\nTranscript ${history.sessionId}\n`));
+  console.log(`  Messages: ${history.messages.length}/${history.totalMessages}`);
+  if (history.hasMore) {
+    console.log(chalk.dim("  More messages exist beyond this window."));
+  }
+  console.log();
+
+  if (!history.messages.length) {
+    console.log(chalk.yellow("No transcript messages found.\n"));
+    return;
+  }
+
+  for (const message of history.messages) {
+    const stamp = new Date(message.timestamp).toLocaleTimeString();
+    console.log(
+      `${chalk.dim(stamp)} ${chalk.bold(message.role)} ${message.content}`,
+    );
+  }
   console.log();
 }
 

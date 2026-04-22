@@ -1,6 +1,14 @@
 import type { FastifyInstance } from "fastify";
+import { nanoid } from "nanoid";
 import { SessionStatusSchema, type SessionStatus } from "@karna/shared/types/session.js";
 import { SessionManager, type SessionFilter } from "../session/manager.js";
+import {
+  appendToTranscript,
+  deleteTranscript,
+  getTranscriptLength,
+  readTranscript,
+} from "../session/store.js";
+import { runSessionTurn } from "../protocol/handler.js";
 
 interface SessionQuerystring {
   channelType?: string;
@@ -18,6 +26,17 @@ interface SessionParams {
 
 interface UpdateSessionBody {
   status?: SessionStatus;
+}
+
+interface SessionHistoryQuerystring {
+  limit?: string | number;
+}
+
+interface SessionMessageBody {
+  content?: string;
+  role?: "user" | "assistant" | "system";
+  replyBack?: boolean;
+  metadata?: Record<string, unknown>;
 }
 
 export function registerSessionRoutes(app: FastifyInstance, sessionManager: SessionManager): void {
@@ -58,6 +77,104 @@ export function registerSessionRoutes(app: FastifyInstance, sessionManager: Sess
 
     return reply.send({ session });
   });
+
+  app.get<{ Params: SessionParams; Querystring: SessionHistoryQuerystring }>(
+    "/api/sessions/:sessionId/history",
+    async (request, reply) => {
+      const parsedLimit = parseOptionalPositiveInt(request.query?.limit, "limit");
+      if (typeof parsedLimit === "string") {
+        return reply.status(400).send({ error: parsedLimit });
+      }
+
+      const totalMessages = await getTranscriptLength(request.params.sessionId);
+      if (!sessionManager.getSession(request.params.sessionId) && totalMessages === 0) {
+        return reply.status(404).send({ error: "Session transcript not found" });
+      }
+
+      const messages = await readTranscript(request.params.sessionId, parsedLimit);
+      return reply.send({
+        sessionId: request.params.sessionId,
+        messages,
+        totalMessages,
+        hasMore: totalMessages > messages.length,
+      });
+    },
+  );
+
+  app.delete<{ Params: SessionParams }>(
+    "/api/sessions/:sessionId/history",
+    async (request, reply) => {
+      const cleared = await deleteTranscript(request.params.sessionId);
+      return reply.send({ cleared, sessionId: request.params.sessionId });
+    },
+  );
+
+  app.post<{ Params: SessionParams; Body: SessionMessageBody }>(
+    "/api/sessions/:sessionId/message",
+    async (request, reply) => {
+      const session = sessionManager.getSession(request.params.sessionId);
+      if (!session) {
+        return reply.status(404).send({ error: "Session not found" });
+      }
+
+      const content = request.body?.content?.trim();
+      if (!content) {
+        return reply.status(400).send({ error: "content is required" });
+      }
+
+      const role = request.body?.role ?? "system";
+      if (!["user", "assistant", "system"].includes(role)) {
+        return reply.status(400).send({ error: "role must be user, assistant, or system" });
+      }
+      const replyBack = request.body?.replyBack ?? false;
+      const metadata = {
+        toolName: "session-api",
+        finishReason: replyBack ? "reply-back" : "queued",
+      };
+
+      await appendToTranscript(session.id, {
+        id: nanoid(),
+        sessionId: session.id,
+        role,
+        content,
+        timestamp: Date.now(),
+        metadata,
+      });
+
+      if (!replyBack) {
+        return reply.send({
+          success: true,
+          queued: true,
+          sessionId: session.id,
+          replyBack: false,
+        });
+      }
+
+      const prompt = role === "system" ? `[System message] ${content}` : content;
+      const result = await runSessionTurn(session, prompt, { sessionManager }, {
+        historyLimit: 50,
+      });
+
+      if (!result.success) {
+        return reply.status(502).send({
+          success: false,
+          error: result.error ?? "Injected session turn failed",
+          sessionId: session.id,
+        });
+      }
+
+      return reply.send({
+        success: true,
+        queued: false,
+        sessionId: session.id,
+        replyBack: true,
+        response: result.response,
+        usage: result.totalTokens,
+        delegations: result.delegations,
+        agentId: result.agentId,
+      });
+    },
+  );
 
   app.patch<{ Params: SessionParams; Body: UpdateSessionBody }>(
     "/api/sessions/:sessionId",

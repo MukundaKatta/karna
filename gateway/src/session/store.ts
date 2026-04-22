@@ -1,4 +1,4 @@
-import { appendFile, readFile, mkdir } from "node:fs/promises";
+import { appendFile, readFile, mkdir, unlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -130,6 +130,31 @@ export async function getTranscriptLength(sessionId: string): Promise<number> {
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
     if (err.code === "ENOENT") return 0;
+    throw error;
+  }
+}
+
+/**
+ * Delete a session transcript file. Returns true if a file was removed.
+ */
+export async function deleteTranscript(sessionId: string): Promise<boolean> {
+  await ensureSessionsDir();
+
+  const filePath = getTranscriptPath(sessionId);
+
+  try {
+    await unlink(filePath);
+    logger.info({ sessionId }, "Deleted transcript");
+    return true;
+  } catch (error) {
+    const err = error as NodeJS.ErrnoException;
+    if (err.code === "ENOENT") {
+      return false;
+    }
+    logger.error(
+      { sessionId, error: String(error), filePath },
+      "Failed to delete transcript",
+    );
     throw error;
   }
 }

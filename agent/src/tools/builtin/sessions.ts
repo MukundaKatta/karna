@@ -88,7 +88,11 @@ export const sessionsHistoryTool: ToolDefinitionRuntime = {
       if (!response.ok) {
         return { sessionId: params.sessionId, error: `HTTP ${response.status}`, messages: [] };
       }
-      const data = await response.json() as { messages: unknown[] };
+      const data = await response.json() as {
+        messages: unknown[];
+        totalMessages?: number;
+        hasMore?: boolean;
+      };
       return { sessionId: params.sessionId, ...data };
     } catch (error) {
       return { sessionId: params.sessionId, error: String(error), messages: [] };
@@ -148,11 +152,13 @@ export const sessionsSendTool: ToolDefinitionRuntime = {
         return { success: false, error: `HTTP ${response.status}` };
       }
 
+      const data = await response.json() as Record<string, unknown>;
       return {
         success: true,
         targetSessionId: params.sessionId,
         delivered: true,
         replyBack: params.replyBack ?? false,
+        ...data,
       };
     } catch (error) {
       return { success: false, error: String(error) };
