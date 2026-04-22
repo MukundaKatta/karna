@@ -33,7 +33,7 @@ export async function setupChannels(
   state: ChannelSetupState,
   options: SetupOptions,
 ): Promise<void> {
-  console.log(chalk.bold("  Step 3: Configure Channels\n"));
+  console.log(chalk.bold("  Step 3: Choose Where Karna Shows Up\n"));
 
   const { selectedChannels } = await inquirer.prompt<{
     selectedChannels: string[];
@@ -41,7 +41,7 @@ export async function setupChannels(
     {
       type: "checkbox",
       name: "selectedChannels",
-      message: "Select channels to configure:",
+      message: "Where should Karna be reachable first?",
       choices: CHANNEL_OPTIONS,
     },
   ]);
@@ -59,7 +59,7 @@ export async function setupChannels(
   if (selectedChannels.length === 0) {
     console.log(
       chalk.dim(
-        "  No channels selected. You can add channels later with: karna onboard\n",
+        "  No channels selected yet. You can finish setup now and connect one later with: karna onboard\n",
       ),
     );
   } else {
@@ -76,7 +76,7 @@ async function configureTelegram(
   console.log(chalk.dim("\n  Telegram Bot Setup"));
   console.log(
     chalk.dim(
-      "  Create a bot via @BotFather on Telegram to get your token.\n",
+      "  Telegram is the fastest live channel to start with. Create a bot via @BotFather, then paste the token below.\n",
     ),
   );
 
@@ -113,7 +113,7 @@ async function configureTelegram(
     {
       type: "list",
       name: "dmMode",
-      message: "How should Telegram DMs be handled?",
+      message: "How should Karna handle Telegram DMs?",
       default: "pairing",
       choices: [
         {
@@ -133,7 +133,7 @@ async function configureTelegram(
     {
       type: "list",
       name: "groupActivation",
-      message: "How should Karna respond in Telegram groups?",
+      message: "What should wake Karna up in Telegram groups?",
       default: "mention",
       choices: [
         {
@@ -168,7 +168,7 @@ async function configureTelegram(
 
   console.log(
     chalk.dim(
-      `  Telegram access set to DM=${accessAnswers.dmMode}, groups=${accessAnswers.groupActivation}.`,
+      `  Telegram is ready. DM mode=${accessAnswers.dmMode}, groups=${accessAnswers.groupActivation}.`,
     ),
   );
 }

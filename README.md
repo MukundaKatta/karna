@@ -1,6 +1,6 @@
 # Karna
 
-> Named after the legendary warrior from the Mahabharata, Karna is a self-hosted AI agent platform for multichannel messaging, memory, plugins, and practical workflow automation.
+> Karna is an AI chief of staff for chats, voice notes, and follow-through. It helps you capture what matters, remember context, and turn conversations into finished work across the channels you already use.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-karna--web.vercel.app-blue?style=for-the-badge)](https://karna-web.vercel.app)
 [![License](https://img.shields.io/github/license/MukundaKatta/karna?style=flat-square)](LICENSE)
@@ -9,47 +9,51 @@
 [![Channels](https://img.shields.io/badge/channels-13-orange?style=flat-square)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-100%25-blue?style=flat-square)]()
 
-## What Karna Does
+## What Karna Is
 
-Karna is a **production-ready, self-hosted AI agent platform** that connects to 13+ messaging platforms and runs locally on your machine. It is designed for builders who want more than a chat demo: persistent context, operational workflows, extensibility, and real integrations across the channels people already use.
+Karna is designed around a simple product promise: your assistant should live where your day already happens. Instead of forcing you into one inbox or one dashboard, Karna can sit in chat, pick up voice notes, remember ongoing context, and help you close loops without bouncing between apps.
 
-Instead of treating an agent as a single interface, Karna is structured like a platform. It combines messaging, memory, tools, orchestration, plugins, and deployment paths so an agent can stay useful over time rather than only looking impressive in a one-off interaction.
+Today, Karna ships as a **self-hosted, production-ready assistant stack** with web, mobile, CLI, memory, workflows, and 13+ messaging channels. That makes it a strong fit right now for builders, operators, and power users who want a daily-use assistant instead of a one-off demo.
 
-## Why Karna
+## Why People Keep Karna Around
 
-**Why Karna > OpenClaw:**
-- **97+ tools** — 48 core + 19 macOS + 20 app integrations + 6 iCloud/iPhone + 3 system + delegation
+- **It meets you in chat** — web, mobile, and 13 messaging channels let Karna show up where conversations already happen.
+- **Voice is first-class** — send voice notes, run live voice flows, and keep moving when typing is too slow.
+- **It remembers ongoing work** — working, short-term, and long-term memory keep context alive across sessions.
+- **It turns conversation into action** — workflows, tools, plugins, and integrations help Karna do more than answer questions.
+- **It stays safe by default** — pairing for DMs, mention-only groups, and allowlists keep shared channels under control.
+- **It scales with you** — start with one assistant, then grow into dashboards, workflows, automation, and custom skills.
+
+## What Makes Karna Powerful
+
+- **97+ tools** — shell, files, browser, messaging, memory, notes, reminders, image generation, and more
 - **13 messaging channels** — Telegram, Slack, Discord, WhatsApp, SMS, iMessage, Webchat, Signal, Google Chat, Microsoft Teams, Matrix, IRC, LINE
-- **Multi-Agent Orchestration** — supervisor/worker delegation, handoff protocol, agent pool
-- **Voice Mode** — real-time Whisper STT + ElevenLabs TTS with browser UI
-- **3-tier memory** — working + short-term + long-term with vector search (pgvector)
-- **RAG pipeline** — document chunking, hybrid retrieval (vector + keyword + RRF)
-- **Self-improvement** — learns from user feedback, auto-tunes prompts
-- **Observability** — real-time trace visualization with span waterfall
-- **Visual Workflows** — DAG-based automation builder (Zapier-like)
-- **KarnaHub Marketplace** — browse, install, and publish community skills
-- **Sandboxed execution** — Docker containers with seccomp, resource limits
-- **Mac control** — apps, Finder, clipboard, screenshots, AppleScript, Siri Shortcuts
-- **iPhone sync** — contacts, reminders, notes, Safari tabs via iCloud
-- **App integrations** — GitHub, Google Drive, Slack, Notion, Spotify
-- **Full web dashboard** — chat, agents, sessions, analytics, memory, tools, settings
-- **Mobile app** — React Native (Expo) for iOS and Android
-- **Canvas** — agent-generated visual interfaces pushed to clients (A2UI)
-- **Plugin SDK** — build custom channels, tools, and skills
-- **Self-hosted** — your data stays on your machine
-- **Production-ready** — Docker, Kubernetes, CI/CD, OpenAPI docs
+- **Voice mode** — browser voice UI plus live WebRTC voice session support
+- **3-tier memory** — working + short-term + long-term recall
+- **Multi-agent orchestration** — delegation, handoff, and agent pools
+- **Visual workflows** — automations and repeatable operational flows
+- **Full operator surface** — web dashboard, mobile app, CLI, analytics, traces, sessions, memory, settings
+- **Self-hosted control** — your data, your keys, your infrastructure
+- **Production foundations** — Docker, Kubernetes, CI/CD, auditability, OpenAPI docs
 
 ## Core Use Cases
 
-- personal or team copilots that live in chat channels
-- workflow automation with persistent context
-- multi-channel assistants that need memory across sessions
-- plugin-driven agent systems that connect to real tools
-- self-hosted agent infrastructure for experimentation or production
+- catching up on messages, commitments, and loose follow-ups
+- turning voice notes into action items, reminders, or replies
+- running a personal or team assistant inside your real chat channels
+- keeping one assistant identity across web, mobile, and messaging apps
+- automating recurring check-ins, digests, triage, and operational work
+
+## Who It Is For Today
+
+- builders and power users who want a serious daily-use assistant, not a toy demo
+- teams experimenting with chat-native copilots and internal automation
+- privacy-conscious users who want self-hosted control with a consumer-style surface
+- developers building custom skills, tools, and channel integrations
 
 ## Quick Start
 
-### Install (One Command)
+### Install (Fastest Path Today)
 
 ```bash
 npm install -g karna-ai
@@ -62,11 +66,11 @@ karna onboard
 ```
 
 This walks you through:
-1. Setting your API key (Anthropic/OpenAI)
-2. Choosing a model (Claude Sonnet 4, Opus 4, GPT-4o)
-3. Connecting channels (Telegram, Discord, Slack, WhatsApp, etc.)
-4. Choosing DM and group safety defaults for your channels
-5. Installing skills from KarnaHub marketplace
+1. Naming Karna for your chats
+2. Choosing the model behind your assistant
+3. Picking the first channel where Karna should show up
+4. Setting DM and group safety defaults
+5. Turning on memory if you want persistent recall
 
 Then start chatting:
 
@@ -115,10 +119,10 @@ Or visit the hosted demo: [karna-web.vercel.app](https://karna-web.vercel.app)
 ## CLI Commands
 
 ```bash
-karna onboard          # Interactive setup wizard
-karna chat             # Start chatting with your agent
+karna onboard          # Set up Karna as your everyday assistant
+karna chat             # Start chatting with Karna
 karna gateway start    # Start the gateway server
-karna status           # Check gateway and agent status
+karna status           # Check Karna and gateway status
 karna skills           # List and manage skills
 karna agents           # Manage agent configurations
 karna doctor           # Diagnose installation issues

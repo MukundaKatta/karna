@@ -46,7 +46,7 @@ export async function runWizard(options: WizardOptions): Promise<void> {
     channelAccessPolicies: [],
   };
 
-  // Step 1: Welcome + name your agent
+  // Step 1: Welcome + name your assistant
   await stepWelcome(state);
 
   // Step 2: Configure AI model
@@ -70,13 +70,13 @@ export async function runWizard(options: WizardOptions): Promise<void> {
 // ─── Step 1: Welcome ────────────────────────────────────────────────────────
 
 async function stepWelcome(state: WizardState): Promise<void> {
-  console.log(chalk.bold("  Step 1: Name Your Agent\n"));
+  console.log(chalk.bold("  Step 1: Personalize Karna\n"));
 
   const answers = await inquirer.prompt<{ agentName: string; gatewayPort: number }>([
     {
       type: "input",
       name: "agentName",
-      message: "What would you like to name your agent?",
+      message: "What should Karna be called in your chats?",
       default: "Karna",
       validate: (input: string) =>
         input.trim().length > 0 ? true : "Agent name cannot be empty",
@@ -84,7 +84,7 @@ async function stepWelcome(state: WizardState): Promise<void> {
     {
       type: "number",
       name: "gatewayPort",
-      message: "Gateway port:",
+      message: "Local gateway port:",
       default: 3000,
       validate: (input: number) =>
         input > 0 && input < 65536 ? true : "Port must be between 1 and 65535",
@@ -94,25 +94,25 @@ async function stepWelcome(state: WizardState): Promise<void> {
   state.agentName = answers.agentName;
   state.gatewayPort = answers.gatewayPort;
 
-  console.log(chalk.green(`\n  Agent "${state.agentName}" it is!\n`));
+  console.log(chalk.green(`\n  Karna will introduce itself as "${state.agentName}".\n`));
 }
 
 // ─── Step 4: Database ───────────────────────────────────────────────────────
 
 async function stepDatabase(state: WizardState): Promise<void> {
-  console.log(chalk.bold("  Step 4: Configure Database (Optional)\n"));
+  console.log(chalk.bold("  Step 4: Memory and Recall (Optional)\n"));
 
   const { configureDb } = await inquirer.prompt<{ configureDb: boolean }>([
     {
       type: "confirm",
       name: "configureDb",
-      message: "Configure Supabase for persistent memory?",
+      message: "Enable long-term memory with Supabase?",
       default: false,
     },
   ]);
 
   if (!configureDb) {
-    console.log(chalk.dim("  Skipping database setup. Using SQLite by default.\n"));
+    console.log(chalk.dim("  Skipping long-term memory setup. Karna will use local SQLite by default.\n"));
     return;
   }
 
@@ -124,7 +124,7 @@ async function stepDatabase(state: WizardState): Promise<void> {
     {
       type: "input",
       name: "supabaseUrl",
-      message: "Supabase project URL:",
+      message: "Supabase project URL for Karna memory:",
       validate: (input: string) => {
         try {
           new URL(input);
@@ -156,7 +156,7 @@ async function stepDatabase(state: WizardState): Promise<void> {
   state.supabaseAnonKey = answers.supabaseAnonKey;
   state.supabaseServiceKey = answers.supabaseServiceKey;
 
-  console.log(chalk.green("  Supabase configured.\n"));
+  console.log(chalk.green("  Long-term memory configured.\n"));
 }
 
 // ─── Write Config ───────────────────────────────────────────────────────────
@@ -281,7 +281,7 @@ function buildChannelsConfig(
 // ─── Test Connections ───────────────────────────────────────────────────────
 
 async function testConnections(state: WizardState): Promise<void> {
-  console.log(chalk.bold("\n  Testing connections...\n"));
+  console.log(chalk.bold("\n  Testing Karna's connections...\n"));
 
   // Test Anthropic API key
   if (state.anthropicApiKey) {

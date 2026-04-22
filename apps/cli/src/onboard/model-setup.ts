@@ -34,7 +34,7 @@ export async function setupModel(
   state: ModelSetupState,
   options: SetupOptions,
 ): Promise<void> {
-  console.log(chalk.bold("  Step 2: Configure AI Model\n"));
+  console.log(chalk.bold("  Step 2: Choose Karna's Brain\n"));
 
   const answers = await inquirer.prompt<{
     anthropicApiKey: string;
@@ -46,7 +46,7 @@ export async function setupModel(
     {
       type: "password",
       name: "anthropicApiKey",
-      message: "Anthropic API key:",
+      message: "Anthropic API key for Karna:",
       mask: "*",
       validate: (input: string) => {
         if (!input.trim()) {
@@ -61,7 +61,7 @@ export async function setupModel(
     {
       type: "confirm",
       name: "useCustomBaseUrl",
-      message: "Use a custom API base URL? (for proxies/self-hosted)",
+      message: "Use a custom model endpoint? (optional)",
       default: false,
     },
     {
@@ -81,14 +81,14 @@ export async function setupModel(
     {
       type: "list",
       name: "defaultModel",
-      message: "Default AI model:",
+      message: "Primary model for daily conversations:",
       choices: ANTHROPIC_MODELS,
       default: "claude-sonnet-4-20250514",
     },
     {
       type: "list",
       name: "fallbackModel",
-      message: "Fallback model (used if primary fails):",
+      message: "Backup model if the primary is unavailable:",
       choices: FALLBACK_OPTIONS,
       default: "",
     },
@@ -103,7 +103,7 @@ export async function setupModel(
     await testApiKey(state.anthropicApiKey, state.anthropicBaseUrl);
   }
 
-  console.log(chalk.green("  Model configuration complete.\n"));
+  console.log(chalk.green("  Karna's model setup is ready.\n"));
 }
 
 // ─── API Key Test ───────────────────────────────────────────────────────────
