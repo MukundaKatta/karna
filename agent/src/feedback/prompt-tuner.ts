@@ -150,6 +150,7 @@ export class PromptTuner {
     const toolStats = new Map<string, { positive: number; negative: number; negativeRate: number }>();
 
     for (const entry of entries) {
+      if (entry.type === "abandonment") continue;
       for (const tool of entry.context.toolsUsed) {
         const stats = toolStats.get(tool) ?? { positive: 0, negative: 0, negativeRate: 0 };
         if (entry.value > 0) stats.positive++;

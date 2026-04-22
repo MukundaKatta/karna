@@ -248,7 +248,7 @@ export class TraceCollector {
 
     const durations = recent
       .map((t) => t.durationMs ?? 0)
-      .filter((d) => d > 0)
+      .filter((d) => d >= 0)
       .sort((a, b) => a - b);
 
     const percentile = (arr: number[], p: number) => {
@@ -270,7 +270,7 @@ export class TraceCollector {
 
     return {
       totalTraces: recent.length,
-      avgDurationMs: durations.reduce((a, b) => a + b, 0) / durations.length,
+      avgDurationMs: durations.length > 0 ? durations.reduce((a, b) => a + b, 0) / durations.length : 0,
       p50DurationMs: percentile(durations, 0.5),
       p95DurationMs: percentile(durations, 0.95),
       p99DurationMs: percentile(durations, 0.99),
