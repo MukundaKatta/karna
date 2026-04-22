@@ -5,6 +5,10 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: "@karna/agent",
+        replacement: fileURLToPath(new URL("./agent/src", import.meta.url)),
+      },
+      {
         find: /^@karna\/shared\/types\/(.*)$/,
         replacement: fileURLToPath(new URL("./packages/shared/src/types/$1", import.meta.url)),
       },

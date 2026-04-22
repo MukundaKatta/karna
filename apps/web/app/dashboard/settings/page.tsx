@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import {
   Bot,
   Download,
@@ -744,11 +744,11 @@ function MetricCard({
   subtitle,
   badge,
 }: {
-  icon: JSX.Element;
+  icon: ReactNode;
   title: string;
   value: string | number;
   subtitle: string;
-  badge?: JSX.Element;
+  badge?: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-dark-700 bg-dark-800 p-5">
