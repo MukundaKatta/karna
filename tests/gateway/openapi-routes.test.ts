@@ -27,6 +27,9 @@ describe("openapi routes", () => {
     expect(spec.paths["/api/activity"]).toBeDefined();
     expect(spec.paths["/api/traces"]).toBeDefined();
     expect(spec.paths["/api/traces/stats"]).toBeDefined();
+    expect(spec.paths["/api/message"]).toBeDefined();
+    expect(spec.paths["/api/restart"]).toBeDefined();
+    expect(spec.paths["/api/sessions/spawn"]).toBeDefined();
     expect(spec.paths["/api/sessions/{sessionId}/history"]).toBeDefined();
     expect(spec.paths["/api/sessions/{sessionId}/message"]).toBeDefined();
     expect(spec.paths["/api/access/policies/{channel}/pairings/approve"]).toBeDefined();

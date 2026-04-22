@@ -41,6 +41,15 @@ interface SessionMessageBody {
   metadata?: Record<string, unknown>;
 }
 
+interface SpawnSessionBody {
+  agentId?: string;
+  channelType?: string;
+  initialMessage?: string;
+  parentSessionId?: string;
+  userId?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export function registerSessionRoutes(
   app: FastifyInstance,
   sessionManager: SessionManager,
@@ -180,6 +189,90 @@ export function registerSessionRoutes(
         usage: result.totalTokens,
         delegations: result.delegations,
         agentId: result.agentId,
+      });
+    },
+  );
+
+  app.post<{ Body: SpawnSessionBody }>(
+    "/api/sessions/spawn",
+    async (request, reply) => {
+      const agentId = request.body?.agentId?.trim();
+      const channelType = request.body?.channelType?.trim();
+      const initialMessage = request.body?.initialMessage?.trim();
+
+      if (!agentId) {
+        return reply.status(400).send({ error: "agentId is required" });
+      }
+      if (!channelType) {
+        return reply.status(400).send({ error: "channelType is required" });
+      }
+
+      const session = sessionManager.createSession(
+        agentId,
+        channelType,
+        request.body?.userId?.trim() || request.body?.parentSessionId?.trim() || undefined,
+        {
+          ...(request.body?.metadata ?? {}),
+          parentSessionId: request.body?.parentSessionId,
+          spawnedBy: "session-api",
+        },
+      );
+
+      await auditLogger?.logSession(
+        "session.created",
+        session.id,
+        session.userId,
+        {
+          channelType,
+          channelId: agentId,
+          parentSessionId: request.body?.parentSessionId,
+          spawned: true,
+        },
+      );
+
+      if (!initialMessage) {
+        return reply.status(201).send({
+          success: true,
+          session,
+        });
+      }
+
+      await appendToTranscript(session.id, {
+        id: nanoid(),
+        sessionId: session.id,
+        role: "user",
+        content: initialMessage,
+        timestamp: Date.now(),
+        metadata: {
+          toolName: "session-spawn",
+        },
+      });
+
+      const result = await runSessionTurn(
+        session,
+        initialMessage,
+        { sessionManager },
+        {
+          historyLimit: 50,
+          traceCollector,
+        },
+      );
+
+      if (!result.success) {
+        return reply.status(502).send({
+          success: false,
+          session,
+          error: result.error ?? "Spawned session failed to process initial message",
+        });
+      }
+
+      return reply.status(201).send({
+        success: true,
+        session,
+        response: result.response,
+        usage: result.totalTokens,
+        agentId: result.agentId,
+        delegations: result.delegations,
       });
     },
   );

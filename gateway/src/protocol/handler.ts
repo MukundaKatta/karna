@@ -50,6 +50,7 @@ const ACCESS_CONTROLLED_CHANNELS = new Set([
 interface OrchestratorLike {
   activeAgentCount: number;
   init(): Promise<void>;
+  shutdown?(): Promise<void>;
   setStreamCallback(callback: StreamCallback): void;
   setApprovalCallback(
     callback: (request: { toolCallId: string }) => Promise<{
@@ -90,6 +91,31 @@ export function resetProtocolTestState(): void {
   pendingApprovals.clear();
   orchestrator = null;
   orchestratorFactory = null;
+}
+
+export async function restartGatewayRuntime(): Promise<{
+  hadActiveOrchestrator: boolean;
+  clearedPendingApprovals: number;
+}> {
+  const pendingApprovalCount = pendingApprovals.size;
+
+  for (const [toolCallId, pending] of pendingApprovals) {
+    clearTimeout(pending.timer);
+    pending.resolve(false);
+    pendingApprovals.delete(toolCallId);
+  }
+
+  const activeOrchestrator = orchestrator;
+  orchestrator = null;
+
+  if (activeOrchestrator?.shutdown) {
+    await activeOrchestrator.shutdown();
+  }
+
+  return {
+    hadActiveOrchestrator: activeOrchestrator !== null,
+    clearedPendingApprovals: pendingApprovalCount,
+  };
 }
 
 async function getOrCreateOrchestrator(): Promise<OrchestratorLike> {
@@ -1004,7 +1030,7 @@ export function broadcastToSession(
   connectedClients: Map<string, ConnectedClient>,
   sessionId: string,
   message: Record<string, unknown>,
-): void {
+): number {
   let sent = 0;
 
   for (const [clientId, client] of connectedClients) {
@@ -1022,6 +1048,7 @@ export function broadcastToSession(
   }
 
   logger.debug({ sessionId, recipientCount: sent }, "Broadcast complete");
+  return sent;
 }
 
 function deriveUserId(

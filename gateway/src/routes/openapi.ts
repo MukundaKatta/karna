@@ -20,6 +20,7 @@ const OPENAPI_SPEC = {
     { name: "Analytics", description: "Aggregated usage analytics" },
     { name: "Activity", description: "Audit-backed operator activity feed" },
     { name: "Traces", description: "Recent agent-turn traces, spans, and latency diagnostics" },
+    { name: "Operations", description: "Live delivery and soft runtime control endpoints" },
     { name: "Docs", description: "OpenAPI specification and Swagger UI" },
   ],
   paths: {
@@ -194,6 +195,17 @@ const OPENAPI_SPEC = {
         },
       },
     },
+    "/api/sessions/spawn": {
+      post: {
+        tags: ["Sessions"],
+        summary: "Spawn an isolated session",
+        responses: {
+          "201": { description: "Spawned session with optional initial response" },
+          "400": { description: "Invalid spawn payload" },
+          "502": { description: "Spawned session failed to process its initial message" },
+        },
+      },
+    },
     "/api/sessions/summary": {
       get: {
         tags: ["Sessions"],
@@ -268,6 +280,26 @@ const OPENAPI_SPEC = {
           "400": { description: "Invalid message payload" },
           "404": { description: "Session not found" },
           "502": { description: "Injected reply-back turn failed" },
+        },
+      },
+    },
+    "/api/message": {
+      post: {
+        tags: ["Operations"],
+        summary: "Deliver an outbound message to a live session or channel",
+        responses: {
+          "200": { description: "Message persisted and optionally delivered to live clients" },
+          "400": { description: "Invalid outbound message payload" },
+          "404": { description: "Target session or channel not found" },
+        },
+      },
+    },
+    "/api/restart": {
+      post: {
+        tags: ["Operations"],
+        summary: "Soft-restart the in-memory agent runtime",
+        responses: {
+          "200": { description: "Runtime restarted and pending approvals cleared" },
         },
       },
     },

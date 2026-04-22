@@ -22,6 +22,7 @@ import { registerActivityRoutes } from "./routes/activity.js";
 import { registerOpenApiRoutes } from "./routes/openapi.js";
 import { registerTraceRoutes } from "./routes/traces.js";
 import { registerApiRoutes } from "./routes/api.js";
+import { registerControlRoutes } from "./routes/control.js";
 import { AuditLogger } from "./audit/logger.js";
 import { TraceCollector } from "./observability/trace-collector.js";
 import { join } from "node:path";
@@ -198,6 +199,7 @@ async function main(): Promise<void> {
   registerActivityRoutes(server, auditLogger);
   registerTraceRoutes(server, traceCollector);
   registerApiRoutes(server, { traceCollector, auditLogger });
+  registerControlRoutes(server, { sessionManager, connectedClients, auditLogger, traceCollector });
   registerOpenApiRoutes(server);
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
