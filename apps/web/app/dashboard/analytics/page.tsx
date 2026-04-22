@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   Calendar,
@@ -500,7 +500,7 @@ function MetricPanel({
   title: string;
   value: string;
   subtitle: string;
-  icon: ReactNode;
+  icon: React.ReactElement;
 }) {
   return (
     <div className="rounded-xl border border-dark-700 bg-dark-800 p-4">
