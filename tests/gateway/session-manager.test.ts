@@ -99,6 +99,49 @@ describe("SessionManager", () => {
     });
   });
 
+  describe("querySessions", () => {
+    it("filters live sessions by channel, user, and status", () => {
+      const first = manager.createSession("agent-1", "telegram", "user-1");
+      const second = manager.createSession("agent-1", "telegram", "user-2");
+      manager.createSession("agent-2", "discord", "user-3");
+      manager.updateSessionStatus(second.id, "suspended");
+
+      expect(manager.querySessions({ channelType: "telegram" })).toHaveLength(2);
+      expect(manager.querySessions({ userId: "user-1" }).map((session) => session.id)).toEqual([first.id]);
+      expect(manager.querySessions({ status: "suspended" }).map((session) => session.id)).toEqual([second.id]);
+    });
+
+    it("sorts and limits operator queries", () => {
+      const first = manager.createSession("agent-1", "webchat");
+      const second = manager.createSession("agent-2", "webchat");
+      const third = manager.createSession("agent-3", "webchat");
+
+      const now = Date.now();
+      manager.getSession(first.id)!.updatedAt = now - 3_000;
+      manager.getSession(second.id)!.updatedAt = now - 2_000;
+      manager.getSession(third.id)!.updatedAt = now - 1_000;
+
+      const results = manager.querySessions({}, { limit: 2, order: "asc" });
+      expect(results.map((session) => session.id)).toEqual([first.id, second.id]);
+    });
+  });
+
+  describe("summarizeSessions", () => {
+    it("summarizes stale and suspended sessions", () => {
+      const first = manager.createSession("agent-1", "telegram", "user-1");
+      const second = manager.createSession("agent-2", "discord", "user-2");
+      manager.updateSessionStatus(second.id, "suspended");
+
+      manager.getSession(first.id)!.updatedAt = Date.now() - 120_000;
+
+      const summary = manager.summarizeSessions({}, 60_000);
+      expect(summary.total).toBe(2);
+      expect(summary.byChannelType["telegram"]).toBe(1);
+      expect(summary.byStatus["suspended"]).toBe(1);
+      expect(summary.staleSessions).toBe(1);
+    });
+  });
+
   describe("updateSessionStatus", () => {
     it("updates status successfully", () => {
       const session = manager.createSession("agent-1", "webchat");
@@ -146,6 +189,16 @@ describe("SessionManager", () => {
 
     it("returns false for non-existent session", () => {
       expect(manager.terminateSession("non-existent")).toBe(false);
+    });
+
+    it("terminates matching sessions in bulk", () => {
+      manager.createSession("agent-1", "telegram", "user-1");
+      manager.createSession("agent-1", "telegram", "user-2");
+      manager.createSession("agent-2", "discord", "user-3");
+
+      expect(manager.terminateSessions({ channelType: "telegram" })).toBe(2);
+      expect(manager.activeSessionCount).toBe(1);
+      expect(manager.querySessions({ channelType: "discord" })).toHaveLength(1);
     });
   });
 

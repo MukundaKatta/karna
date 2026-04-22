@@ -17,6 +17,29 @@ export interface SessionManagerOptions {
   supabaseClient?: SupabaseSessionClient;
 }
 
+export interface SessionFilter {
+  channelType?: string;
+  channelId?: string;
+  userId?: string;
+  status?: SessionStatus;
+}
+
+export interface SessionQueryOptions {
+  limit?: number;
+  sortBy?: "createdAt" | "updatedAt";
+  order?: "asc" | "desc";
+}
+
+export interface SessionSummary {
+  total: number;
+  byChannelType: Record<string, number>;
+  byStatus: Record<SessionStatus, number>;
+  staleSessions: number;
+  staleAfterMs: number;
+  oldestUpdatedAt?: number;
+  newestUpdatedAt?: number;
+}
+
 /**
  * Minimal Supabase client interface for session persistence.
  */
@@ -214,9 +237,79 @@ export class SessionManager {
   }
 
   /**
+   * Query live sessions using lightweight operator filters.
+   */
+  querySessions(filter: SessionFilter = {}, options: SessionQueryOptions = {}): Session[] {
+    const sessions = this.collectSessions(filter);
+    const sortBy = options.sortBy ?? "updatedAt";
+    const order = options.order ?? "desc";
+
+    sessions.sort((left, right) => {
+      const delta = left[sortBy] - right[sortBy];
+      return order === "asc" ? delta : -delta;
+    });
+
+    if (options.limit && options.limit > 0) {
+      return sessions.slice(0, options.limit);
+    }
+
+    return sessions;
+  }
+
+  /**
+   * Build a compact operator summary of live session state.
+   */
+  summarizeSessions(filter: SessionFilter = {}, staleAfterMs = 30 * 60_000): SessionSummary {
+    const sessions = this.collectSessions(filter);
+    const byChannelType: Record<string, number> = {};
+    const byStatus: Record<SessionStatus, number> = {
+      active: 0,
+      idle: 0,
+      suspended: 0,
+      terminated: 0,
+    };
+
+    let staleSessions = 0;
+    let oldestUpdatedAt: number | undefined;
+    let newestUpdatedAt: number | undefined;
+    const now = Date.now();
+
+    for (const session of sessions) {
+      byChannelType[session.channelType] = (byChannelType[session.channelType] ?? 0) + 1;
+      byStatus[session.status] += 1;
+
+      if (now - session.updatedAt >= staleAfterMs) {
+        staleSessions += 1;
+      }
+
+      if (oldestUpdatedAt === undefined || session.updatedAt < oldestUpdatedAt) {
+        oldestUpdatedAt = session.updatedAt;
+      }
+
+      if (newestUpdatedAt === undefined || session.updatedAt > newestUpdatedAt) {
+        newestUpdatedAt = session.updatedAt;
+      }
+    }
+
+    return {
+      total: sessions.length,
+      byChannelType,
+      byStatus,
+      staleSessions,
+      staleAfterMs,
+      oldestUpdatedAt,
+      newestUpdatedAt,
+    };
+  }
+
+  /**
    * Update a session's status.
    */
   updateSessionStatus(sessionId: string, status: SessionStatus): boolean {
+    if (status === "terminated") {
+      return this.terminateSession(sessionId);
+    }
+
     const session = this.sessions.get(sessionId);
     if (!session) return false;
 
@@ -280,6 +373,19 @@ export class SessionManager {
   }
 
   /**
+   * Terminate every live session that matches the provided filter.
+   */
+  terminateSessions(filter: SessionFilter): number {
+    const sessionIds = this.collectSessions(filter).map((session) => session.id);
+
+    for (const sessionId of sessionIds) {
+      this.terminateSession(sessionId);
+    }
+
+    return sessionIds.length;
+  }
+
+  /**
    * Get the total number of active sessions.
    */
   get activeSessionCount(): number {
@@ -302,6 +408,46 @@ export class SessionManager {
     if (evicted > 0) {
       logger.info({ evicted }, "Evicted expired sessions");
     }
+  }
+
+  private collectSessions(filter: SessionFilter = {}): Session[] {
+    const sessions: Session[] = [];
+
+    for (const [sessionId, session] of this.sessions) {
+      if (session.expiresAt && Date.now() > session.expiresAt) {
+        logger.info({ sessionId }, "Session expired");
+        this.terminateSession(sessionId);
+        continue;
+      }
+
+      if (!this.matchesFilter(session, filter)) {
+        continue;
+      }
+
+      sessions.push(session);
+    }
+
+    return sessions;
+  }
+
+  private matchesFilter(session: Session, filter: SessionFilter): boolean {
+    if (filter.channelType && session.channelType !== filter.channelType) {
+      return false;
+    }
+
+    if (filter.channelId && session.channelId !== filter.channelId) {
+      return false;
+    }
+
+    if (filter.userId && session.userId !== filter.userId) {
+      return false;
+    }
+
+    if (filter.status && session.status !== filter.status) {
+      return false;
+    }
+
+    return true;
   }
 
   private evictOldestSession(): void {

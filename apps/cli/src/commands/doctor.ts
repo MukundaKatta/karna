@@ -6,6 +6,7 @@ import {
   loadAccessPolicies,
 } from "../lib/access-policies.js";
 import { loadConfigWithStatus, resolveGatewayHttpUrl } from "../lib/config.js";
+import { fetchSessionSummary } from "../lib/sessions.js";
 
 type CheckStatus = "pass" | "fail" | "warn";
 
@@ -39,6 +40,7 @@ async function runDoctor(): Promise<void> {
   results.push(checkSupabaseConnection(loadedConfig));
   results.push(checkAccessPolicies(loadedConfig, loadedPolicies));
   results.push(await checkGatewayReachability());
+  results.push(await checkSessionHealth());
   results.push(await checkPnpmAvailable());
 
   let passCount = 0;
@@ -321,6 +323,47 @@ async function checkGatewayReachability(): Promise<CheckResult> {
       status: "warn",
       message: "Not running",
       detail: `Start with: karna gateway start (expected ${gatewayUrl})`,
+    };
+  }
+}
+
+async function checkSessionHealth(): Promise<CheckResult> {
+  const gatewayUrl = await resolveGatewayHttpUrl();
+
+  try {
+    const summary = await fetchSessionSummary(gatewayUrl);
+
+    if (summary.total === 0) {
+      return {
+        name: "Sessions",
+        status: "pass",
+        message: "No live sessions",
+      };
+    }
+
+    if ((summary.byStatus["suspended"] ?? 0) > 0 || summary.staleSessions > 0) {
+      return {
+        name: "Sessions",
+        status: "warn",
+        message: `${summary.total} live, ${summary.staleSessions} stale, ${summary.byStatus["suspended"] ?? 0} suspended`,
+        detail: "Run 'karna sessions summary' or 'karna sessions reset' if channels look stuck.",
+      };
+    }
+
+    return {
+      name: "Sessions",
+      status: "pass",
+      message: `${summary.total} live sessions look healthy`,
+      detail: Object.keys(summary.byChannelType).length > 0
+        ? Object.entries(summary.byChannelType).map(([channel, count]) => `${channel}=${count}`).join(", ")
+        : undefined,
+    };
+  } catch {
+    return {
+      name: "Sessions",
+      status: "warn",
+      message: "Could not inspect live sessions",
+      detail: `Start the gateway to enable session diagnostics (expected ${gatewayUrl})`,
     };
   }
 }

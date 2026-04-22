@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import chalk from "chalk";
 import ora from "ora";
 import { loadConfig, resolveGatewayHttpUrl } from "../lib/config.js";
+import { fetchSessionSummary } from "../lib/sessions.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,18 @@ async function showStatus(options: { gateway?: string }): Promise<void> {
     if (health.model) {
       console.log(chalk.dim("  Model:        ") + health.model);
     }
+
+    try {
+      const summary = await fetchSessionSummary(gatewayUrl);
+      console.log(chalk.dim("  Live State:   ") + formatSessionHealth(summary));
+      if (Object.keys(summary.byChannelType).length > 0) {
+        console.log(
+          chalk.dim("  By channel:   ") + formatCounts(summary.byChannelType),
+        );
+      }
+    } catch {
+      // Keep status output resilient even if the operator API is unavailable.
+    }
   } catch {
     spinner.fail("Gateway is not reachable");
     console.log(
@@ -127,4 +140,30 @@ function formatUptime(seconds: number): string {
   parts.push(`${minutes}m`);
 
   return parts.join(" ");
+}
+
+function formatSessionHealth(summary: Awaited<ReturnType<typeof fetchSessionSummary>>): string {
+  const parts = [
+    `${summary.total} live`,
+    `${summary.byStatus["active"] ?? 0} active`,
+  ];
+
+  if (summary.byStatus["idle"]) {
+    parts.push(`${summary.byStatus["idle"]} idle`);
+  }
+  if (summary.byStatus["suspended"]) {
+    parts.push(`${summary.byStatus["suspended"]} suspended`);
+  }
+  if (summary.staleSessions) {
+    parts.push(`${summary.staleSessions} stale`);
+  }
+
+  return parts.join(", ");
+}
+
+function formatCounts(counts: Record<string, number>): string {
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .map(([name, count]) => `${name}=${count}`)
+    .join(", ");
 }

@@ -17,6 +17,7 @@ import { createSupabaseClient } from "@karna/supabase";
 import { registerMemoryRoutes } from "./routes/memory.js";
 import { AccessPolicyManager } from "./access/policies.js";
 import { registerAccessRoutes } from "./routes/access.js";
+import { registerSessionRoutes } from "./routes/sessions.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -143,25 +144,6 @@ async function main(): Promise<void> {
     return reply.type("text/plain; version=0.0.4; charset=utf-8").send(text);
   });
 
-  // ─── Sessions REST API ────────────────────────────────────────────────
-
-  server.get("/api/sessions", async (_request, reply) => {
-    const sessions = sessionManager.listAllSessions();
-    return reply.send({
-      sessions: sessions.map((s) => ({
-        id: s.id,
-        channelType: s.channelType,
-        channelId: s.channelId,
-        userId: s.userId,
-        status: s.status,
-        createdAt: s.createdAt,
-        updatedAt: s.updatedAt,
-        stats: s.stats,
-      })),
-      total: sessions.length,
-    });
-  });
-
   // ─── Analytics REST API ───────────────────────────────────────────────
 
   server.get("/api/analytics", async (_request, reply) => {
@@ -204,6 +186,7 @@ async function main(): Promise<void> {
 
   registerMemoryRoutes(server, memoryStore);
   registerAccessRoutes(server, accessPolicies);
+  registerSessionRoutes(server, sessionManager);
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
 
