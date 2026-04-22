@@ -66,10 +66,22 @@ interface GoogleChatEvent {
   };
 }
 
-interface PendingResponse {
+interface GoogleChatConversationInfo {
+  conversationId: string;
   senderName: string;
   spaceName: string;
-  threadName: string | undefined;
+  threadName?: string;
+  spaceType: string;
+  isDirectMessage: boolean;
+}
+
+interface GoogleChatSessionInfo {
+  sessionId: string;
+  conversation: GoogleChatConversationInfo;
+}
+
+interface PendingResponse {
+  conversation: GoogleChatConversationInfo;
   chunks: string[];
   streamComplete: boolean;
 }
@@ -84,7 +96,7 @@ export class GoogleChatAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // senderName -> sessionId
+  private sessionMap = new Map<string, GoogleChatSessionInfo>(); // conversationId -> session
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
   private accessToken: string | null = null;
@@ -281,77 +293,102 @@ export class GoogleChatAdapter {
     const text = message.argumentText ?? message.text;
     const spaceName = message.space.name;
     const threadName = message.thread?.name;
+    const conversation = this.createConversationInfo(
+      senderName,
+      spaceName,
+      threadName,
+      message.space.type,
+    );
 
     if (!text || message.sender.type === "BOT") return;
 
     this.logger.debug(
-      { senderName, spaceName, textLength: text.length },
+      {
+        conversationId: conversation.conversationId,
+        senderName,
+        spaceName,
+        threadName,
+        textLength: text.length,
+      },
       "Received Google Chat message",
     );
 
-    void this.forwardToGateway(senderName, text, spaceName, threadName, message.space.type, Boolean(message.argumentText));
+    void this.forwardToGateway(conversation, text, Boolean(message.argumentText));
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
 
   private async forwardToGateway(
-    senderName: string,
+    conversation: GoogleChatConversationInfo,
     content: string,
-    spaceName: string,
-    threadName: string | undefined,
-    spaceType: string,
     agentMentioned: boolean,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      this.logger.warn({ senderName }, "Gateway not connected, cannot forward message");
+      this.logger.warn(
+        { conversationId: conversation.conversationId },
+        "Gateway not connected, cannot forward message",
+      );
       return;
     }
 
-    let sessionId = this.sessionMap.get(senderName);
+    let session = this.sessionMap.get(conversation.conversationId);
 
-    if (!sessionId) {
-      sessionId = randomUUID();
-      this.sessionMap.set(senderName, sessionId);
+    if (!session) {
+      session = {
+        sessionId: randomUUID(),
+        conversation,
+      };
+      this.sessionMap.set(conversation.conversationId, session);
 
       const connectMsg: ProtocolMessage = {
         id: randomUUID(),
         type: "connect",
         timestamp: Date.now(),
-        sessionId,
+        sessionId: session.sessionId,
         payload: {
           channelType: "google-chat",
-          channelId: senderName,
+          channelId: conversation.conversationId,
           metadata: {
-            spaceName,
-            threadName,
-            spaceType,
-            userId: senderName,
-            isDirectMessage: spaceType === "DM",
+            spaceName: conversation.spaceName,
+            threadName: conversation.threadName,
+            spaceType: conversation.spaceType,
+            userId: conversation.senderName,
+            senderUserId: conversation.senderName,
+            isDirectMessage: conversation.isDirectMessage,
           },
         },
       };
 
       this.ws.send(JSON.stringify(connectMsg));
+    } else {
+      session.conversation = conversation;
     }
 
     const chatMessage = {
       id: randomUUID(),
       type: "chat.message" as const,
       timestamp: Date.now(),
-      sessionId,
+      sessionId: session.sessionId,
       payload: {
         content,
         role: "user" as const,
         metadata: {
-          senderUserId: senderName,
-          isDirectMessage: spaceType === "DM",
+          senderUserId: conversation.senderName,
+          userId: conversation.senderName,
+          spaceName: conversation.spaceName,
+          threadName: conversation.threadName,
+          spaceType: conversation.spaceType,
+          isDirectMessage: conversation.isDirectMessage,
           agentMentioned,
         },
       },
     };
 
     this.ws.send(JSON.stringify(chatMessage));
-    this.logger.debug({ senderName, sessionId }, "Forwarded message to gateway");
+    this.logger.debug(
+      { conversationId: conversation.conversationId, sessionId: session.sessionId },
+      "Forwarded message to gateway",
+    );
   }
 
   private async connectToGateway(): Promise<void> {
@@ -366,6 +403,7 @@ export class GoogleChatAdapter {
         this.logger.info("Connected to gateway");
         this.reconnectAttempts = 0;
         this.startHeartbeat();
+        this.reregisterSessions();
         resolve();
       });
 
@@ -436,26 +474,19 @@ export class GoogleChatAdapter {
 
     const { sessionId } = message.payload;
     this.logger.info({ sessionId }, "Session acknowledged by gateway");
-
-    for (const [senderName, sid] of this.sessionMap.entries()) {
-      if (sid === message.sessionId || !this.sessionMap.has(senderName)) {
-        this.sessionMap.set(senderName, sessionId);
-        break;
-      }
-    }
   }
 
   private async handleAgentResponse(message: AgentResponseMessage): Promise<void> {
-    const senderName = this.findRecipientBySession(message.sessionId);
-    if (!senderName) {
-      this.logger.warn({ sessionId: message.sessionId }, "No recipient found for session");
+    const session = this.findSessionById(message.sessionId);
+    if (!session) {
+      this.logger.warn({ sessionId: message.sessionId }, "No conversation found for session");
       return;
     }
 
     const content = message.payload.content;
     if (!content) return;
 
-    await this.sendToChannel(senderName, content);
+    await this.sendToChannel(session.conversation, content);
   }
 
   private async handleAgentStreamResponse(
@@ -464,15 +495,13 @@ export class GoogleChatAdapter {
     const sessionId = message.sessionId;
     if (!sessionId) return;
 
-    const senderName = this.findRecipientBySession(sessionId);
-    if (!senderName) return;
+    const session = this.findSessionById(sessionId);
+    if (!session) return;
 
     let pending = this.pendingResponses.get(sessionId);
     if (!pending) {
       pending = {
-        senderName,
-        spaceName: this.config.spaceId,
-        threadName: undefined,
+        conversation: session.conversation,
         chunks: [],
         streamComplete: false,
       };
@@ -486,15 +515,15 @@ export class GoogleChatAdapter {
       const fullContent = pending.chunks.join("");
       this.pendingResponses.delete(sessionId);
 
-      await this.sendToChannel(senderName, fullContent);
+      await this.sendToChannel(session.conversation, fullContent);
     }
   }
 
   private async handleToolApprovalRequest(
     message: ToolApprovalRequestedMessage,
   ): Promise<void> {
-    const senderName = this.findRecipientBySession(message.sessionId);
-    if (!senderName) return;
+    const session = this.findSessionById(message.sessionId);
+    if (!session) return;
 
     const { toolName, description, riskLevel, toolCallId } = message.payload;
 
@@ -510,7 +539,7 @@ export class GoogleChatAdapter {
       .filter(Boolean)
       .join("\n");
 
-    await this.sendToChannel(senderName, text);
+    await this.sendToChannel(session.conversation, text);
 
     // Auto-approve low-risk tools
     if (riskLevel === "low" && this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -534,15 +563,15 @@ export class GoogleChatAdapter {
   }
 
   private async handleError(message: ErrorMessage): Promise<void> {
-    const senderName = this.findRecipientBySession(message.sessionId);
-    if (!senderName) return;
+    const session = this.findSessionById(message.sessionId);
+    if (!session) return;
 
     const { code, message: errorMsg } = message.payload;
 
     this.logger.error({ code, errorMsg, sessionId: message.sessionId }, "Gateway error");
 
     await this.sendToChannel(
-      senderName,
+      session.conversation,
       `An error occurred: ${errorMsg}\nPlease try again.`,
     );
   }
@@ -565,7 +594,7 @@ export class GoogleChatAdapter {
 
   // ─── Google Chat Message Sending ──────────────────────────────────────
 
-  private async sendToChannel(senderName: string, text: string): Promise<void> {
+  private async sendToChannel(conversation: GoogleChatConversationInfo, text: string): Promise<void> {
     let token: string;
     try {
       token = await this.getAccessToken();
@@ -574,9 +603,12 @@ export class GoogleChatAdapter {
       return;
     }
 
-    const spaceName = this.config.spaceId;
-    const apiPath = `/v1/${spaceName}/messages`;
-    const body = JSON.stringify({ text });
+    const apiPath = `/v1/${conversation.spaceName}/messages`;
+    const bodyPayload: Record<string, unknown> = { text };
+    if (conversation.threadName) {
+      bodyPayload["thread"] = { name: conversation.threadName };
+    }
+    const body = JSON.stringify(bodyPayload);
 
     return new Promise<void>((resolve) => {
       const req = https.request(
@@ -597,7 +629,7 @@ export class GoogleChatAdapter {
             resolve();
           } else {
             this.logger.error(
-              { statusCode: res.statusCode, spaceName },
+              { statusCode: res.statusCode, spaceName: conversation.spaceName },
               "Failed to send Google Chat message",
             );
             res.resume();
@@ -607,7 +639,10 @@ export class GoogleChatAdapter {
       );
 
       req.on("error", (error) => {
-        this.logger.error({ error: error.message, spaceName }, "Google Chat send error");
+        this.logger.error(
+          { error: error.message, spaceName: conversation.spaceName },
+          "Google Chat send error",
+        );
         resolve();
       });
 
@@ -664,14 +699,64 @@ export class GoogleChatAdapter {
 
   // ─── Helpers ───────────────────────────────────────────────────────────
 
-  private findRecipientBySession(sessionId: string | undefined): string | null {
+  private findSessionById(
+    sessionId: string | undefined,
+  ): GoogleChatSessionInfo | null {
     if (!sessionId) return null;
 
-    for (const [senderName, sid] of this.sessionMap.entries()) {
-      if (sid === sessionId) return senderName;
+    for (const session of this.sessionMap.values()) {
+      if (session.sessionId === sessionId) return session;
     }
 
     return null;
+  }
+
+  private createConversationInfo(
+    senderName: string,
+    spaceName: string,
+    threadName: string | undefined,
+    spaceType: string,
+  ): GoogleChatConversationInfo {
+    const normalizedThread = threadName ?? "root";
+    return {
+      conversationId: `${spaceName}:${normalizedThread}`,
+      senderName,
+      spaceName,
+      threadName,
+      spaceType,
+      isDirectMessage: spaceType === "DM",
+    };
+  }
+
+  private reregisterSessions(): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+
+    for (const session of this.sessionMap.values()) {
+      const connectMsg: ProtocolMessage = {
+        id: randomUUID(),
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId: session.sessionId,
+        payload: {
+          channelType: "google-chat",
+          channelId: session.conversation.conversationId,
+          metadata: {
+            spaceName: session.conversation.spaceName,
+            threadName: session.conversation.threadName,
+            spaceType: session.conversation.spaceType,
+            userId: session.conversation.senderName,
+            senderUserId: session.conversation.senderName,
+            isDirectMessage: session.conversation.isDirectMessage,
+          },
+        },
+      };
+
+      this.ws.send(JSON.stringify(connectMsg));
+    }
+
+    if (this.sessionMap.size > 0) {
+      this.logger.info({ sessionCount: this.sessionMap.size }, "Re-registered Google Chat sessions");
+    }
   }
 }
 

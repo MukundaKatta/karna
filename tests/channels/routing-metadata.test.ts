@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { LineAdapter } from "../../channels/line/src/adapter.js";
 import { MatrixAdapter } from "../../channels/matrix/src/adapter.js";
+import { GoogleChatAdapter } from "../../channels/google-chat/src/adapter.js";
+import { WebChatServer } from "../../channels/webchat/src/server.js";
 
 function createGatewaySocket() {
   const sent: Record<string, unknown>[] = [];
@@ -140,5 +142,101 @@ describe("channel routing metadata", () => {
       ),
     ).toEqual(["@alice:example.com", "@alice:example.com"]);
     expect((adapter as any).sessionMap.size).toBe(2);
+  });
+
+  it("keys Google Chat sessions by space and thread instead of sender id", () => {
+    const adapter = new GoogleChatAdapter({
+      serviceAccountPath: "/tmp/fake-google-service-account.json",
+      spaceId: "spaces/default",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+
+    (adapter as any).handleIncomingEvent(
+      JSON.stringify({
+        type: "MESSAGE",
+        message: {
+          name: "spaces/AAA/messages/1",
+          sender: {
+            name: "users/123",
+            displayName: "Alice",
+            type: "HUMAN",
+          },
+          createTime: new Date().toISOString(),
+          text: "hello from thread 1",
+          thread: { name: "spaces/AAA/threads/1" },
+          space: {
+            name: "spaces/AAA",
+            type: "SPACE",
+          },
+        },
+      }),
+    );
+
+    (adapter as any).handleIncomingEvent(
+      JSON.stringify({
+        type: "MESSAGE",
+        message: {
+          name: "spaces/BBB/messages/2",
+          sender: {
+            name: "users/123",
+            displayName: "Alice",
+            type: "HUMAN",
+          },
+          createTime: new Date().toISOString(),
+          text: "hello from thread 2",
+          thread: { name: "spaces/BBB/threads/2" },
+          space: {
+            name: "spaces/BBB",
+            type: "SPACE",
+          },
+        },
+      }),
+    );
+
+    const connectMessages = ws.sent.filter((message) => message.type === "connect");
+    expect(connectMessages).toHaveLength(2);
+    expect(connectMessages.map((message) => getPayload(message)["channelId"])).toEqual([
+      "spaces/AAA:spaces/AAA/threads/1",
+      "spaces/BBB:spaces/BBB/threads/2",
+    ]);
+    expect(
+      connectMessages.map(
+        (message) => (getPayload(message)["metadata"] as Record<string, unknown>)?.["userId"],
+      ),
+    ).toEqual(["users/123", "users/123"]);
+    expect((adapter as any).sessionMap.size).toBe(2);
+  });
+
+  it("re-registers active webchat sessions when the gateway reconnects", () => {
+    const server = new WebChatServer({
+      gatewayUrl: "ws://localhost:3000/ws",
+      port: 0,
+    });
+    const gatewayWs = createGatewaySocket();
+    (server as any).gatewayWs = gatewayWs;
+    (server as any).sessions.set("client-1", {
+      clientWs: {
+        OPEN: 1,
+        readyState: 1,
+        send() {},
+      },
+      sessionId: "session-1",
+      clientId: "client-1",
+      connectedAt: Date.now(),
+    });
+
+    (server as any).reregisterActiveSessions();
+
+    expect(gatewayWs.sent).toHaveLength(1);
+    expect(gatewayWs.sent[0]).toMatchObject({
+      type: "connect",
+      sessionId: "session-1",
+      payload: {
+        channelType: "webchat",
+        channelId: "client-1",
+      },
+    });
   });
 });

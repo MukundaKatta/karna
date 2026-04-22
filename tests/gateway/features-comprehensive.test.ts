@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const KARNA_ROOT = "/Users/ubl/karna";
+const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
+const KARNA_ROOT = resolve(TESTS_DIR, "../..");
 
 /**
  * Comprehensive feature verification test suite.

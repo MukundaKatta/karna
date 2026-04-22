@@ -312,6 +312,7 @@ export class WebChatServer {
         this.logger.info("Connected to gateway");
         this.reconnectAttempts = 0;
         this.startHeartbeat();
+        this.reregisterActiveSessions();
         resolve();
       });
 
@@ -516,6 +517,30 @@ export class WebChatServer {
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+  }
+
+  private reregisterActiveSessions(): void {
+    if (!this.gatewayWs || this.gatewayWs.readyState !== WebSocket.OPEN) return;
+
+    for (const session of this.sessions.values()) {
+      const connectMsg: ProtocolMessage = {
+        id: randomUUID(),
+        type: "connect",
+        timestamp: Date.now(),
+        sessionId: session.sessionId,
+        payload: {
+          channelType: "webchat",
+          channelId: session.clientId,
+          metadata: { clientId: session.clientId },
+        },
+      };
+
+      this.gatewayWs.send(JSON.stringify(connectMsg));
+    }
+
+    if (this.sessions.size > 0) {
+      this.logger.info({ sessionCount: this.sessions.size }, "Re-registered webchat sessions");
     }
   }
 }
