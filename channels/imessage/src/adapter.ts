@@ -8,6 +8,7 @@ import Database from "node:sqlite";
 import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -55,7 +56,7 @@ export class IMessageAdapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // handle -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>();
   private lastProcessedRowId = 0;
   private isShuttingDown = false;
@@ -93,6 +94,11 @@ export class IMessageAdapter {
       name: "karna:channel:imessage",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "imessage",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -102,6 +108,7 @@ export class IMessageAdapter {
 
     this.openDatabase();
     await this.initializeLastRowId();
+    await this.sessionMap.load();
     await this.connectToGateway();
     this.startPolling();
 
@@ -137,6 +144,7 @@ export class IMessageAdapter {
       this.db = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("iMessage adapter stopped");
   }
 

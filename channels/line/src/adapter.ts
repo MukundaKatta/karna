@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
 import crypto from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -77,7 +78,7 @@ export class LineAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // conversationId -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private replyTokens = new Map<string, string>(); // sessionId -> replyToken
   private isShuttingDown = false;
@@ -94,6 +95,11 @@ export class LineAdapter {
       name: "karna:channel:line",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "line",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -101,6 +107,7 @@ export class LineAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting LINE adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     this.startWebhookServer();
 
@@ -133,6 +140,7 @@ export class LineAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("LINE adapter stopped");
   }
 

@@ -3,6 +3,7 @@ import pino from "pino";
 import { randomUUID } from "node:crypto";
 import http from "node:http";
 import https from "node:https";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -78,7 +79,7 @@ export class TeamsAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // conversationId -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private conversationRefs = new Map<string, ConversationReference>(); // sessionId -> ref
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
@@ -98,6 +99,11 @@ export class TeamsAdapter {
       name: "karna:channel:teams",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "teams",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -105,6 +111,7 @@ export class TeamsAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting Microsoft Teams adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     this.startBotServer();
 
@@ -137,6 +144,7 @@ export class TeamsAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("Microsoft Teams adapter stopped");
   }
 

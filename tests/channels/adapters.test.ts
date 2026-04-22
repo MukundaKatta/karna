@@ -22,6 +22,10 @@ const CHANNELS = [
   "line",
 ];
 
+const PERSISTENT_SESSION_CHANNELS = CHANNELS.filter(
+  (channel) => channel !== "webchat",
+);
+
 describe("Channel Adapters — Structure & Protocol Compliance", () => {
   for (const channel of CHANNELS) {
     describe(channel, () => {
@@ -177,6 +181,32 @@ describe("Channel Adapters — Structure & Protocol Compliance", () => {
         expect(
           src.match(/reregister/i),
           `${channel} should restore active sessions when the gateway reconnects`,
+        ).toBeTruthy();
+      }
+    });
+
+    it("stateful channels persist their session maps across process restarts", () => {
+      for (const channel of PERSISTENT_SESSION_CHANNELS) {
+        const adapterPath = join(
+          KARNA_ROOT,
+          "channels",
+          channel,
+          "src",
+          "adapter.ts",
+        );
+        const src = readFileSync(adapterPath, "utf-8");
+
+        expect(
+          src.match(/PersistentSessionMap/),
+          `${channel} should use the shared persistent session store`,
+        ).toBeTruthy();
+        expect(
+          src.match(/sessionMap\.load\(/),
+          `${channel} should restore sessions on startup`,
+        ).toBeTruthy();
+        expect(
+          src.match(/sessionMap\.flush\(/),
+          `${channel} should flush session state on shutdown`,
         ).toBeTruthy();
       }
     });

@@ -2,6 +2,7 @@ import { Bot, type Context, GrammyError, HttpError } from "grammy";
 import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -39,7 +40,7 @@ export class TelegramAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<number, string>(); // chatId -> sessionId
+  private readonly sessionMap: PersistentSessionMap<number, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
 
@@ -56,6 +57,13 @@ export class TelegramAdapter {
       level: process.env["LOG_LEVEL"] ?? "info",
     });
 
+    this.sessionMap = new PersistentSessionMap<number, string>({
+      name: "telegram",
+      logger: this.logger,
+      serializeKey: (chatId) => String(chatId),
+      deserializeKey: (chatId) => Number(chatId),
+    });
+
     this.bot = new Bot(config.botToken);
   }
 
@@ -67,6 +75,7 @@ export class TelegramAdapter {
     this.setupBotHandlers();
     registerCommands(this.bot, this.logger);
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     await this.bot.start({
       onStart: (info) => {
@@ -94,6 +103,7 @@ export class TelegramAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     await this.bot.stop();
     this.logger.info("Telegram adapter stopped");
   }

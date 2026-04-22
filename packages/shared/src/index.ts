@@ -32,6 +32,13 @@ export {
 } from "./utils/crypto.js";
 
 export {
+  PersistentSessionMap,
+  getDefaultChannelSessionStorePath,
+  type PersistentSessionMapOptions,
+  type SessionMapLogger,
+} from "./utils/persistent-session-map.js";
+
+export {
   calculateCost,
   calculateTotalCost,
   getModelPricing,

@@ -3,6 +3,7 @@ import pino from "pino";
 import { randomUUID } from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -58,7 +59,7 @@ export class IrcAdapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private ircReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  private sessionMap = new Map<string, string>(); // nick!channel -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
   private ircBuffer = "";
@@ -77,6 +78,11 @@ export class IrcAdapter {
       name: "karna:channel:irc",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "irc",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -84,6 +90,7 @@ export class IrcAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting IRC adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     this.connectToIrc();
 
@@ -120,6 +127,7 @@ export class IrcAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("IRC adapter stopped");
   }
 

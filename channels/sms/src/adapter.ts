@@ -5,6 +5,7 @@ import type { Server } from "node:http";
 import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -48,7 +49,7 @@ export class SMSAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // fromNumber -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>();
   private isShuttingDown = false;
 
@@ -67,6 +68,11 @@ export class SMSAdapter {
       level: process.env["LOG_LEVEL"] ?? "info",
     });
 
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "sms",
+      logger: this.logger,
+    });
+
     this.twilioClient = Twilio(config.accountSid, config.authToken);
     this.expressApp = express();
     this.setupWebhook();
@@ -77,6 +83,7 @@ export class SMSAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting SMS adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     await this.startWebhookServer();
 
@@ -112,6 +119,7 @@ export class SMSAdapter {
       this.server = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("SMS adapter stopped");
   }
 

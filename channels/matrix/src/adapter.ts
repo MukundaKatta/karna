@@ -3,6 +3,7 @@ import pino from "pino";
 import { randomUUID } from "node:crypto";
 import https from "node:https";
 import http from "node:http";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -79,7 +80,7 @@ export class MatrixAdapter {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private syncTimer: ReturnType<typeof setTimeout> | null = null;
-  private sessionMap = new Map<string, string>(); // roomId -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private roomDirectness = new Map<string, boolean>(); // roomId -> isDirectMessage
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
@@ -97,6 +98,11 @@ export class MatrixAdapter {
       name: "karna:channel:matrix",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "matrix",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -104,6 +110,7 @@ export class MatrixAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting Matrix adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     await this.performInitialSync();
     this.startSyncLoop();
@@ -135,6 +142,7 @@ export class MatrixAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("Matrix adapter stopped");
   }
 

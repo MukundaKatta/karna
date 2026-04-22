@@ -3,6 +3,7 @@ import pino from "pino";
 import { randomUUID } from "node:crypto";
 import https from "node:https";
 import fs from "node:fs";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -96,7 +97,7 @@ export class GoogleChatAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, GoogleChatSessionInfo>(); // conversationId -> session
+  private readonly sessionMap: PersistentSessionMap<string, GoogleChatSessionInfo>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
   private accessToken: string | null = null;
@@ -116,6 +117,11 @@ export class GoogleChatAdapter {
       name: "karna:channel:google-chat",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, GoogleChatSessionInfo>({
+      name: "google-chat",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -124,6 +130,7 @@ export class GoogleChatAdapter {
     this.logger.info("Starting Google Chat adapter");
 
     this.loadServiceAccountCredentials();
+    await this.sessionMap.load();
     await this.connectToGateway();
     this.startWebhookServer();
 
@@ -156,6 +163,7 @@ export class GoogleChatAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("Google Chat adapter stopped");
   }
 

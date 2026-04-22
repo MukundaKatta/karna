@@ -11,6 +11,7 @@ import makeWASocket, {
 import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 // Boom type for disconnect reason checking
 type BoomError = Error & { output?: { statusCode?: number } };
 import type {
@@ -65,7 +66,7 @@ export class WhatsAppAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // jid -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>();
   private retryQueue = new Map<string, RetryableMessage>();
   private isShuttingDown = false;
@@ -83,6 +84,11 @@ export class WhatsAppAdapter {
       name: "karna:channel:whatsapp",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "whatsapp",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -90,6 +96,7 @@ export class WhatsAppAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting WhatsApp adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     await this.connectToWhatsApp();
   }
@@ -118,6 +125,7 @@ export class WhatsAppAdapter {
       this.sock = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("WhatsApp adapter stopped");
   }
 

@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
 import http from "node:http";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -59,7 +60,7 @@ export class SignalAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // phoneNumber -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
 
@@ -75,6 +76,11 @@ export class SignalAdapter {
       name: "karna:channel:signal",
       level: process.env["LOG_LEVEL"] ?? "info",
     });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "signal",
+      logger: this.logger,
+    });
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -82,6 +88,7 @@ export class SignalAdapter {
   async start(): Promise<void> {
     this.logger.info("Starting Signal adapter");
 
+    await this.sessionMap.load();
     await this.connectToGateway();
     this.connectToSignalApi();
 
@@ -112,6 +119,7 @@ export class SignalAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.logger.info("Signal adapter stopped");
   }
 

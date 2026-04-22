@@ -2,6 +2,7 @@ import { App } from "@slack/bolt";
 import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -44,7 +45,7 @@ export class SlackAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, SessionInfo>(); // channelId:threadTs -> session
+  private readonly sessionMap: PersistentSessionMap<string, SessionInfo>;
   private pendingResponses = new Map<string, PendingResponse>();
   private isShuttingDown = false;
 
@@ -59,6 +60,11 @@ export class SlackAdapter {
     this.logger = pino({
       name: "karna:channel:slack",
       level: process.env["LOG_LEVEL"] ?? "info",
+    });
+
+    this.sessionMap = new PersistentSessionMap<string, SessionInfo>({
+      name: "slack",
+      logger: this.logger,
     });
 
     this.app = new App({
@@ -84,6 +90,7 @@ export class SlackAdapter {
     this.logger.info("Starting Slack adapter");
 
     this.setupEventHandlers();
+    await this.sessionMap.load();
     await this.connectToGateway();
     await this.app.start();
 
@@ -109,6 +116,7 @@ export class SlackAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     await this.app.stop();
     this.logger.info("Slack adapter stopped");
   }

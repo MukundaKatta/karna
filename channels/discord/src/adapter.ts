@@ -12,6 +12,7 @@ import {
 import WebSocket from "ws";
 import pino from "pino";
 import { randomUUID } from "node:crypto";
+import { PersistentSessionMap } from "@karna/shared";
 import type {
   ProtocolMessage,
   AgentResponseMessage,
@@ -50,7 +51,7 @@ export class DiscordAdapter {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private sessionMap = new Map<string, string>(); // channelId -> sessionId
+  private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>();
   private isShuttingDown = false;
 
@@ -65,6 +66,11 @@ export class DiscordAdapter {
     this.logger = pino({
       name: "karna:channel:discord",
       level: process.env["LOG_LEVEL"] ?? "info",
+    });
+
+    this.sessionMap = new PersistentSessionMap<string, string>({
+      name: "discord",
+      logger: this.logger,
     });
 
     this.client = new Client({
@@ -84,6 +90,7 @@ export class DiscordAdapter {
     this.logger.info("Starting Discord adapter");
 
     this.setupEventHandlers();
+    await this.sessionMap.load();
     await this.connectToGateway();
 
     this.client.once("ready", async () => {
@@ -121,6 +128,7 @@ export class DiscordAdapter {
       this.ws = null;
     }
 
+    await this.sessionMap.flush();
     this.client.destroy();
     this.logger.info("Discord adapter stopped");
   }
