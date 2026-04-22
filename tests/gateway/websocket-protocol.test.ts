@@ -1,5 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../gateway/src/session/manager.js";
+import { AccessPolicyManager } from "../../gateway/src/access/policies.js";
 vi.mock("../../gateway/src/voice/handler.js", () => ({
   handleVoiceStart: vi.fn(),
   handleVoiceAudioChunk: vi.fn(),
@@ -41,6 +42,7 @@ function createContext(overrides?: Partial<ConnectionContext>): ConnectionContex
     auth: overrides?.auth ?? null,
     sessionManager,
     heartbeatScheduler: overrides?.heartbeatScheduler ?? ({ stopAll() {} } as never),
+    accessPolicies: overrides?.accessPolicies ?? new AccessPolicyManager({ storagePath: false }),
     connectedClients: overrides?.connectedClients ?? new Map(),
   };
 }
@@ -214,6 +216,35 @@ describe("gateway websocket protocol", () => {
 
     expect(appendToTranscript).toHaveBeenCalledTimes(2);
     expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
+  });
+
+  it("gates external DMs with a pairing code before running the agent", async () => {
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+    const session = context.sessionManager.createSession("12345", "telegram", "12345");
+    context.auth = createAuthContext("telegram-12345", "operator", "token");
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-chat",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "hello there",
+        },
+      },
+      context,
+    );
+
+    expect(appendToTranscript).not.toHaveBeenCalled();
+    expect(readTranscript).not.toHaveBeenCalled();
+    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(true);
+
+    const response = ws.sent.find((message) => message.type === "agent.response");
+    expect((response?.payload as Record<string, string>)?.content).toContain("karna access approve telegram");
   });
 
   it("relays rtc signaling messages to the requested peer and stamps sourceChannelId", async () => {

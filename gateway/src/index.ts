@@ -15,6 +15,10 @@ import { MemoryStore, InMemoryBackend } from "@karna/agent/memory/store.js";
 import { SupabaseMemoryBackend } from "@karna/agent/memory/supabase-backend.js";
 import { createSupabaseClient } from "@karna/supabase";
 import { registerMemoryRoutes } from "./routes/memory.js";
+import { AccessPolicyManager } from "./access/policies.js";
+import { registerAccessRoutes } from "./routes/access.js";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -51,6 +55,9 @@ async function main(): Promise<void> {
 
   const metricsCollector = new MetricsCollector();
   let memoryStore = new MemoryStore(new InMemoryBackend());
+  const accessPolicies = new AccessPolicyManager({
+    storagePath: join(homedir(), ".karna", "access", "policies.json"),
+  });
 
   if (
     config.memory.enabled &&
@@ -196,6 +203,7 @@ async function main(): Promise<void> {
   });
 
   registerMemoryRoutes(server, memoryStore);
+  registerAccessRoutes(server, accessPolicies);
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
 
@@ -208,6 +216,7 @@ async function main(): Promise<void> {
       auth: null,
       sessionManager,
       heartbeatScheduler,
+      accessPolicies,
       connectedClients,
     };
 

@@ -24,8 +24,24 @@ import { appendToTranscript, readTranscript } from "../session/store.js";
 import { Orchestrator } from "@karna/agent/orchestration/orchestrator.js";
 import type { AgentDefinition, DelegationRecord } from "@karna/shared/types/orchestration.js";
 import type { Session } from "@karna/shared/types/session.js";
+import type { AccessPolicyManager } from "../access/policies.js";
 
 const logger = pino({ name: "message-handler" });
+const ACCESS_CONTROLLED_CHANNELS = new Set([
+  "discord",
+  "google-chat",
+  "imessage",
+  "irc",
+  "line",
+  "matrix",
+  "signal",
+  "slack",
+  "sms",
+  "teams",
+  "telegram",
+  "webchat",
+  "whatsapp",
+]);
 
 // ─── Orchestrator Singleton ──────────────────────────────────────────────────
 
@@ -146,6 +162,7 @@ export interface ConnectionContext {
   auth: AuthContext | null;
   sessionManager: SessionManager;
   heartbeatScheduler: HeartbeatScheduler;
+  accessPolicies: AccessPolicyManager;
   connectedClients: Map<string, ConnectedClient>;
 }
 
@@ -282,7 +299,7 @@ async function handleConnect(
   const session = context.sessionManager.createSession(
     channelId,
     channelType,
-    (metadata?.["userId"] as string) ?? undefined,
+    deriveUserId(channelId, metadata),
   );
 
   // Track the connected client
@@ -342,6 +359,53 @@ async function handleChatMessage(
   if (!session) {
     sendError(ws, "SESSION_NOT_FOUND", `Session ${sessionId} not found`);
     return;
+  }
+
+  if (ACCESS_CONTROLLED_CHANNELS.has(session.channelType)) {
+    const userId = session.userId ?? session.channelId;
+    const decision = context.accessPolicies.checkDmAccess(session.channelType, userId);
+
+    if (!decision.allowed) {
+      let response = decision.reason;
+
+      if (decision.reason.includes("Pairing required")) {
+        const pairing = context.accessPolicies.issuePairingCode(session.channelType, userId);
+        response =
+          `Karna is locked for new ${session.channelType} DMs.\n\n` +
+          `Approve this conversation with:\n` +
+          `karna access approve ${session.channelType} ${pairing.code}\n\n` +
+          `Pairing code: ${pairing.code}`;
+      } else if (decision.reason.includes("closed")) {
+        response =
+          `Karna is not accepting new ${session.channelType} DMs right now.\n` +
+          `Ask an operator to allowlist this chat if it should be trusted.`;
+      } else if (decision.reason.includes("blocklisted")) {
+        response = `This ${session.channelType} conversation is blocked from reaching Karna.`;
+      }
+
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "agent.response",
+        timestamp: Date.now(),
+        sessionId,
+        payload: {
+          content: response,
+          role: "assistant",
+          finishReason: "stop",
+        },
+      });
+
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "status",
+        timestamp: Date.now(),
+        sessionId,
+        payload: { state: "idle" },
+      });
+
+      logger.info({ sessionId, channelType: session.channelType, userId, reason: decision.reason }, "Blocked inbound chat by access policy");
+      return;
+    }
   }
 
   logger.info({ sessionId, role, contentLength: content.length }, "Chat message received");
@@ -752,4 +816,29 @@ export function broadcastToSession(
   }
 
   logger.debug({ sessionId, recipientCount: sent }, "Broadcast complete");
+}
+
+function deriveUserId(
+  channelId: string,
+  metadata: Record<string, unknown> | undefined,
+): string {
+  const candidates = [
+    metadata?.["userId"],
+    metadata?.["phoneNumber"],
+    metadata?.["jid"],
+    metadata?.["handle"],
+    metadata?.["chatId"],
+    metadata?.["clientId"],
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.length > 0) {
+      return candidate;
+    }
+    if (typeof candidate === "number") {
+      return String(candidate);
+    }
+  }
+
+  return channelId;
 }

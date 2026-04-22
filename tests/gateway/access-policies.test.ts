@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { AccessPolicyManager } from "../../gateway/src/access/policies.js";
+import { mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 describe("AccessPolicyManager", () => {
   let apm: AccessPolicyManager;
@@ -125,6 +128,28 @@ describe("AccessPolicyManager", () => {
       const code = apm.generatePairingCode("ch-1", "user-1");
       expect(apm.verifyPairingCode("ch-1", code).success).toBe(true);
       expect(apm.verifyPairingCode("ch-1", code).success).toBe(false); // Second use fails
+    });
+  });
+
+  describe("persistence", () => {
+    it("persists and reloads policy state", () => {
+      const tempDir = mkdtempSync(join(tmpdir(), "karna-access-"));
+      const storagePath = join(tempDir, "policies.json");
+
+      const first = new AccessPolicyManager({ storagePath, pairingCodeLength: 6, pairingExpiryMs: 5_000 });
+      first.setDmMode("telegram", "closed");
+      first.addToAllowlist("telegram", "trusted-user");
+      first.addToBlocklist("telegram", "blocked-user");
+      const code = first.generatePairingCode("telegram", "pending-user");
+      first.verifyPairingCode("telegram", code);
+
+      const second = new AccessPolicyManager({ storagePath, pairingCodeLength: 6, pairingExpiryMs: 5_000 });
+      const snapshot = second.getPolicySnapshot("telegram");
+
+      expect(snapshot.dmMode).toBe("closed");
+      expect(snapshot.allowlist).toContain("trusted-user");
+      expect(snapshot.blocklist).toContain("blocked-user");
+      expect(snapshot.pairedUsers).toContain("pending-user");
     });
   });
 });

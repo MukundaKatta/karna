@@ -11,6 +11,7 @@ import { registerGatewayCommand } from "./commands/gateway.js";
 import { registerSkillsCommand } from "./commands/skills.js";
 import { registerAgentsCommand } from "./commands/agents.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
+import { registerAccessCommand } from "./commands/access.js";
 
 // ─── Version ────────────────────────────────────────────────────────────────
 
@@ -45,6 +46,7 @@ async function main(): Promise<void> {
   registerSkillsCommand(program);
   registerAgentsCommand(program);
   registerDoctorCommand(program);
+  registerAccessCommand(program);
 
   // Logs command (simple shortcut)
   program

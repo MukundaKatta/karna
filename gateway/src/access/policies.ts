@@ -4,6 +4,8 @@
 
 import pino from "pino";
 import { randomInt } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 
 const logger = pino({ name: "access-policies" });
 
@@ -47,16 +49,49 @@ export interface AccessDecision {
   reason: string;
 }
 
+export interface PairingRequest {
+  code: string;
+  userId: string;
+  expiresAt: number;
+}
+
+export interface AccessPolicySnapshot {
+  channelId: string;
+  dmMode: DmAccessMode;
+  allowlist: string[];
+  blocklist: string[];
+  groupActivation: GroupActivationMode;
+  agentMentionNames: string[];
+  pendingPairings: PairingRequest[];
+  pairedUsers: string[];
+}
+
+interface PersistedAccessPolicy {
+  dmMode: DmAccessMode;
+  allowlist: string[];
+  blocklist: string[];
+  groupActivation: GroupActivationMode;
+  agentMentionNames: string[];
+  pendingPairings: PairingRequest[];
+  pairedUsers: string[];
+}
+
 // ─── Access Policy Manager ─────────────────────────────────────────────────
 
 export class AccessPolicyManager {
   private readonly policies = new Map<string, AccessPolicy>();
   private readonly pairingCodeLength: number;
   private readonly pairingExpiryMs: number;
+  private readonly storagePath: string | null;
 
-  constructor(options?: { pairingCodeLength?: number; pairingExpiryMs?: number }) {
+  constructor(options?: { pairingCodeLength?: number; pairingExpiryMs?: number; storagePath?: string | false }) {
     this.pairingCodeLength = options?.pairingCodeLength ?? 6;
     this.pairingExpiryMs = options?.pairingExpiryMs ?? 300_000; // 5 minutes
+    this.storagePath = options?.storagePath === false ? null : (options?.storagePath ?? null);
+
+    if (this.storagePath) {
+      this.loadFromDisk();
+    }
   }
 
   /**
@@ -85,6 +120,7 @@ export class AccessPolicyManager {
   setDmMode(channelId: string, mode: DmAccessMode): void {
     const policy = this.getPolicy(channelId);
     policy.dmMode = mode;
+    this.persist();
     logger.info({ channelId, mode }, "DM access mode updated");
   }
 
@@ -94,7 +130,18 @@ export class AccessPolicyManager {
   setGroupActivation(channelId: string, mode: GroupActivationMode): void {
     const policy = this.getPolicy(channelId);
     policy.groupActivation = mode;
+    this.persist();
     logger.info({ channelId, mode }, "Group activation mode updated");
+  }
+
+  /**
+   * Set the agent mention names used for group activation.
+   */
+  setAgentMentionNames(channelId: string, names: string[]): void {
+    const policy = this.getPolicy(channelId);
+    policy.agentMentionNames = names.filter(Boolean);
+    this.persist();
+    logger.info({ channelId, names: policy.agentMentionNames }, "Agent mention names updated");
   }
 
   /**
@@ -102,6 +149,16 @@ export class AccessPolicyManager {
    */
   addToAllowlist(channelId: string, userId: string): void {
     this.getPolicy(channelId).allowlist.add(userId);
+    this.persist();
+  }
+
+  /**
+   * Remove a user from the allowlist.
+   */
+  removeFromAllowlist(channelId: string, userId: string): boolean {
+    const removed = this.getPolicy(channelId).allowlist.delete(userId);
+    if (removed) this.persist();
+    return removed;
   }
 
   /**
@@ -109,6 +166,16 @@ export class AccessPolicyManager {
    */
   addToBlocklist(channelId: string, userId: string): void {
     this.getPolicy(channelId).blocklist.add(userId);
+    this.persist();
+  }
+
+  /**
+   * Remove a user from the blocklist.
+   */
+  removeFromBlocklist(channelId: string, userId: string): boolean {
+    const removed = this.getPolicy(channelId).blocklist.delete(userId);
+    if (removed) this.persist();
+    return removed;
   }
 
   /**
@@ -116,6 +183,7 @@ export class AccessPolicyManager {
    */
   checkDmAccess(channelId: string, userId: string): AccessDecision {
     const policy = this.getPolicy(channelId);
+    this.cleanupExpiredPairings(policy);
 
     // Always block blocklisted users
     if (policy.blocklist.has(userId)) {
@@ -195,6 +263,7 @@ export class AccessPolicyManager {
    */
   generatePairingCode(channelId: string, userId: string): string {
     const policy = this.getPolicy(channelId);
+    this.cleanupExpiredPairings(policy);
     const code = this.randomCode();
 
     policy.pendingPairings.set(code, {
@@ -202,8 +271,31 @@ export class AccessPolicyManager {
       expiresAt: Date.now() + this.pairingExpiryMs,
     });
 
+    this.persist();
     logger.info({ channelId, userId, code }, "Pairing code generated");
     return code;
+  }
+
+  /**
+   * Get an existing unexpired pairing code for a user, or create a new one.
+   */
+  issuePairingCode(channelId: string, userId: string): PairingRequest {
+    const policy = this.getPolicy(channelId);
+    this.cleanupExpiredPairings(policy);
+
+    for (const [code, pending] of policy.pendingPairings.entries()) {
+      if (pending.userId === userId) {
+        return { code, userId, expiresAt: pending.expiresAt };
+      }
+    }
+
+    const code = this.generatePairingCode(channelId, userId);
+    const pending = policy.pendingPairings.get(code);
+    return {
+      code,
+      userId,
+      expiresAt: pending?.expiresAt ?? Date.now() + this.pairingExpiryMs,
+    };
   }
 
   /**
@@ -211,6 +303,7 @@ export class AccessPolicyManager {
    */
   verifyPairingCode(channelId: string, code: string): { success: boolean; userId?: string } {
     const policy = this.getPolicy(channelId);
+    this.cleanupExpiredPairings(policy);
     const pending = policy.pendingPairings.get(code);
 
     if (!pending) {
@@ -219,17 +312,75 @@ export class AccessPolicyManager {
 
     if (Date.now() > pending.expiresAt) {
       policy.pendingPairings.delete(code);
+      this.persist();
       return { success: false };
     }
 
     policy.pairedUsers.add(pending.userId);
     policy.pendingPairings.delete(code);
 
+    this.persist();
     logger.info({ channelId, userId: pending.userId }, "User paired successfully");
     return { success: true, userId: pending.userId };
   }
 
+  /**
+   * Revoke a paired user.
+   */
+  revokePairedUser(channelId: string, userId: string): boolean {
+    const policy = this.getPolicy(channelId);
+    const removed = policy.pairedUsers.delete(userId);
+    if (removed) this.persist();
+    return removed;
+  }
+
+  /**
+   * Return a serializable snapshot of a policy.
+   */
+  getPolicySnapshot(channelId: string): AccessPolicySnapshot {
+    const policy = this.getPolicy(channelId);
+    this.cleanupExpiredPairings(policy);
+
+    return {
+      channelId,
+      dmMode: policy.dmMode,
+      allowlist: Array.from(policy.allowlist).sort(),
+      blocklist: Array.from(policy.blocklist).sort(),
+      groupActivation: policy.groupActivation,
+      agentMentionNames: [...policy.agentMentionNames],
+      pendingPairings: Array.from(policy.pendingPairings.entries())
+        .map(([code, pending]) => ({
+          code,
+          userId: pending.userId,
+          expiresAt: pending.expiresAt,
+        }))
+        .sort((a, b) => a.expiresAt - b.expiresAt),
+      pairedUsers: Array.from(policy.pairedUsers).sort(),
+    };
+  }
+
+  /**
+   * List all policies as serializable snapshots.
+   */
+  listPolicySnapshots(): AccessPolicySnapshot[] {
+    return Array.from(this.policies.keys())
+      .sort()
+      .map((channelId) => this.getPolicySnapshot(channelId));
+  }
+
   // ─── Internal ───────────────────────────────────────────────────────────
+
+  private cleanupExpiredPairings(policy: AccessPolicy): void {
+    const now = Date.now();
+    let changed = false;
+    for (const [code, pending] of policy.pendingPairings.entries()) {
+      if (pending.expiresAt <= now) {
+        policy.pendingPairings.delete(code);
+        changed = true;
+      }
+    }
+    if (changed) this.persist();
+  }
 
   private randomCode(): string {
     const chars = "0123456789";
@@ -238,5 +389,65 @@ export class AccessPolicyManager {
       code += chars[randomInt(chars.length)];
     }
     return code;
+  }
+
+  private persist(): void {
+    if (!this.storagePath) return;
+
+    try {
+      mkdirSync(dirname(this.storagePath), { recursive: true });
+      const serialized = Object.fromEntries(
+        Array.from(this.policies.entries()).map(([channelId, policy]) => [
+          channelId,
+          {
+            dmMode: policy.dmMode,
+            allowlist: Array.from(policy.allowlist),
+            blocklist: Array.from(policy.blocklist),
+            groupActivation: policy.groupActivation,
+            agentMentionNames: [...policy.agentMentionNames],
+            pendingPairings: Array.from(policy.pendingPairings.entries()).map(([code, pending]) => ({
+              code,
+              userId: pending.userId,
+              expiresAt: pending.expiresAt,
+            })),
+            pairedUsers: Array.from(policy.pairedUsers),
+          } satisfies PersistedAccessPolicy,
+        ]),
+      );
+
+      writeFileSync(this.storagePath, JSON.stringify(serialized, null, 2), "utf-8");
+    } catch (error) {
+      logger.error({ error: String(error), storagePath: this.storagePath }, "Failed to persist access policies");
+    }
+  }
+
+  private loadFromDisk(): void {
+    if (!this.storagePath || !existsSync(this.storagePath)) return;
+
+    try {
+      const raw = readFileSync(this.storagePath, "utf-8");
+      const parsed = JSON.parse(raw) as Record<string, PersistedAccessPolicy>;
+
+      for (const [channelId, snapshot] of Object.entries(parsed)) {
+        const policy: AccessPolicy = {
+          dmMode: snapshot.dmMode,
+          allowlist: new Set(snapshot.allowlist),
+          blocklist: new Set(snapshot.blocklist),
+          groupActivation: snapshot.groupActivation,
+          agentMentionNames: snapshot.agentMentionNames,
+          pendingPairings: new Map(
+            snapshot.pendingPairings
+              .filter((item) => item.expiresAt > Date.now())
+              .map((item) => [item.code, { userId: item.userId, expiresAt: item.expiresAt }]),
+          ),
+          pairedUsers: new Set(snapshot.pairedUsers),
+        };
+        this.policies.set(channelId, policy);
+      }
+
+      logger.info({ policyCount: this.policies.size }, "Loaded persisted access policies");
+    } catch (error) {
+      logger.error({ error: String(error), storagePath: this.storagePath }, "Failed to load access policies");
+    }
   }
 }
