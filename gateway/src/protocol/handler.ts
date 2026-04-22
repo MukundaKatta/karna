@@ -172,6 +172,13 @@ export interface ConnectedClient {
   lastSeen: number;
 }
 
+interface ChatRoutingContext {
+  userId: string;
+  isDirectMessage: boolean;
+  isReplyToAgent: boolean;
+  agentMentioned: boolean;
+}
+
 // ─── Send Helper ────────────────────────────────────────────────────────────
 
 function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
@@ -299,6 +306,7 @@ async function handleConnect(
     channelId,
     channelType,
     deriveUserId(channelId, metadata),
+    metadata,
   );
 
   // Track the connected client
@@ -361,49 +369,79 @@ async function handleChatMessage(
   }
 
   if (ACCESS_CONTROLLED_CHANNELS.has(session.channelType)) {
-    const userId = session.userId ?? session.channelId;
-    const decision = context.accessPolicies.checkDmAccess(session.channelType, userId);
+    const routing = resolveChatRoutingContext(session, message);
 
-    if (!decision.allowed) {
-      let response = decision.reason;
+    if (routing.isDirectMessage) {
+      const decision = context.accessPolicies.checkDmAccess(session.channelType, routing.userId);
 
-      if (decision.reason.includes("Pairing required")) {
-        const pairing = context.accessPolicies.issuePairingCode(session.channelType, userId);
-        response =
-          `Karna is locked for new ${session.channelType} DMs.\n\n` +
-          `Approve this conversation with:\n` +
-          `karna access approve ${session.channelType} ${pairing.code}\n\n` +
-          `Pairing code: ${pairing.code}`;
-      } else if (decision.reason.includes("closed")) {
-        response =
-          `Karna is not accepting new ${session.channelType} DMs right now.\n` +
-          `Ask an operator to allowlist this chat if it should be trusted.`;
-      } else if (decision.reason.includes("blocklisted")) {
-        response = `This ${session.channelType} conversation is blocked from reaching Karna.`;
+      if (!decision.allowed) {
+        let response = decision.reason;
+
+        if (decision.reason.includes("Pairing required")) {
+          const pairing = context.accessPolicies.issuePairingCode(session.channelType, routing.userId);
+          response =
+            `Karna is locked for new ${session.channelType} DMs.\n\n` +
+            `Approve this conversation with:\n` +
+            `karna access approve ${session.channelType} ${pairing.code}\n\n` +
+            `Pairing code: ${pairing.code}`;
+        } else if (decision.reason.includes("closed")) {
+          response =
+            `Karna is not accepting new ${session.channelType} DMs right now.\n` +
+            `Ask an operator to allowlist this chat if it should be trusted.`;
+        } else if (decision.reason.includes("blocklisted")) {
+          response = `This ${session.channelType} conversation is blocked from reaching Karna.`;
+        }
+
+        sendMessage(ws, {
+          id: nanoid(),
+          type: "agent.response",
+          timestamp: Date.now(),
+          sessionId,
+          payload: {
+            content: response,
+            role: "assistant",
+            finishReason: "stop",
+          },
+        });
+
+        sendMessage(ws, {
+          id: nanoid(),
+          type: "status",
+          timestamp: Date.now(),
+          sessionId,
+          payload: { state: "idle" },
+        });
+
+        logger.info(
+          { sessionId, channelType: session.channelType, userId: routing.userId, reason: decision.reason },
+          "Blocked inbound chat by DM access policy",
+        );
+        return;
       }
+    } else {
+      const decision = context.accessPolicies.checkGroupAccess(
+        session.channelType,
+        routing.userId,
+        content,
+        routing.isReplyToAgent,
+        routing.agentMentioned,
+      );
 
-      sendMessage(ws, {
-        id: nanoid(),
-        type: "agent.response",
-        timestamp: Date.now(),
-        sessionId,
-        payload: {
-          content: response,
-          role: "assistant",
-          finishReason: "stop",
-        },
-      });
+      if (!decision.allowed) {
+        sendMessage(ws, {
+          id: nanoid(),
+          type: "status",
+          timestamp: Date.now(),
+          sessionId,
+          payload: { state: "idle" },
+        });
 
-      sendMessage(ws, {
-        id: nanoid(),
-        type: "status",
-        timestamp: Date.now(),
-        sessionId,
-        payload: { state: "idle" },
-      });
-
-      logger.info({ sessionId, channelType: session.channelType, userId, reason: decision.reason }, "Blocked inbound chat by access policy");
-      return;
+        logger.info(
+          { sessionId, channelType: session.channelType, userId: routing.userId, reason: decision.reason },
+          "Blocked inbound chat by group access policy",
+        );
+        return;
+      }
     }
   }
 
@@ -748,7 +786,7 @@ async function handleRTCSignal(
     return;
   }
 
-  const sourceChannelId = resolveClientIdBySocket(context.connectedClients, ws) ?? context.auth.channelId;
+  const sourceChannelId = resolveClientIdBySocket(context.connectedClients, ws) ?? context.auth.deviceId;
   const targetChannelId = message.payload.targetChannelId;
 
   if (targetChannelId === sourceChannelId) {
@@ -840,4 +878,85 @@ function deriveUserId(
   }
 
   return channelId;
+}
+
+function resolveChatRoutingContext(session: Session, message: ChatMessage): ChatRoutingContext {
+  const sessionMetadata = asMetadataRecord(session.metadata);
+  const messageMetadata = asMetadataRecord(message.payload.metadata);
+  const combinedMetadata = { ...sessionMetadata, ...messageMetadata };
+
+  return {
+    userId:
+      firstNonEmptyString(
+        messageMetadata["senderUserId"],
+        messageMetadata["userId"],
+        sessionMetadata["senderUserId"],
+        sessionMetadata["userId"],
+      ) ??
+      session.userId ??
+      session.channelId,
+    isDirectMessage: inferDirectMessage(session.channelType, combinedMetadata),
+    isReplyToAgent: coerceBoolean(messageMetadata["isReplyToAgent"]) ?? false,
+    agentMentioned: coerceBoolean(messageMetadata["agentMentioned"]) ?? false,
+  };
+}
+
+function inferDirectMessage(channelType: string, metadata: Record<string, unknown>): boolean {
+  const explicitDirect = coerceBoolean(metadata["isDirectMessage"]);
+  if (explicitDirect !== undefined) return explicitDirect;
+
+  const explicitGroup = coerceBoolean(metadata["isGroup"]);
+  if (explicitGroup !== undefined) return !explicitGroup;
+
+  const conversationType = firstNonEmptyString(metadata["conversationType"]);
+  if (conversationType) {
+    const normalized = conversationType.toLowerCase();
+    if (normalized === "personal" || normalized === "im" || normalized === "dm" || normalized === "direct") {
+      return true;
+    }
+    if (normalized === "channel" || normalized === "groupchat" || normalized === "group") {
+      return false;
+    }
+  }
+
+  const spaceType = firstNonEmptyString(metadata["spaceType"]);
+  if (spaceType) {
+    return spaceType.toUpperCase() === "DM";
+  }
+
+  const replyTarget = firstNonEmptyString(metadata["replyTarget"]);
+  if (replyTarget) {
+    return !(replyTarget.startsWith("#") || replyTarget.startsWith("&"));
+  }
+
+  switch (channelType) {
+    case "discord":
+    case "slack":
+    case "teams":
+    case "google-chat":
+    case "irc":
+      return false;
+    default:
+      return true;
+  }
+}
+
+function asMetadataRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return value as Record<string, unknown>;
+}
+
+function firstNonEmptyString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function coerceBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }

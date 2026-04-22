@@ -86,6 +86,7 @@ export const ChatMessageSchema = BaseMessageSchema.extend({
         })
       )
       .optional(),
+    metadata: z.record(z.unknown()).optional(),
   }),
 });
 

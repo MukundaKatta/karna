@@ -254,7 +254,15 @@ export class TeamsAdapter {
       "Received Teams message",
     );
 
-    void this.forwardToGateway(conversationId, text, senderName, conversationRef);
+    void this.forwardToGateway(
+      conversationId,
+      text,
+      senderName,
+      conversationRef,
+      activity.from.id,
+      activity.conversation.conversationType,
+      Boolean(activity.conversation.isGroup),
+    );
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
@@ -264,6 +272,9 @@ export class TeamsAdapter {
     content: string,
     senderName: string,
     conversationRef: ConversationReference,
+    userId: string,
+    conversationType: string | undefined,
+    isGroup: boolean,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn({ conversationId }, "Gateway not connected, cannot forward message");
@@ -283,7 +294,14 @@ export class TeamsAdapter {
         payload: {
           channelType: "teams",
           channelId: conversationId,
-          metadata: { senderName, conversationId },
+          metadata: {
+            senderName,
+            conversationId,
+            userId,
+            conversationType,
+            isGroup,
+            isDirectMessage: !isGroup && conversationType !== "channel",
+          },
         },
       };
 
@@ -300,6 +318,11 @@ export class TeamsAdapter {
       payload: {
         content,
         role: "user" as const,
+        metadata: {
+          senderUserId: userId,
+          isDirectMessage: !isGroup && conversationType !== "channel",
+          agentMentioned: isGroup,
+        },
       },
     };
 

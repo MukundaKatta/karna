@@ -289,7 +289,7 @@ export class GoogleChatAdapter {
       "Received Google Chat message",
     );
 
-    void this.forwardToGateway(senderName, text, spaceName, threadName);
+    void this.forwardToGateway(senderName, text, spaceName, threadName, message.space.type, Boolean(message.argumentText));
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
@@ -299,6 +299,8 @@ export class GoogleChatAdapter {
     content: string,
     spaceName: string,
     threadName: string | undefined,
+    spaceType: string,
+    agentMentioned: boolean,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn({ senderName }, "Gateway not connected, cannot forward message");
@@ -318,7 +320,13 @@ export class GoogleChatAdapter {
         payload: {
           channelType: "google-chat",
           channelId: senderName,
-          metadata: { spaceName, threadName },
+          metadata: {
+            spaceName,
+            threadName,
+            spaceType,
+            userId: senderName,
+            isDirectMessage: spaceType === "DM",
+          },
         },
       };
 
@@ -333,6 +341,11 @@ export class GoogleChatAdapter {
       payload: {
         content,
         role: "user" as const,
+        metadata: {
+          senderUserId: senderName,
+          isDirectMessage: spaceType === "DM",
+          agentMentioned,
+        },
       },
     };
 

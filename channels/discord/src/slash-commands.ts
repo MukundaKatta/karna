@@ -111,7 +111,11 @@ async function handleChat(
   await interaction.deferReply();
 
   // Forward to gateway
-  await adapter.forwardToGateway(channelId, message);
+  await adapter.forwardToGateway(channelId, message, {
+    userId: interaction.user.id,
+    isDirectMessage: !interaction.guildId,
+    agentMentioned: Boolean(interaction.guildId),
+  });
 
   // The actual response will come via the gateway callback
   // For now, acknowledge that the message was sent

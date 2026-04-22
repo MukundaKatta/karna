@@ -294,7 +294,7 @@ export class IrcAdapter {
     );
 
     const sessionKey = `${nick}!${replyTarget}`;
-    void this.forwardToGateway(sessionKey, cleanText, replyTarget);
+    void this.forwardToGateway(sessionKey, cleanText, replyTarget, nick, !isChannel, isChannel);
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
@@ -303,6 +303,9 @@ export class IrcAdapter {
     sessionKey: string,
     content: string,
     replyTarget: string,
+    userId: string,
+    isDirectMessage: boolean,
+    agentMentioned: boolean,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn({ sessionKey }, "Gateway not connected, cannot forward message");
@@ -322,7 +325,12 @@ export class IrcAdapter {
         payload: {
           channelType: "irc",
           channelId: sessionKey,
-          metadata: { replyTarget, server: this.config.server },
+          metadata: {
+            replyTarget,
+            server: this.config.server,
+            userId,
+            isDirectMessage,
+          },
         },
       };
 
@@ -337,6 +345,11 @@ export class IrcAdapter {
       payload: {
         content,
         role: "user" as const,
+        metadata: {
+          senderUserId: userId,
+          isDirectMessage,
+          agentMentioned,
+        },
       },
     };
 

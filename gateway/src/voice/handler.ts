@@ -19,7 +19,7 @@ interface VoiceSession {
   /** Audio chunks accumulated during recording. */
   chunks: Buffer[];
   /** Audio format reported by the client. */
-  format: "webm" | "wav";
+  format: "webm" | "wav" | "m4a";
   /** Sample rate reported by the client. */
   sampleRate: number;
   /** Voice mode: push-to-talk or continuous. */
@@ -100,7 +100,7 @@ export function handleVoiceStart(
 
 export function handleVoiceAudioChunk(
   ws: WebSocket,
-  payload: { data: string; format: "webm" | "wav"; sampleRate: number },
+  payload: { data: string; format: "webm" | "wav" | "m4a"; sampleRate: number },
   _context: ConnectionContext,
 ): void {
   const session = voiceSessions.get(ws);

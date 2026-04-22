@@ -109,6 +109,11 @@ describe("AccessPolicyManager", () => {
       const result = apm.checkGroupAccess("ch-1", "user-1", "Hey KARNA help", false);
       expect(result.allowed).toBe(true);
     });
+
+    it("allows messages when the channel marks the agent as mentioned", () => {
+      const result = apm.checkGroupAccess("ch-1", "user-1", "help me", false, true);
+      expect(result.allowed).toBe(true);
+    });
   });
 
   describe("Pairing codes", () => {

@@ -28,6 +28,18 @@ describe("SessionManager", () => {
       expect(session.userId).toBeUndefined();
     });
 
+    it("preserves session metadata from the caller", () => {
+      const session = manager.createSession("agent-1", "discord", "user-1", {
+        isDirectMessage: false,
+        channelId: "channel-123",
+      });
+
+      expect(session.metadata).toEqual({
+        isDirectMessage: false,
+        channelId: "channel-123",
+      });
+    });
+
     it("increments active session count", () => {
       expect(manager.activeSessionCount).toBe(0);
       manager.createSession("agent-1", "webchat");

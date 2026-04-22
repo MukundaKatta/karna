@@ -36,6 +36,25 @@ export const ChannelConfigSchema = z.object({
 
 export type ChannelConfig = z.infer<typeof ChannelConfigSchema>;
 
+// ─── Memory Config ───────────────────────────────────────────────────────────
+
+export const MemoryConfigSchema = z.object({
+  enabled: z.boolean().default(true),
+  backend: z.enum(["sqlite", "postgres", "redis", "supabase"]).default("sqlite"),
+  connectionString: z.string().optional(),
+  maxEntriesPerSession: z.number().int().positive().default(1000),
+  defaultTtlMs: z.number().int().positive().optional(),
+  embedding: z
+    .object({
+      enabled: z.boolean().default(false),
+      model: z.string().default("text-embedding-3-small"),
+      dimensions: z.number().int().positive().default(1536),
+    })
+    .default({}),
+});
+
+export type MemoryConfig = z.infer<typeof MemoryConfigSchema>;
+
 // ─── Model Config ───────────────────────────────────────────────────────────
 
 export const ModelConfigSchema = z.object({
@@ -56,6 +75,7 @@ export const KarnaConfigSchema = z.object({
   gateway: GatewayConfigSchema.default({}),
   agent: AgentConfigSchema.default({}),
   channels: z.array(ChannelConfigSchema).default([]),
+  memory: MemoryConfigSchema.default({}),
   models: z.record(ModelConfigSchema).default({}),
 });
 

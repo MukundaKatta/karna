@@ -93,6 +93,7 @@ export class SessionManager {
     agentId: string,
     channelType: string,
     userId?: string,
+    metadata?: Record<string, unknown>,
   ): Session {
     // Evict expired sessions if we're at capacity
     if (this.sessions.size >= this.maxSessions) {
@@ -114,7 +115,7 @@ export class SessionManager {
       createdAt: now,
       updatedAt: now,
       expiresAt: now + this.sessionTimeoutMs,
-      metadata: {},
+      metadata: metadata ? { ...metadata } : {},
       stats: {
         messageCount: 0,
         totalInputTokens: 0,

@@ -123,6 +123,7 @@ export class SlackAdapter {
       // Ignore bot messages and subtypes (edits, deletes, etc.)
       if (msg.subtype) return;
       if (!("text" in msg) || !msg.text) return;
+      if (msg.channel_type !== "im" && msg.channel_type !== "mpim") return;
 
       const channel = msg.channel;
       const threadTs = msg.thread_ts ?? msg.ts;
@@ -157,6 +158,11 @@ export class SlackAdapter {
         channel,
         text,
         threadTs,
+        {
+          userId: msg.user,
+          isDirectMessage: true,
+          agentMentioned: false,
+        },
         attachments.length > 0 ? attachments : undefined,
       );
     });
@@ -179,7 +185,11 @@ export class SlackAdapter {
         "Received app mention",
       );
 
-      await this.forwardToGateway(channel, text, threadTs);
+      await this.forwardToGateway(channel, text, threadTs, {
+        userId: mentionEvent.user,
+        isDirectMessage: false,
+        agentMentioned: true,
+      });
     });
   }
 
@@ -189,6 +199,7 @@ export class SlackAdapter {
     channel: string,
     content: string,
     threadTs?: string,
+    routing?: { userId?: string; isDirectMessage: boolean; agentMentioned: boolean },
     attachments?: Array<{ type: string; url?: string; data?: string; name?: string }>,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -220,7 +231,12 @@ export class SlackAdapter {
         payload: {
           channelType: "slack",
           channelId: channel,
-          metadata: { channel, threadTs },
+          metadata: {
+            channel,
+            threadTs,
+            userId: routing?.userId,
+            isDirectMessage: routing?.isDirectMessage,
+          },
         },
       };
 
@@ -230,6 +246,11 @@ export class SlackAdapter {
     const payload: Record<string, unknown> = {
       content,
       role: "user" as const,
+      metadata: {
+        senderUserId: routing?.userId,
+        isDirectMessage: routing?.isDirectMessage,
+        agentMentioned: routing?.agentMentioned,
+      },
     };
     if (attachments && attachments.length > 0) {
       payload["attachments"] = attachments;

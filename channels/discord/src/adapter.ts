@@ -188,6 +188,11 @@ export class DiscordAdapter {
     await this.forwardToGateway(
       message.channelId,
       content,
+      {
+        userId: message.author.id,
+        isDirectMessage: isDM,
+        agentMentioned: isMentioned,
+      },
       attachments.length > 0 ? attachments : undefined,
     );
   }
@@ -197,6 +202,7 @@ export class DiscordAdapter {
   async forwardToGateway(
     channelId: string,
     content: string,
+    routing: { userId: string; isDirectMessage: boolean; agentMentioned: boolean },
     attachments?: Array<{ type: string; url?: string; data?: string; name?: string }>,
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -227,7 +233,11 @@ export class DiscordAdapter {
         payload: {
           channelType: "discord",
           channelId,
-          metadata: { channelId },
+          metadata: {
+            channelId,
+            userId: routing.userId,
+            isDirectMessage: routing.isDirectMessage,
+          },
         },
       };
 
@@ -237,6 +247,11 @@ export class DiscordAdapter {
     const payload: Record<string, unknown> = {
       content,
       role: "user" as const,
+      metadata: {
+        senderUserId: routing.userId,
+        isDirectMessage: routing.isDirectMessage,
+        agentMentioned: routing.agentMentioned,
+      },
     };
     if (attachments && attachments.length > 0) {
       payload["attachments"] = attachments;

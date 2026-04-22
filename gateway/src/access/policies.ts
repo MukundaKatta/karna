@@ -221,6 +221,7 @@ export class AccessPolicyManager {
     userId: string,
     messageContent: string,
     isReplyToAgent: boolean,
+    agentMentioned = false,
   ): AccessDecision {
     const policy = this.getPolicy(channelId);
 
@@ -239,6 +240,10 @@ export class AccessPolicyManager {
         // Check if the message mentions the agent
         if (isReplyToAgent) {
           return { allowed: true, reason: "Reply to agent" };
+        }
+
+        if (agentMentioned) {
+          return { allowed: true, reason: "Agent mention flag supplied by channel" };
         }
 
         const lowerContent = messageContent.toLowerCase();

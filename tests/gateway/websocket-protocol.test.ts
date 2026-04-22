@@ -247,6 +247,94 @@ describe("gateway websocket protocol", () => {
     expect((response?.payload as Record<string, string>)?.content).toContain("karna access approve telegram");
   });
 
+  it("allows group messages when routing metadata marks them as mentions", async () => {
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+    const session = context.sessionManager.createSession("discord-channel", "discord", "user-1", {
+      isDirectMessage: false,
+      channelId: "discord-channel",
+    });
+    context.auth = createAuthContext("discord-channel", "operator", "token");
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      setStreamCallback() {},
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "Handled group message",
+          totalTokens: { inputTokens: 5, outputTokens: 7 },
+          agentId: "karna-general",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-group",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "help me with this",
+          metadata: {
+            senderUserId: "guild-user-2",
+            isDirectMessage: false,
+            agentMentioned: true,
+          },
+        },
+      },
+      context,
+    );
+
+    expect(appendToTranscript).toHaveBeenCalledTimes(2);
+    expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
+    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(true);
+  });
+
+  it("suppresses group messages when group activation is off", async () => {
+    const ws = createSocket();
+    const accessPolicies = new AccessPolicyManager({ storagePath: false });
+    accessPolicies.setGroupActivation("discord", "off");
+    const context = createContext({ ws: ws as never, accessPolicies });
+    const session = context.sessionManager.createSession("discord-channel", "discord", "user-1", {
+      isDirectMessage: false,
+      channelId: "discord-channel",
+    });
+    context.auth = createAuthContext("discord-channel", "operator", "token");
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-group-off",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "help me with this",
+          metadata: {
+            senderUserId: "guild-user-2",
+            isDirectMessage: false,
+            agentMentioned: true,
+          },
+        },
+      },
+      context,
+    );
+
+    expect(appendToTranscript).not.toHaveBeenCalled();
+    expect(readTranscript).not.toHaveBeenCalled();
+    expect(ws.sent).toHaveLength(1);
+    expect(ws.sent[0]?.type).toBe("status");
+  });
+
   it("relays rtc signaling messages to the requested peer and stamps sourceChannelId", async () => {
     const sourceWs = createSocket();
     const targetWs = createSocket();
