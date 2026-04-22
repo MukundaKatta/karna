@@ -6,13 +6,14 @@ const OPENAPI_SPEC = {
     title: "Karna Gateway API",
     version: "0.1.0",
     description:
-      "REST API for the Karna AI Agent Platform gateway. Covers health, metrics, session operations, access control, memory, analytics, activity, traces, and API docs.",
+      "REST API for the Karna AI Agent Platform gateway. Covers health, metrics, agent and skill catalogs, tool inventory, session operations, access control, memory, analytics, activity, traces, and API docs.",
   },
   servers: [
     { url: "http://localhost:18789", description: "Local development" },
   ],
   tags: [
     { name: "Health", description: "Gateway health and metrics" },
+    { name: "Catalog", description: "Agent, skill, and tool inventory" },
     { name: "Sessions", description: "Live sessions, transcripts, and injected messages" },
     { name: "Access", description: "Channel access and pairing controls" },
     { name: "Memory", description: "Agent memory storage and retrieval" },
@@ -56,6 +57,57 @@ const OPENAPI_SPEC = {
         summary: "Analytics overview",
         responses: {
           "200": { description: "Aggregated session and token analytics" },
+        },
+      },
+    },
+    "/api/analytics/history": {
+      get: {
+        tags: ["Analytics"],
+        summary: "Daily analytics history",
+        parameters: [
+          queryParam("period", "string", "History window: 7d, 14d, or 30d"),
+        ],
+        responses: {
+          "200": { description: "Daily message, token, cost, and error history" },
+          "400": { description: "Invalid history period" },
+        },
+      },
+    },
+    "/api/agents": {
+      get: {
+        tags: ["Catalog"],
+        summary: "List registered agents",
+        responses: {
+          "200": { description: "Agent catalog with live trace activity" },
+        },
+      },
+    },
+    "/api/agents/{id}": {
+      get: {
+        tags: ["Catalog"],
+        summary: "Get a single agent",
+        parameters: [pathParam("id", "Agent id")],
+        responses: {
+          "200": { description: "Agent detail" },
+          "404": { description: "Agent not found" },
+        },
+      },
+    },
+    "/api/skills": {
+      get: {
+        tags: ["Catalog"],
+        summary: "List installed and built-in skills",
+        responses: {
+          "200": { description: "Skill catalog" },
+        },
+      },
+    },
+    "/api/tools": {
+      get: {
+        tags: ["Catalog"],
+        summary: "List built-in tools",
+        responses: {
+          "200": { description: "Tool catalog with trace-backed usage counts" },
         },
       },
     },

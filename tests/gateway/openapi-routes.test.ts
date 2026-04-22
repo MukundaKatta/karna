@@ -20,6 +20,10 @@ describe("openapi routes", () => {
     expect(response.statusCode).toBe(200);
     const spec = response.json();
     expect(spec.openapi).toBe("3.1.0");
+    expect(spec.paths["/api/agents"]).toBeDefined();
+    expect(spec.paths["/api/skills"]).toBeDefined();
+    expect(spec.paths["/api/tools"]).toBeDefined();
+    expect(spec.paths["/api/analytics/history"]).toBeDefined();
     expect(spec.paths["/api/activity"]).toBeDefined();
     expect(spec.paths["/api/traces"]).toBeDefined();
     expect(spec.paths["/api/traces/stats"]).toBeDefined();
