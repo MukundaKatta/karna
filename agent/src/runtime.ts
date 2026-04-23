@@ -256,6 +256,7 @@ export class AgentRuntime {
 
         // Process tool calls
         response = text; // Accumulate any text before tool calls
+        const toolCallStart = toolCalls.length;
         const toolMessages = await this.processToolCalls(
           toolUses,
           input.session,
@@ -263,6 +264,12 @@ export class AgentRuntime {
           toolPolicy,
           toolCalls
         );
+        const processedToolCalls = toolCalls.slice(toolCallStart);
+
+        if (this.shouldStopAfterRejectedToolCalls(processedToolCalls)) {
+          response = this.buildRejectedToolResponse(processedToolCalls, text);
+          break;
+        }
 
         // Add assistant message with tool use and tool results to conversation
         messages = [
@@ -458,6 +465,35 @@ export class AgentRuntime {
     }
 
     return messages;
+  }
+
+  private shouldStopAfterRejectedToolCalls(records: ToolCallRecord[]): boolean {
+    return (
+      records.length > 0 &&
+      records.every(
+        (record) =>
+          !record.approved &&
+          record.result.isError &&
+          record.result.errorMessage === "Rejected by user",
+      )
+    );
+  }
+
+  private buildRejectedToolResponse(
+    records: ToolCallRecord[],
+    modelText: string,
+  ): string {
+    const toolNames = Array.from(new Set(records.map((record) => record.name)));
+    const toolLabel =
+      toolNames.length === 1
+        ? `the ${toolNames[0]} tool`
+        : `the requested tools (${toolNames.join(", ")})`;
+    const denial =
+      `I couldn't run ${toolLabel} because it was not approved. ` +
+      "No action was taken. If you want me to try again, approve the tool request from a channel that supports approvals or ask for a non-tool alternative.";
+    const prefix = modelText.trim();
+
+    return prefix ? `${prefix}\n\n${denial}` : denial;
   }
 
   private async handleApproval(
