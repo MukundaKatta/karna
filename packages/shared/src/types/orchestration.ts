@@ -122,6 +122,8 @@ export const OrchestrationResultSchema = z.object({
   response: z.string(),
   /** Which agent produced the final response. */
   agentId: z.string(),
+  /** The model identifier that produced the final response (for traces/metrics). */
+  model: z.string().optional(),
   /** All delegations that occurred during processing. */
   delegations: z.array(DelegationRecordSchema),
   /** Total token usage across all agents. */

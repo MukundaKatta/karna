@@ -123,7 +123,14 @@ jobs:
 
       - name: Skip deploy when Vercel secrets are unavailable
         if: env.VERCEL_TOKEN == '' || env.VERCEL_ORG_ID == '' || env.VERCEL_PROJECT_ID == ''
-        run: echo "Skipping deploy-web because Vercel secrets are not configured."
+        run: |
+          echo "::warning title=Vercel auto-deploy disabled::VERCEL_TOKEN, VERCEL_ORG_ID, or VERCEL_PROJECT_ID is not set. Production at karna-web.vercel.app will not be updated by this merge. Add the repo secrets at https://github.com/${{ github.repository }}/settings/secrets/actions to re-enable auto-deploy."
+          echo "## \u26a0\ufe0f Vercel auto-deploy skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Required secrets missing. To re-enable:" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "1. Get values from \`vercel link\` + \`vercel env\` in \`apps/web/\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "2. Add \`VERCEL_TOKEN\`, \`VERCEL_ORG_ID\`, \`VERCEL_PROJECT_ID\` as [repo secrets](https://github.com/${{ github.repository }}/settings/secrets/actions)." >> "$GITHUB_STEP_SUMMARY"
 
       - uses: amondnet/vercel-action@v25
         if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''

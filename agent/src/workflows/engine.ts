@@ -272,12 +272,18 @@ export class WorkflowEngine {
         const operator = node.config.operator as string;
         const value = node.config.value;
         if (!field) return Boolean(input);
-        const inputObj = input as Record<string, unknown>;
+        // Guard: upstream nodes may return null/undefined/string. Don't
+        // crash with "Cannot read properties of undefined" — just treat a
+        // non-object input as a missing field and fall through to the
+        // falsy branch.
+        const inputObj = input && typeof input === "object"
+          ? (input as Record<string, unknown>)
+          : ({} as Record<string, unknown>);
         const actual = inputObj[field];
         switch (operator) {
           case "equals": return actual === value;
           case "not_equals": return actual !== value;
-          case "contains": return String(actual).includes(String(value));
+          case "contains": return String(actual ?? "").includes(String(value));
           case "greater_than": return Number(actual) > Number(value);
           case "less_than": return Number(actual) < Number(value);
           default: return Boolean(actual);

@@ -71,6 +71,7 @@ interface OrchestratorLike {
     error?: string;
     totalTokens: { inputTokens: number; outputTokens: number };
     agentId: string;
+    model?: string;
     delegations: DelegationRecord[];
   }>;
 }
@@ -200,6 +201,41 @@ function sendError(ws: WebSocket, code: string, message: string, retryable = fal
   });
 }
 
+/**
+ * Map raw provider errors (Anthropic/OpenAI/etc.) to user-friendly copy.
+ * The raw error is always logged server-side; only the sanitized string
+ * is surfaced to end users.
+ */
+export function sanitizeAgentError(raw: string | undefined): string {
+  if (!raw) return "The agent was unable to complete this request. Please try again.";
+  const lower = raw.toLowerCase();
+  // Provider API errors — keep vague, don't leak HTTP status
+  if (lower.includes("api error") || lower.includes("status code")) {
+    if (lower.includes("401") || lower.includes("403") || lower.includes("unauthorized")) {
+      return "The AI provider rejected the request. Check that the server-side API key is valid.";
+    }
+    if (lower.includes("429") || lower.includes("rate limit")) {
+      return "The AI provider is rate-limiting requests right now. Please try again in a moment.";
+    }
+    if (lower.includes("400") || lower.includes("bad request")) {
+      return "The AI provider rejected the request format. This is a server-side bug; please report it.";
+    }
+    if (lower.includes("500") || lower.includes("502") || lower.includes("503") || lower.includes("504")) {
+      return "The AI provider is temporarily unavailable. Please try again in a moment.";
+    }
+    return "The AI provider returned an error. Please try again.";
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "The request timed out. Please try again.";
+  }
+  if (lower.includes("econnrefused") || lower.includes("network")) {
+    return "Could not reach the AI provider. Check your network connection.";
+  }
+  // Keep agent-authored errors short but preserve them (e.g. tool approval denied)
+  if (raw.length < 200) return raw;
+  return "The agent was unable to complete this request. Please try again.";
+}
+
 export async function runSessionTurn(
   session: Session,
   content: string,
@@ -211,6 +247,7 @@ export async function runSessionTurn(
   error?: string;
   totalTokens: { inputTokens: number; outputTokens: number };
   agentId: string;
+  model?: string;
   delegations: DelegationRecord[];
   activeAgentCount: number;
 }> {
@@ -368,7 +405,7 @@ export async function runSessionTurn(
     options.traceCollector?.endTrace(traceId, {
       success: result.success,
       agentId: result.agentId,
-      model: "",
+      model: result.model ?? "",
       inputTokens: result.totalTokens.inputTokens,
       outputTokens: result.totalTokens.outputTokens,
       error: result.error,
@@ -771,7 +808,10 @@ async function handleChatMessage(
         });
       }
     } else {
-      sendError(ws, "AGENT_ERROR", result.error ?? "Agent processing failed", true);
+      // Log the raw provider error for debugging, but surface a sanitized
+      // message to the client so raw HTTP/API internals don't leak into chat.
+      logger.error({ sessionId, rawError: result.error }, "Agent turn failed");
+      sendError(ws, "AGENT_ERROR", sanitizeAgentError(result.error), true);
     }
 
     // Send idle status
