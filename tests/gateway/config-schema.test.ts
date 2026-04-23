@@ -16,7 +16,7 @@ describe("Config Schema", () => {
       expect(config.maxConnections).toBe(100);
       expect(config.heartbeatIntervalMs).toBe(30_000);
       expect(config.sessionTimeoutMs).toBe(3_600_000);
-      expect(config.corsOrigin).toBe("");
+      expect(config.cors.origins).toEqual([]);
     });
 
     it("validates port is positive integer", () => {

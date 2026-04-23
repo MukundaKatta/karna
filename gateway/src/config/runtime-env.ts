@@ -32,8 +32,8 @@ export function resolveGatewayCorsOrigins(config: KarnaConfig): string[] {
     return envOrigins;
   }
 
-  if (config.gateway.corsOrigin) {
-    return [config.gateway.corsOrigin];
+  if (config.gateway.cors.origins.length > 0) {
+    return config.gateway.cors.origins;
   }
 
   return ["http://localhost:3000", "http://localhost:5173"];

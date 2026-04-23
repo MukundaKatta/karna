@@ -6,9 +6,9 @@ import {
 } from "../../gateway/src/config/schema.js";
 
 describe("Configuration Validation - Security", () => {
-  it("CORS defaults to empty string (must be configured explicitly)", () => {
+  it("CORS defaults to empty origins array (must be configured explicitly)", () => {
     const config = GatewayConfigSchema.parse({});
-    expect(config.corsOrigin).toBe("");
+    expect(config.cors.origins).toEqual([]);
   });
 
   it("authToken is optional (dev-only concern)", () => {
@@ -46,7 +46,7 @@ describe("Configuration Validation - Security", () => {
         maxConnections: 500,
         heartbeatIntervalMs: 15_000,
         sessionTimeoutMs: 1_800_000,
-        corsOrigin: "https://myapp.com",
+        cors: { origins: ["https://myapp.com"] },
       },
       agent: {
         defaultModel: "claude-opus-4-20250514",
