@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import * as FileSystem from 'expo-file-system';
+import {
+  isLegacyLocalGatewayUrl,
+  resolveDefaultMobileGatewayWsUrl,
+} from './runtime-config';
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
@@ -64,6 +68,10 @@ export async function loadPersistedState(): Promise<void> {
       if (data[key] !== undefined) {
         patch[key] = data[key];
       }
+    }
+
+    if (typeof patch.url !== 'string' || isLegacyLocalGatewayUrl(patch.url)) {
+      patch.url = resolveDefaultMobileGatewayWsUrl();
     }
 
     if (Object.keys(patch).length > 0) {
@@ -187,7 +195,7 @@ type AppState = ConnectionSlice &
 export const useAppStore = create<AppState>()((set) => ({
   // Connection
   status: 'disconnected',
-  url: 'ws://localhost:3100',
+  url: resolveDefaultMobileGatewayWsUrl(),
   token: '',
   setStatus: (status) => set({ status }),
   setUrl: (url) => set({ url }),

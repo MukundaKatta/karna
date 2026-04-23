@@ -38,3 +38,8 @@ htmlcov/
 # Karna local data
 .karna/
 karna.json
+
+# Expo mobile generated files
+apps/mobile/ios/
+apps/mobile/.gitignore
+apps/mobile/.derived-release*/

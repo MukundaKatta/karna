@@ -5,7 +5,7 @@ Native mobile app for Karna on iOS and Android, built with Expo.
 ## Features
 
 - Chat with your Karna agent on the go
-- Push notifications for agent responses
+- Optional push notifications for agent responses
 - Haptic feedback and native gestures
 - Audio/video message support
 - Clipboard integration

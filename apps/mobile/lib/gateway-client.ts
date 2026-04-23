@@ -1,6 +1,10 @@
 import { useAppStore } from './store';
 import type { ChatMessage, ToolCall, MemoryEntry, Skill, Reminder } from './store';
 import { readAudioFileAsBase64, playAudioResponse } from './voice';
+import {
+  deriveMobileGatewayHealthUrl,
+  normalizeMobileGatewayWsUrl,
+} from './runtime-config';
 
 // ── Protocol Types ───────────────────────────────────────────────────────────
 
@@ -30,11 +34,11 @@ class GatewayClient {
   private channelId = `mobile-${generateId()}`;
 
   connect(url: string, token: string): void {
-    this.url = url;
+    this.url = normalizeMobileGatewayWsUrl(url);
     this.token = token;
     this.intentionalClose = false;
     this.reconnectAttempts = 0;
-    this.establishConnection();
+    void this.establishConnection();
   }
 
   disconnect(): void {
@@ -136,11 +140,13 @@ class GatewayClient {
 
   // ── Private ──────────────────────────────────────────────────────────────
 
-  private establishConnection(): void {
+  private async establishConnection(): Promise<void> {
     const store = useAppStore.getState();
     store.setStatus('connecting');
 
     try {
+      await this.wakeGatewayIfNeeded();
+
       const wsUrl = this.token
         ? `${this.url}?token=${encodeURIComponent(this.token)}`
         : this.url;
@@ -230,8 +236,37 @@ class GatewayClient {
     );
 
     this.reconnectTimer = setTimeout(() => {
-      this.establishConnection();
+      void this.establishConnection();
     }, delay);
+  }
+
+  private async wakeGatewayIfNeeded(): Promise<void> {
+    if (this.url.includes('localhost') || this.url.includes('127.0.0.1')) {
+      return;
+    }
+
+    const healthUrl = deriveMobileGatewayHealthUrl(this.url);
+
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const response = await Promise.race([
+          globalThis.fetch(healthUrl),
+          new Promise<Response | null>((resolve) => {
+            setTimeout(() => resolve(null), 8000);
+          }),
+        ]);
+
+        if (response?.ok) {
+          return;
+        }
+      } catch (error) {
+        console.warn('[GatewayClient] Gateway warmup failed:', error);
+      }
+
+      await new Promise((resolve) => {
+        setTimeout(resolve, Math.min(2000 + attempt * 1500, 6000));
+      });
+    }
   }
 
   private handleProtocolMessage(message: ProtocolMessage): void {

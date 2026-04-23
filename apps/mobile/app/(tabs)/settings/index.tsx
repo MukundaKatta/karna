@@ -13,6 +13,11 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAppStore } from '@/lib/store';
 import { gatewayClient } from '@/lib/gateway-client';
+import { registerForPushNotifications } from '@/lib/notifications';
+import {
+  normalizeMobileGatewayWsUrl,
+  resolveDefaultMobileGatewayWsUrl,
+} from '@/lib/runtime-config';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 
 export default function SettingsScreen() {
@@ -35,6 +40,7 @@ export default function SettingsScreen() {
   const connectionStatus = useAppStore((s) => s.status);
   const clearChat = useAppStore((s) => s.clearChat);
   const colors = getColors(darkMode ? 'dark' : 'light');
+  const defaultGatewayUrl = resolveDefaultMobileGatewayWsUrl();
 
   const [editingUrl, setEditingUrl] = useState(url);
   const [editingToken, setEditingToken] = useState(token);
@@ -42,10 +48,23 @@ export default function SettingsScreen() {
     useState(liveVoicePeerChannelId);
 
   const handleSaveConnection = useCallback(() => {
-    setUrl(editingUrl);
+    let normalizedUrl: string;
+    try {
+      normalizedUrl = normalizeMobileGatewayWsUrl(editingUrl);
+    } catch (error) {
+      Alert.alert(
+        'Invalid Gateway URL',
+        error instanceof Error
+          ? error.message
+          : 'Use ws://, wss://, http://, or https:// for the gateway URL.',
+      );
+      return;
+    }
+
+    setUrl(normalizedUrl);
     setToken(editingToken);
     gatewayClient.disconnect();
-    gatewayClient.connect(editingUrl, editingToken);
+    gatewayClient.connect(normalizedUrl, editingToken);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [editingUrl, editingToken, setUrl, setToken]);
 
@@ -74,6 +93,30 @@ export default function SettingsScreen() {
     gatewayClient.connect(url, token);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, [url, token]);
+
+  const handleNotificationsToggle = useCallback(
+    async (enabled: boolean) => {
+      if (!enabled) {
+        setNotifications(false);
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        return;
+      }
+
+      const pushToken = await registerForPushNotifications();
+      if (!pushToken) {
+        setNotifications(false);
+        Alert.alert(
+          'Notifications Unavailable',
+          'Karna could not enable push notifications on this device right now. You can still use chat, tasks, memory, and settings without notifications.',
+        );
+        return;
+      }
+
+      setNotifications(true);
+      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    },
+    [setNotifications],
+  );
 
   const statusColor =
     connectionStatus === 'connected'
@@ -144,12 +187,15 @@ export default function SettingsScreen() {
               ]}
               value={editingUrl}
               onChangeText={setEditingUrl}
-              placeholder="ws://localhost:3100"
+              placeholder={defaultGatewayUrl}
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
             />
+            <Text style={[styles.inputHint, { color: colors.textTertiary }]}>
+              Hosted builds use the live Karna gateway by default. You can still switch this to your own gateway later.
+            </Text>
           </View>
 
           {/* Token */}
@@ -352,10 +398,7 @@ export default function SettingsScreen() {
             </View>
             <Switch
               value={notifications}
-              onValueChange={(val) => {
-                setNotifications(val);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              }}
+              onValueChange={handleNotificationsToggle}
               trackColor={{
                 false: colors.surfaceAlt,
                 true: colors.primary + '60',
@@ -411,7 +454,7 @@ export default function SettingsScreen() {
               Version
             </Text>
             <Text style={[styles.value, { color: colors.textSecondary }]}>
-              0.1.0
+              1.0.0
             </Text>
           </View>
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -503,6 +546,11 @@ const styles = StyleSheet.create({
     ...Typography.caption,
     fontWeight: '600',
     marginBottom: Spacing.xs,
+  },
+  inputHint: {
+    ...Typography.caption,
+    lineHeight: 18,
+    marginTop: Spacing.xs,
   },
   helpText: {
     ...Typography.caption,

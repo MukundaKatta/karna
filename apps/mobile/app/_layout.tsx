@@ -8,11 +8,14 @@ import { useAppStore, loadPersistedState } from '@/lib/store';
 import { getColors } from '@/lib/theme';
 import { gatewayClient } from '@/lib/gateway-client';
 import {
-  registerForPushNotifications,
   addNotificationReceivedListener,
   addNotificationResponseListener,
 } from '@/lib/notifications';
 import ErrorBoundary from '@/components/ErrorBoundary';
+
+export const unstable_settings = {
+  initialRouteName: '(tabs)',
+};
 
 function RootLayoutInner() {
   const darkMode = useAppStore((s) => s.darkMode);
@@ -40,8 +43,6 @@ function RootLayoutInner() {
 
   // Set up notifications
   useEffect(() => {
-    registerForPushNotifications();
-
     notificationListenerRef.current = addNotificationReceivedListener(
       (notification) => {
         console.log('[Layout] Notification received:', notification.request.identifier);

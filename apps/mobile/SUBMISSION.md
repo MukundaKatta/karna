@@ -66,7 +66,12 @@ Create in `assets/store/screenshots/`:
 - **iPhone 5.5"** (still required by some submissions): 1242×2208
 - **iPad Pro 12.9"** (required because `supportsTablet: true`): 2048×2732
 
+Current repo-ready screenshot sets:
+- `assets/store/screenshots/iphone-6.5/`
+- `assets/store/screenshots/ipad-13/`
+
 Tip: Use `expo start --ios` to run in simulator, take screenshots via `Cmd+S`.
+Important: the majority of screenshots must show the actual app UI in use. Avoid logo slides, splash-only screens, or promo art that hides the real product.
 
 ## Step 5 — Build the iOS Binary
 
@@ -109,9 +114,11 @@ In App Store Connect → your app → **App Store** tab:
 3. **Age Rating** → complete questionnaire (most answers "None")
 
 4. **App Review Information**:
-   - Sign-in required: **Yes**
-   - Demo account: use values from `store.config.json`
-   - Notes: explain the self-hosted nature and demo gateway
+   - Sign-in required: **No** if you are using the hosted review gateway
+   - Notes: explain that the app connects to the hosted review gateway by default
+   - Mention that notification permissions are optional and can be enabled later from Settings
+   - If you switch back to account-based access later, provide a demo account that works on first launch
+   - Use the response template in `apps/mobile/APP_REVIEW_RESPONSE.md` when replying to the rejection in Resolution Center
 
 5. **Version Release**: choose manual or automatic
 

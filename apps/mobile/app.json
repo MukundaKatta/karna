@@ -3,7 +3,7 @@
     "name": "Karna",
     "slug": "karna",
     "owner": "mukundakatta",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "scheme": "karna",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -19,7 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.karna.mobile",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -68,6 +68,13 @@
     "extra": {
       "router": {
         "origin": false
+      },
+      "mobileGateway": {
+        "gatewayUrl": "https://karna-gateway.onrender.com",
+        "webSocketUrl": "wss://karna-gateway.onrender.com/ws",
+        "marketingUrl": "https://karna-web-0osh.onrender.com/landing.html",
+        "supportUrl": "https://karna-web-0osh.onrender.com/support",
+        "privacyUrl": "https://karna-web-0osh.onrender.com/privacy"
       },
       "eas": {
         "projectId": "40efdad2-8a97-4640-beb4-c1bbbfd9253a"
