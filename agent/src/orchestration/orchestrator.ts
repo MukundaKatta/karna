@@ -284,6 +284,7 @@ export class Orchestrator {
         return {
           response: handoffResult.response,
           agentId: handoffResult.agentId,
+          model: result.model,
           delegations,
           totalTokens: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
           success: handoffResult.success,
@@ -302,6 +303,7 @@ export class Orchestrator {
         return {
           response: result.response || `Delegation to ${delegateInput.agentId} failed: ${errorMessage}`,
           agentId: targetAgentId,
+          model: result.model,
           delegations,
           totalTokens: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
           success: false,
@@ -314,6 +316,7 @@ export class Orchestrator {
     return {
       response: result.response,
       agentId: targetAgentId,
+      model: result.model,
       delegations,
       totalTokens: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
       success: result.success,
