@@ -50,9 +50,21 @@ describe("web runtime config", () => {
   it("normalizes internal hostport service references for server-side proxies", () => {
     process.env["NODE_ENV"] = "production";
     process.env["GATEWAY_URL"] = "karna-gateway:10000";
+    delete process.env["NEXT_PUBLIC_GATEWAY_URL"];
 
     expect(resolveServerGatewayUrl()).toEqual({
       url: "http://karna-gateway:10000",
+      error: null,
+    });
+  });
+
+  it("prefers the public gateway URL when production fallback points at an internal hostport", () => {
+    process.env["NODE_ENV"] = "production";
+    process.env["GATEWAY_URL"] = "karna-gateway:10000";
+    process.env["NEXT_PUBLIC_GATEWAY_URL"] = "https://karna-gateway.onrender.com";
+
+    expect(resolveServerGatewayUrl()).toEqual({
+      url: "https://karna-gateway.onrender.com",
       error: null,
     });
   });

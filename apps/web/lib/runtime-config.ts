@@ -22,6 +22,14 @@ function normalizeHttpUrl(value: string): string {
   throw new Error(`Gateway URL must start with http:// or https://, received "${trimmed}"`);
 }
 
+function isInternalHostportReference(value: string | undefined): boolean {
+  if (!value) {
+    return false;
+  }
+
+  return /^[a-z0-9.-]+:\d+$/i.test(value.trim());
+}
+
 function normalizeWebSocketUrl(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -46,11 +54,16 @@ export function resolveServerGatewayUrl(): {
   url: string | null;
   error: string | null;
 } {
-  const configuredGatewayUrl = process.env["GATEWAY_URL"] ?? process.env["NEXT_PUBLIC_GATEWAY_URL"];
-  if (configuredGatewayUrl) {
+  const configuredGatewayUrl = process.env["GATEWAY_URL"];
+  const publicGatewayUrl = process.env["NEXT_PUBLIC_GATEWAY_URL"];
+  const candidateGatewayUrl =
+    isProduction() && publicGatewayUrl && isInternalHostportReference(configuredGatewayUrl)
+      ? publicGatewayUrl
+      : configuredGatewayUrl ?? publicGatewayUrl;
+  if (candidateGatewayUrl) {
     try {
       return {
-        url: normalizeHttpUrl(configuredGatewayUrl),
+        url: normalizeHttpUrl(candidateGatewayUrl),
         error: null,
       };
     } catch (error) {

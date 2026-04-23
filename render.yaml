@@ -23,7 +23,7 @@ services:
       - key: KARNA_DEFAULT_MODEL
         value: gemini-3-flash-preview
       - key: GATEWAY_CORS_ORIGINS
-        value: https://karna-web.vercel.app
+        value: https://karna-web.vercel.app,https://karna-web-0osh.onrender.com
   - type: web
     name: karna-web
     runtime: docker
@@ -36,10 +36,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: GATEWAY_URL
-        fromService:
-          type: web
-          name: karna-gateway
-          property: hostport
+        sync: false
       - key: NEXT_PUBLIC_GATEWAY_URL
         sync: false
       - key: NEXT_PUBLIC_WS_URL
