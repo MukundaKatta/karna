@@ -704,6 +704,9 @@ importers:
       '@karna/shared':
         specifier: workspace:*
         version: link:../packages/shared
+      '@karna/supabase':
+        specifier: workspace:*
+        version: link:../packages/supabase
       '@modelcontextprotocol/sdk':
         specifier: ^1.12.1
         version: 1.27.1(zod@3.25.76)

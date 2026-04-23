@@ -10,6 +10,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* turbo.json tsconfig.base.j
 # Copy package manifests for dependency resolution
 COPY packages/shared/package.json packages/shared/
 COPY packages/supabase/package.json packages/supabase/
+COPY agent/package.json agent/
 COPY gateway/package.json gateway/
 
 # Install dependencies
@@ -18,12 +19,14 @@ RUN pnpm install --frozen-lockfile || pnpm install
 # Copy source
 COPY packages/shared/ packages/shared/
 COPY packages/supabase/ packages/supabase/
+COPY agent/ agent/
 COPY gateway/ gateway/
 COPY config/ config/
 
 # Build
 RUN pnpm --filter @karna/shared build && \
     pnpm --filter @karna/supabase build && \
+    pnpm --filter @karna/agent build && \
     pnpm --filter @karna/gateway build
 
 # ─── Production stage ────────────────────────────────────────────────────
@@ -40,6 +43,8 @@ COPY --from=base --chown=node:node /app/packages/shared/dist ./packages/shared/d
 COPY --from=base --chown=node:node /app/packages/shared/package.json ./packages/shared/
 COPY --from=base --chown=node:node /app/packages/supabase/dist ./packages/supabase/dist
 COPY --from=base --chown=node:node /app/packages/supabase/package.json ./packages/supabase/
+COPY --from=base --chown=node:node /app/agent/dist ./agent/dist
+COPY --from=base --chown=node:node /app/agent/package.json ./agent/
 COPY --from=base --chown=node:node /app/gateway/dist ./gateway/dist
 COPY --from=base --chown=node:node /app/gateway/package.json ./gateway/
 COPY --from=base --chown=node:node /app/package.json /app/pnpm-workspace.yaml ./
