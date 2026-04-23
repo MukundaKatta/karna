@@ -267,7 +267,7 @@ export class AgentRuntime {
         // Add assistant message with tool use and tool results to conversation
         messages = [
           ...messages,
-          { role: "assistant", content: text || "Using tools..." },
+          { role: "assistant", content: text, toolUses },
           ...toolMessages,
         ];
       }

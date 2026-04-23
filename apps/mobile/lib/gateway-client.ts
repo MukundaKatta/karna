@@ -522,6 +522,43 @@ class GatewayClient {
         break;
       }
 
+      case "tool.approval.requested": {
+        const toolCallId = payload.toolCallId as string | undefined;
+        const toolName = (payload.toolName as string | undefined) ?? "tool";
+        const toolInput = isRecord(payload.arguments)
+          ? payload.arguments
+          : undefined;
+
+        if (!toolCallId) {
+          this.addSystemMessage(
+            "Karna requested a tool, but the gateway did not include a valid approval id. The request was not approved.",
+          );
+          store.setTyping(false);
+          break;
+        }
+
+        const reason =
+          "Mobile approval is not available yet, so Karna denied this tool request to keep your session safe.";
+        this.attachDeniedToolCall(toolCallId, toolName, toolInput, reason);
+        this.addSystemMessage(
+          `Karna requested the ${toolName} tool. Mobile denied it for safety because tool approvals are not available in the app yet.`,
+        );
+
+        this.send({
+          id: generateId(),
+          type: "tool.approval.response",
+          timestamp: Date.now(),
+          sessionId: this.sessionId ?? message.sessionId,
+          payload: {
+            toolCallId,
+            approved: false,
+            reason,
+          },
+        });
+        store.setTyping(false);
+        break;
+      }
+
       case "tool.start": {
         if (message.id) {
           const parentId = payload.messageId as string | undefined;
@@ -669,6 +706,38 @@ class GatewayClient {
       timestamp: Date.now(),
     });
   }
+
+  private attachDeniedToolCall(
+    toolCallId: string,
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+    reason: string,
+  ): void {
+    const store = useAppStore.getState();
+    const parent =
+      (this.pendingStreamMessageId
+        ? store.messages.find(
+            (message) => message.id === this.pendingStreamMessageId,
+          )
+        : undefined) ??
+      store.messages.find((message) => message.role === "assistant");
+
+    if (!parent) {
+      return;
+    }
+
+    const toolCall: ToolCall = {
+      id: toolCallId,
+      name: toolName,
+      status: "error",
+      input: toolInput,
+      output: reason,
+    };
+
+    store.updateMessage(parent.id, {
+      toolCalls: [...(parent.toolCalls ?? []), toolCall],
+    });
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -693,6 +762,10 @@ function mapHistoryMessage(entry: Record<string, unknown>): ChatMessage | null {
   }
 
   return { id, role, content, timestamp };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 // ── Singleton ────────────────────────────────────────────────────────────────

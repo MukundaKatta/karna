@@ -10,6 +10,15 @@ export type StreamEvent =
   | { type: "done" };
 
 /**
+ * A tool call emitted by the assistant and later answered by a tool message.
+ */
+export interface ChatToolUse {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+/**
  * A message in the conversation passed to the model.
  */
 export interface ChatMessage {
@@ -17,6 +26,7 @@ export interface ChatMessage {
   content: string;
   toolCallId?: string;
   toolName?: string;
+  toolUses?: ChatToolUse[];
 }
 
 /**

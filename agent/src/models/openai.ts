@@ -162,6 +162,22 @@ export class OpenAIProvider implements ModelProvider {
       }
 
       // Assistant
+      if (msg.toolUses && msg.toolUses.length > 0) {
+        messages.push({
+          role: "assistant",
+          content: msg.content || null,
+          tool_calls: msg.toolUses.map((toolUse) => ({
+            id: toolUse.id,
+            type: "function",
+            function: {
+              name: toolUse.name,
+              arguments: JSON.stringify(toolUse.input),
+            },
+          })),
+        });
+        continue;
+      }
+
       messages.push({ role: "assistant", content: msg.content });
     }
 

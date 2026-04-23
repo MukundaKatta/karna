@@ -122,6 +122,20 @@ export class AnthropicProvider implements ModelProvider {
       }
 
       // Assistant messages
+      if (msg.toolUses && msg.toolUses.length > 0) {
+        const contentBlocks = [
+          ...(msg.content ? [{ type: "text" as const, text: msg.content }] : []),
+          ...msg.toolUses.map((toolUse) => ({
+            type: "tool_use" as const,
+            id: toolUse.id,
+            name: toolUse.name,
+            input: toolUse.input,
+          })),
+        ];
+        messages.push({ role: "assistant", content: contentBlocks });
+        continue;
+      }
+
       messages.push({ role: "assistant", content: msg.content });
     }
 
