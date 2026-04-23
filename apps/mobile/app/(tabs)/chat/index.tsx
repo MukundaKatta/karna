@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,26 +9,27 @@ import {
   KeyboardAvoidingView,
   Platform,
   type ListRenderItemInfo,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { useAppStore, type ChatMessage } from '@/lib/store';
-import { gatewayClient } from '@/lib/gateway-client';
-import type { MobileWebRTCState } from '@/lib/webrtc';
-import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
-import { ChatBubble } from '@/components/ChatBubble';
-import { TypingIndicator } from '@/components/TypingIndicator';
-import { VoiceInput } from '@/components/VoiceInput';
+} from "react-native";
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { useAppStore, type ChatMessage } from "@/lib/store";
+import { gatewayClient } from "@/lib/gateway-client";
+import type { MobileWebRTCState } from "@/lib/webrtc";
+import { getColors, Typography, Spacing, BorderRadius } from "@/lib/theme";
+import { ChatBubble } from "@/components/ChatBubble";
+import { TypingIndicator } from "@/components/TypingIndicator";
+import { VoiceInput } from "@/components/VoiceInput";
 
 export default function ChatScreen() {
   const darkMode = useAppStore((s) => s.darkMode);
   const messages = useAppStore((s) => s.messages);
   const isTyping = useAppStore((s) => s.isTyping);
   const connectionStatus = useAppStore((s) => s.status);
-  const colors = getColors(darkMode ? 'dark' : 'light');
+  const colors = getColors(darkMode ? "dark" : "light");
 
-  const [inputText, setInputText] = useState('');
-  const [liveVoiceState, setLiveVoiceState] = useState<MobileWebRTCState>('idle');
+  const [inputText, setInputText] = useState("");
+  const [liveVoiceState, setLiveVoiceState] =
+    useState<MobileWebRTCState>("idle");
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
   const handleSend = useCallback(async () => {
@@ -36,20 +37,13 @@ export default function ChatScreen() {
     if (!text) return;
 
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setInputText('');
+    setInputText("");
     gatewayClient.sendChatMessage(text);
   }, [inputText]);
 
   const handleRefresh = useCallback(() => {
-    // Request older messages from gateway
-    gatewayClient.send({
-      type: 'chat.history',
-      payload: {
-        before: messages[messages.length - 1]?.timestamp,
-        limit: 20,
-      },
-    });
-  }, [messages]);
+    void gatewayClient.loadChatHistory(20);
+  }, []);
 
   const renderMessage = useCallback(
     ({ item }: ListRenderItemInfo<ChatMessage>) => (
@@ -61,51 +55,48 @@ export default function ChatScreen() {
   const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
 
   const statusColor =
-    connectionStatus === 'connected'
+    connectionStatus === "connected"
       ? colors.success
-      : connectionStatus === 'connecting'
+      : connectionStatus === "connecting"
         ? colors.warning
         : colors.error;
 
   const statusLabel =
-    connectionStatus === 'connected'
-      ? 'Connected'
-      : connectionStatus === 'connecting'
-        ? 'Connecting...'
-        : connectionStatus === 'error'
-          ? 'Connection Error'
-          : 'Disconnected';
+    connectionStatus === "connected"
+      ? "Connected"
+      : connectionStatus === "connecting"
+        ? "Connecting..."
+        : connectionStatus === "error"
+          ? "Connection Error"
+          : "Disconnected";
   const showLiveVoiceBanner =
-    liveVoiceState === 'requesting-media' ||
-    liveVoiceState === 'negotiating' ||
-    liveVoiceState === 'connected' ||
-    liveVoiceState === 'error';
+    liveVoiceState === "requesting-media" ||
+    liveVoiceState === "negotiating" ||
+    liveVoiceState === "connected" ||
+    liveVoiceState === "error";
   const liveVoiceBannerColor =
-    liveVoiceState === 'connected'
+    liveVoiceState === "connected"
       ? colors.success
-      : liveVoiceState === 'error'
+      : liveVoiceState === "error"
         ? colors.error
         : colors.warning;
   const liveVoiceBannerLabel =
-    liveVoiceState === 'connected'
-      ? 'Live voice active'
-      : liveVoiceState === 'error'
-        ? 'Live voice unavailable on this build'
-        : 'Connecting live voice...';
+    liveVoiceState === "connected"
+      ? "Live voice active"
+      : liveVoiceState === "error"
+        ? "Live voice unavailable on this build"
+        : "Connecting live voice...";
 
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={90}
     >
       {/* Connection Status Bar */}
-      {connectionStatus !== 'connected' && (
+      {connectionStatus !== "connected" && (
         <View
-          style={[
-            styles.statusBar,
-            { backgroundColor: statusColor + '20' },
-          ]}
+          style={[styles.statusBar, { backgroundColor: statusColor + "20" }]}
         >
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
           <Text style={[styles.statusText, { color: statusColor }]}>
@@ -118,11 +109,14 @@ export default function ChatScreen() {
         <View
           style={[
             styles.statusBar,
-            { backgroundColor: liveVoiceBannerColor + '20' },
+            { backgroundColor: liveVoiceBannerColor + "20" },
           ]}
         >
           <View
-            style={[styles.statusDot, { backgroundColor: liveVoiceBannerColor }]}
+            style={[
+              styles.statusDot,
+              { backgroundColor: liveVoiceBannerColor },
+            ]}
           />
           <Text style={[styles.statusText, { color: liveVoiceBannerColor }]}>
             {liveVoiceBannerLabel}
@@ -196,10 +190,7 @@ export default function ChatScreen() {
           {inputText.trim() ? (
             <Pressable
               onPress={handleSend}
-              style={[
-                styles.sendButton,
-                { backgroundColor: colors.primary },
-              ]}
+              style={[styles.sendButton, { backgroundColor: colors.primary }]}
             >
               <Feather name="send" size={18} color="#FFFFFF" />
             </Pressable>
@@ -217,9 +208,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   statusBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,
   },
@@ -230,15 +221,15 @@ const styles = StyleSheet.create({
   },
   statusText: {
     ...Typography.caption,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   messageList: {
     paddingVertical: Spacing.sm,
   },
   emptyContainer: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 120,
     transform: [{ scaleY: -1 }],
   },
@@ -249,7 +240,7 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     ...Typography.body,
     marginTop: Spacing.sm,
-    textAlign: 'center',
+    textAlign: "center",
   },
   inputContainer: {
     paddingHorizontal: Spacing.lg,
@@ -257,8 +248,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
   },
   inputRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
+    flexDirection: "row",
+    alignItems: "flex-end",
     borderRadius: BorderRadius.xl,
     borderWidth: 1,
     paddingHorizontal: Spacing.md,
@@ -270,14 +261,14 @@ const styles = StyleSheet.create({
     ...Typography.input,
     flex: 1,
     maxHeight: 120,
-    paddingTop: Platform.OS === 'ios' ? 8 : 4,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 4,
+    paddingTop: Platform.OS === "ios" ? 8 : 4,
+    paddingBottom: Platform.OS === "ios" ? 8 : 4,
   },
   sendButton: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

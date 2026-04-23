@@ -11,6 +11,7 @@ vi.mock("expo-constants", () => ({
 }));
 
 const {
+  deriveMobileGatewayHttpUrl,
   deriveMobileGatewayHealthUrl,
   isLegacyLocalGatewayUrl,
   normalizeMobileGatewayWsUrl,
@@ -45,21 +46,26 @@ describe("mobile runtime config", () => {
     expect(normalizeMobileGatewayWsUrl("karna-gateway.onrender.com:4000")).toBe(
       "ws://karna-gateway.onrender.com:4000/ws",
     );
-    expect(normalizeMobileGatewayWsUrl("https://karna-gateway.onrender.com")).toBe(
-      "wss://karna-gateway.onrender.com/ws",
-    );
-    expect(normalizeMobileGatewayWsUrl("wss://karna-gateway.onrender.com/ws")).toBe(
-      "wss://karna-gateway.onrender.com/ws",
-    );
+    expect(
+      normalizeMobileGatewayWsUrl("https://karna-gateway.onrender.com"),
+    ).toBe("wss://karna-gateway.onrender.com/ws");
+    expect(
+      normalizeMobileGatewayWsUrl("wss://karna-gateway.onrender.com/ws"),
+    ).toBe("wss://karna-gateway.onrender.com/ws");
   });
 
   it("derives a health endpoint from websocket or http inputs", () => {
-    expect(deriveMobileGatewayHealthUrl("wss://karna-gateway.onrender.com/ws")).toBe(
-      "https://karna-gateway.onrender.com/health",
-    );
-    expect(deriveMobileGatewayHealthUrl("https://karna-gateway.onrender.com")).toBe(
-      "https://karna-gateway.onrender.com/health",
-    );
+    expect(
+      deriveMobileGatewayHttpUrl(
+        "wss://karna-gateway.onrender.com/ws",
+      ).toString(),
+    ).toBe("https://karna-gateway.onrender.com/");
+    expect(
+      deriveMobileGatewayHealthUrl("wss://karna-gateway.onrender.com/ws"),
+    ).toBe("https://karna-gateway.onrender.com/health");
+    expect(
+      deriveMobileGatewayHealthUrl("https://karna-gateway.onrender.com"),
+    ).toBe("https://karna-gateway.onrender.com/health");
   });
 
   it("flags the legacy localhost review URL for migration", () => {

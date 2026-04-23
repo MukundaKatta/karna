@@ -1,9 +1,9 @@
-import { create } from 'zustand';
-import * as FileSystem from 'expo-file-system';
+import { create } from "zustand";
+import * as FileSystem from "expo-file-system";
 import {
   isLegacyLocalGatewayUrl,
   resolveDefaultMobileGatewayWsUrl,
-} from './runtime-config';
+} from "./runtime-config";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
@@ -23,19 +23,20 @@ interface PersistedState {
 }
 
 const PERSIST_KEYS: (keyof PersistedState)[] = [
-  'darkMode',
-  'notifications',
-  'agentName',
-  'url',
-  'token',
-  'liveVoiceEnabled',
-  'liveVoicePeerChannelId',
-  'messages',
-  'reminders',
-  'skills',
+  "darkMode",
+  "notifications",
+  "agentName",
+  "url",
+  "token",
+  "liveVoiceEnabled",
+  "liveVoicePeerChannelId",
+  "messages",
+  "reminders",
+  "skills",
 ];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+const HISTORY_DUPLICATE_WINDOW_MS = 120_000;
 
 function persistState(state: Record<string, unknown>): void {
   // Debounce writes to avoid thrashing disk
@@ -50,7 +51,7 @@ function persistState(state: Record<string, unknown>): void {
       toPersist.messages = (toPersist.messages as ChatMessage[]).slice(0, 100);
     }
     FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
-      (err) => console.warn('[Store] Failed to persist state:', err),
+      (err) => console.warn("[Store] Failed to persist state:", err),
     );
   }, 500);
 }
@@ -70,26 +71,30 @@ export async function loadPersistedState(): Promise<void> {
       }
     }
 
-    if (typeof patch.url !== 'string' || isLegacyLocalGatewayUrl(patch.url)) {
+    if (typeof patch.url !== "string" || isLegacyLocalGatewayUrl(patch.url)) {
       patch.url = resolveDefaultMobileGatewayWsUrl();
     }
 
     if (Object.keys(patch).length > 0) {
       useAppStore.setState(patch);
-      console.log('[Store] Restored persisted state');
+      console.log("[Store] Restored persisted state");
     }
   } catch (err) {
-    console.warn('[Store] Failed to load persisted state:', err);
+    console.warn("[Store] Failed to load persisted state:", err);
   }
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+export type ConnectionStatus =
+  | "disconnected"
+  | "connecting"
+  | "connected"
+  | "error";
 
 export interface ChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
   toolCalls?: ToolCall[];
@@ -98,7 +103,7 @@ export interface ChatMessage {
 export interface ToolCall {
   id: string;
   name: string;
-  status: 'running' | 'success' | 'error';
+  status: "running" | "success" | "error";
   input?: Record<string, unknown>;
   output?: string;
   duration?: number;
@@ -109,14 +114,14 @@ export interface Reminder {
   title: string;
   description?: string;
   dueDate?: number;
-  status: 'pending' | 'in-progress' | 'done';
+  status: "pending" | "in-progress" | "done";
   createdAt: number;
 }
 
 export interface MemoryEntry {
   id: string;
   content: string;
-  category: 'fact' | 'preference' | 'event' | 'task';
+  category: "fact" | "preference" | "event" | "task";
   importance: number;
   createdAt: number;
 }
@@ -194,9 +199,9 @@ type AppState = ConnectionSlice &
 
 export const useAppStore = create<AppState>()((set) => ({
   // Connection
-  status: 'disconnected',
+  status: "disconnected",
   url: resolveDefaultMobileGatewayWsUrl(),
-  token: '',
+  token: "",
   setStatus: (status) => set({ status }),
   setUrl: (url) => set({ url }),
   setToken: (token) => set({ token }),
@@ -215,7 +220,25 @@ export const useAppStore = create<AppState>()((set) => ({
   setTyping: (isTyping) => set({ isTyping }),
   clearChat: () => set({ messages: [], isTyping: false }),
   loadOlderMessages: (older) =>
-    set((state) => ({ messages: [...state.messages, ...older] })),
+    set((state) => {
+      const merged = [...state.messages];
+      const uniqueOlder: ChatMessage[] = [];
+
+      for (const message of older) {
+        if (hasEquivalentMessage(message, merged)) {
+          continue;
+        }
+
+        merged.push(message);
+        uniqueOlder.push(message);
+      }
+
+      if (uniqueOlder.length === 0) {
+        return state;
+      }
+
+      return { messages: merged };
+    }),
 
   // Tasks
   reminders: [],
@@ -230,7 +253,7 @@ export const useAppStore = create<AppState>()((set) => ({
   completeReminder: (id) =>
     set((state) => ({
       reminders: state.reminders.map((r) =>
-        r.id === id ? { ...r, status: 'done' as const } : r,
+        r.id === id ? { ...r, status: "done" as const } : r,
       ),
     })),
   deleteReminder: (id) =>
@@ -255,9 +278,9 @@ export const useAppStore = create<AppState>()((set) => ({
   // Settings
   darkMode: true,
   notifications: true,
-  agentName: 'Karna',
+  agentName: "Karna",
   liveVoiceEnabled: false,
-  liveVoicePeerChannelId: '',
+  liveVoicePeerChannelId: "",
   setDarkMode: (darkMode) => set({ darkMode }),
   setNotifications: (notifications) => set({ notifications }),
   setAgentName: (agentName) => set({ agentName }),
@@ -265,6 +288,34 @@ export const useAppStore = create<AppState>()((set) => ({
   setLiveVoicePeerChannelId: (liveVoicePeerChannelId) =>
     set({ liveVoicePeerChannelId }),
 }));
+
+function hasEquivalentMessage(
+  candidate: ChatMessage,
+  messages: ChatMessage[],
+): boolean {
+  return messages.some((message) => {
+    if (message.id === candidate.id) {
+      return true;
+    }
+
+    if (
+      message.role !== candidate.role ||
+      normalizeMessageContent(message.content) !==
+        normalizeMessageContent(candidate.content)
+    ) {
+      return false;
+    }
+
+    return (
+      Math.abs(message.timestamp - candidate.timestamp) <=
+      HISTORY_DUPLICATE_WINDOW_MS
+    );
+  });
+}
+
+function normalizeMessageContent(content: string): string {
+  return content.trim();
+}
 
 // Persist on every state change (debounced)
 useAppStore.subscribe((state) => {

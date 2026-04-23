@@ -45,7 +45,8 @@ export function normalizeMobileGatewayWsUrl(value: string): string {
       : parsed.protocol === "http:"
         ? "ws:"
         : parsed.protocol;
-  const path = parsed.pathname === "/" ? "/ws" : parsed.pathname.replace(/\/+$/, "");
+  const path =
+    parsed.pathname === "/" ? "/ws" : parsed.pathname.replace(/\/+$/, "");
 
   parsed.protocol = protocol;
   parsed.pathname = path || "/ws";
@@ -55,13 +56,22 @@ export function normalizeMobileGatewayWsUrl(value: string): string {
 }
 
 export function deriveMobileGatewayHealthUrl(value: string): string {
+  const parsed = deriveMobileGatewayHttpUrl(value);
+  parsed.pathname = "/health";
+  parsed.search = "";
+  parsed.hash = "";
+
+  return parsed.toString();
+}
+
+export function deriveMobileGatewayHttpUrl(value: string): URL {
   const trimmed = value.trim();
   if (!trimmed) {
     throw new Error("Gateway URL is empty");
   }
 
   if (/^[a-z0-9.-]+:\d+$/i.test(trimmed)) {
-    return `http://${trimmed}/health`;
+    return new URL(`http://${trimmed}`);
   }
 
   if (!/^(https?|wss?):\/\//i.test(trimmed)) {
@@ -77,11 +87,11 @@ export function deriveMobileGatewayHealthUrl(value: string): string {
       : parsed.protocol === "ws:"
         ? "http:"
         : parsed.protocol;
-  parsed.pathname = "/health";
+  parsed.pathname = "";
   parsed.search = "";
   parsed.hash = "";
 
-  return parsed.toString();
+  return parsed;
 }
 
 export function isLegacyLocalGatewayUrl(value: string | undefined): boolean {
@@ -92,7 +102,9 @@ export function isLegacyLocalGatewayUrl(value: string | undefined): boolean {
   return value.trim() === LEGACY_LOCAL_GATEWAY_WS_URL;
 }
 
-export function resolveDefaultMobileGatewayHttpUrl(options?: { dev?: boolean }): string {
+export function resolveDefaultMobileGatewayHttpUrl(options?: {
+  dev?: boolean;
+}): string {
   const extra = getMobileGatewayExtra();
   if (options?.dev ?? __DEV__) {
     return LOCAL_GATEWAY_HTTP_URL;
@@ -101,7 +113,9 @@ export function resolveDefaultMobileGatewayHttpUrl(options?: { dev?: boolean }):
   return extra.gatewayUrl?.trim() || DEFAULT_HOSTED_GATEWAY_HTTP_URL;
 }
 
-export function resolveDefaultMobileGatewayWsUrl(options?: { dev?: boolean }): string {
+export function resolveDefaultMobileGatewayWsUrl(options?: {
+  dev?: boolean;
+}): string {
   const extra = getMobileGatewayExtra();
   if (options?.dev ?? __DEV__) {
     return LOCAL_GATEWAY_WS_URL;
@@ -110,6 +124,10 @@ export function resolveDefaultMobileGatewayWsUrl(options?: { dev?: boolean }): s
   return extra.webSocketUrl?.trim() || DEFAULT_HOSTED_GATEWAY_WS_URL;
 }
 
-export function resolveDefaultMobileGatewayHealthUrl(options?: { dev?: boolean }): string {
-  return deriveMobileGatewayHealthUrl(resolveDefaultMobileGatewayWsUrl(options));
+export function resolveDefaultMobileGatewayHealthUrl(options?: {
+  dev?: boolean;
+}): string {
+  return deriveMobileGatewayHealthUrl(
+    resolveDefaultMobileGatewayWsUrl(options),
+  );
 }

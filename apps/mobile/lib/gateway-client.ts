@@ -8,6 +8,7 @@ import type {
 } from "./store";
 import { readAudioFileAsBase64, playAudioResponse } from "./voice";
 import {
+  deriveMobileGatewayHttpUrl,
   deriveMobileGatewayHealthUrl,
   normalizeMobileGatewayWsUrl,
 } from "./runtime-config";
@@ -37,6 +38,7 @@ class GatewayClient {
   private intentionalClose = false;
   private sessionId: string | null = null;
   private pendingStreamMessageId: string | null = null;
+  private historyInFlight = false;
   private channelId = `mobile-${generateId()}`;
 
   connect(url: string, token: string): void {
@@ -103,6 +105,43 @@ class GatewayClient {
       sessionId: this.sessionId ?? undefined,
       payload: { content, role: "user" },
     });
+  }
+
+  async loadChatHistory(limit = 20): Promise<void> {
+    if (!this.sessionId || this.historyInFlight) {
+      return;
+    }
+
+    this.historyInFlight = true;
+
+    try {
+      const historyUrl = deriveMobileGatewayHttpUrl(this.url);
+      historyUrl.pathname = `/api/sessions/${encodeURIComponent(
+        this.sessionId,
+      )}/history`;
+      historyUrl.searchParams.set("limit", String(limit));
+
+      const response = await fetch(historyUrl.toString());
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        messages?: Array<Record<string, unknown>>;
+      };
+      const messages = (payload.messages ?? [])
+        .map(mapHistoryMessage)
+        .filter((message): message is ChatMessage => message !== null)
+        .reverse();
+
+      if (messages.length > 0) {
+        useAppStore.getState().loadOlderMessages(messages);
+      }
+    } catch (error) {
+      console.warn("[GatewayClient] Failed to load chat history:", error);
+    } finally {
+      this.historyInFlight = false;
+    }
   }
 
   async sendVoiceMessage(audioUri: string): Promise<void> {
@@ -636,6 +675,24 @@ class GatewayClient {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function isChatRole(role: unknown): role is ChatMessage["role"] {
+  return role === "user" || role === "assistant" || role === "system";
+}
+
+function mapHistoryMessage(entry: Record<string, unknown>): ChatMessage | null {
+  const { id, role, content, timestamp } = entry;
+  if (
+    typeof id !== "string" ||
+    !isChatRole(role) ||
+    typeof content !== "string" ||
+    typeof timestamp !== "number"
+  ) {
+    return null;
+  }
+
+  return { id, role, content, timestamp };
 }
 
 // ── Singleton ────────────────────────────────────────────────────────────────
