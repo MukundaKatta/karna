@@ -55,6 +55,8 @@ Today, Karna ships as a **self-hosted, production-ready assistant stack** with w
 
 ### Install (Fastest Path Today)
 
+> **Heads up:** the `karna-ai` npm package is not yet published. Use the [From source](#other-install-methods) or Docker path below. The command here describes the intended UX once `karna-ai` ships.
+
 ```bash
 npm install -g karna-ai
 ```
