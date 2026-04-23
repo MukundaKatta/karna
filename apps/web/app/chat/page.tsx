@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Send, Mic, Paperclip, Loader2, Wifi, WifiOff } from "lucide-react";
+import {
+  mapGatewayTranscriptMessage,
+  mergeAssistantResponse,
+  type GatewayTranscriptMessage,
+} from "@/lib/chat";
 import { cn } from "@/lib/utils";
 import { useChatStore, type ChatMessageUI, type ToolCallUI } from "@/lib/store";
 import { getWSClient } from "@/lib/ws";
@@ -12,6 +17,7 @@ import { VoiceOverlay } from "@/components/VoiceOverlay";
 export default function ChatPage() {
   const {
     messages,
+    activeSessionId,
     agentState,
     wsState,
     streamingContent,
@@ -19,8 +25,11 @@ export default function ChatPage() {
     updateMessage,
     appendStreamDelta,
     resetStream,
+    setMessages,
+    setActiveSession,
     setAgentState,
     setWSState,
+    upsertSession,
   } = useChatStore();
 
   const [input, setInput] = useState("");
@@ -44,7 +53,20 @@ export default function ChatPage() {
 
       switch (type) {
         case "connect.ack":
-          // Connected successfully
+          if (typeof payload.sessionId === "string") {
+            const sessionId = payload.sessionId;
+            upsertSession({
+              id: sessionId,
+              title: "Web chat",
+              channelType: "web",
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              messageCount: useChatStore
+                .getState()
+                .messages.filter((message) => message.role !== "system").length,
+            });
+            setActiveSession(sessionId);
+          }
           break;
 
         case "agent.response": {
@@ -59,7 +81,15 @@ export default function ChatPage() {
               ...(payload.usage as Record<string, number> | undefined),
             },
           };
-          addMessage(chatMsg);
+          setMessages(
+            mergeAssistantResponse(
+              useChatStore.getState().messages,
+              chatMsg,
+              streamMessageIdRef.current,
+            ),
+          );
+          streamMessageIdRef.current = null;
+          resetStream();
           setAgentState("idle");
           break;
         }
@@ -69,6 +99,7 @@ export default function ChatPage() {
           if (!streamMessageIdRef.current) {
             const id = `stream-${Date.now()}`;
             streamMessageIdRef.current = id;
+            resetStream();
             addMessage({
               id,
               role: "assistant",
@@ -128,12 +159,17 @@ export default function ChatPage() {
         }
 
         case "status": {
-          const state = payload.state as ChatMessageUI["role"];
-          setAgentState(state as "idle" | "thinking" | "tool_calling" | "streaming" | "error");
+          const state = payload.state as "idle" | "thinking" | "tool_calling" | "streaming" | "error";
+          setAgentState(state);
           break;
         }
 
         case "error": {
+          if (streamMessageIdRef.current) {
+            updateMessage(streamMessageIdRef.current, { isStreaming: false });
+            streamMessageIdRef.current = null;
+            resetStream();
+          }
           addMessage({
             id: `err-${Date.now()}`,
             role: "system",
@@ -152,7 +188,66 @@ export default function ChatPage() {
       unsubState();
       unsubMsg();
     };
-  }, [addMessage, appendStreamDelta, resetStream, setAgentState, setWSState, updateMessage]);
+  }, [
+    addMessage,
+    appendStreamDelta,
+    resetStream,
+    setActiveSession,
+    setAgentState,
+    setMessages,
+    setWSState,
+    updateMessage,
+    upsertSession,
+  ]);
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    const loadTranscript = async () => {
+      try {
+        const response = await fetch(`/api/sessions/${activeSessionId}/history?limit=200`, {
+          cache: "no-store",
+          signal: abortController.signal,
+        });
+
+        if (!response.ok && response.status !== 404) {
+          return;
+        }
+
+        const payload = response.ok
+          ? ((await response.json()) as {
+              messages?: GatewayTranscriptMessage[];
+            })
+          : { messages: [] };
+
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        setMessages((payload.messages ?? []).map(mapGatewayTranscriptMessage));
+        streamMessageIdRef.current = null;
+        resetStream();
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
+      }
+    };
+
+    void loadTranscript();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [activeSessionId, resetStream, setMessages]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -174,6 +269,9 @@ export default function ChatPage() {
     setAgentState("thinking");
 
     const ws = getWSClient();
+    if (activeSessionId && ws.currentSessionId !== activeSessionId) {
+      ws.selectSession(activeSessionId);
+    }
     ws.sendMessage(content);
 
     // Auto-resize textarea

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { upsertChatSession } from "./chat";
 import type { WSState } from "./ws";
 
 // ─── Chat Types ─────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ interface ChatState {
 
   // Actions
   setSessions: (sessions: ChatSessionUI[]) => void;
+  upsertSession: (session: ChatSessionUI) => void;
   setActiveSession: (id: string | null) => void;
   addMessage: (message: ChatMessageUI) => void;
   updateMessage: (id: string, update: Partial<ChatMessageUI>) => void;
@@ -73,6 +75,8 @@ export const useChatStore = create<ChatState>((set) => ({
   streamingContent: "",
 
   setSessions: (sessions) => set({ sessions }),
+  upsertSession: (session) =>
+    set((state) => ({ sessions: upsertChatSession(state.sessions, session) })),
   setActiveSession: (id) => set({ activeSessionId: id }),
 
   addMessage: (message) =>

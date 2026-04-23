@@ -544,7 +544,7 @@ async function buildAnalyticsHistory(
   };
 }> {
   const now = Date.now();
-  const startOfToday = new Date();
+  const startOfToday = new Date(now);
   startOfToday.setHours(0, 0, 0, 0);
 
   const start = startOfToday.getTime() - (days - 1) * 86_400_000;
@@ -569,7 +569,7 @@ async function buildAnalyticsHistory(
   }>();
 
   for (let i = 0; i < days; i++) {
-    const date = new Date(start + i * 86_400_000).toISOString().slice(0, 10);
+    const date = formatLocalDayKey(start + i * 86_400_000);
     buckets.set(date, {
       date,
       messages: 0,
@@ -582,7 +582,7 @@ async function buildAnalyticsHistory(
   }
 
   for (const trace of traces) {
-    const bucket = buckets.get(new Date(trace.startedAt).toISOString().slice(0, 10));
+    const bucket = buckets.get(formatLocalDayKey(trace.startedAt));
     if (!bucket) continue;
 
     bucket.messages += 1;
@@ -595,7 +595,7 @@ async function buildAnalyticsHistory(
   }
 
   for (const event of sessionEvents) {
-    const bucket = buckets.get(new Date(event.timestamp).toISOString().slice(0, 10));
+    const bucket = buckets.get(formatLocalDayKey(event.timestamp));
     if (!bucket) continue;
     bucket.sessions += 1;
   }
@@ -614,4 +614,12 @@ async function buildAnalyticsHistory(
       errors: history.reduce((sum, item) => sum + item.errors, 0),
     },
   };
+}
+
+function formatLocalDayKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }

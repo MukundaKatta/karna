@@ -1,9 +1,11 @@
 "use client";
 
+import { mapGatewaySessionToChatSession } from "@/lib/chat";
 import { cn, formatRelativeTime, truncate } from "@/lib/utils";
-import { useChatStore, type ChatSessionUI } from "@/lib/store";
+import { useChatStore } from "@/lib/store";
+import { getWSClient } from "@/lib/ws";
 import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function SessionSidebar({
   open,
@@ -12,7 +14,7 @@ function SessionSidebar({
   open: boolean;
   onClose: () => void;
 }) {
-  const { sessions, activeSessionId, setActiveSession } = useChatStore();
+  const { sessions, activeSessionId, setActiveSession, clearChat } = useChatStore();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredSessions = useMemo(() => {
@@ -22,21 +24,15 @@ function SessionSidebar({
   }, [sessions, searchQuery]);
 
   const handleNewSession = () => {
-    const newSession: ChatSessionUI = {
-      id: `session-${Date.now()}`,
-      title: "New Conversation",
-      channelType: "web",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      messageCount: 0,
-    };
-    useChatStore.getState().setSessions([newSession, ...sessions]);
-    setActiveSession(newSession.id);
-    useChatStore.getState().clearChat();
+    const ws = getWSClient();
+    ws.startNewSession();
+    setActiveSession(null);
+    clearChat();
     onClose(); // Close sidebar on mobile after selecting
   };
 
   const handleSelectSession = (id: string) => {
+    getWSClient().selectSession(id);
     setActiveSession(id);
     onClose(); // Close sidebar on mobile after selecting
   };
@@ -134,6 +130,64 @@ function SessionSidebar({
 
 export default function ChatLayout({ children }: { children: React.ReactNode }) {
   const [sessionSidebarOpen, setSessionSidebarOpen] = useState(false);
+  const { activeSessionId, setActiveSession, setSessions } = useChatStore();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncSessions = async () => {
+      try {
+        const response = await fetch("/api/sessions", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          sessions?: Array<{
+            id: string;
+            channelType: string;
+            channelId: string;
+            status: string;
+            createdAt: number;
+            updatedAt: number;
+            stats?: {
+              messageCount?: number;
+            };
+          }>;
+        };
+
+        if (cancelled) return;
+
+        const nextSessions = (payload.sessions ?? []).map(mapGatewaySessionToChatSession);
+        setSessions(nextSessions);
+
+        if (!nextSessions.length) {
+          return;
+        }
+
+        const hasActiveSession = activeSessionId
+          ? nextSessions.some((session) => session.id === activeSessionId)
+          : false;
+
+        if (!hasActiveSession) {
+          setActiveSession(nextSessions[0].id);
+          getWSClient().selectSession(nextSessions[0].id);
+        }
+      } catch {
+        // Keep the current sidebar state if live session sync fails.
+      }
+    };
+
+    void syncSessions();
+    const intervalId = setInterval(() => {
+      void syncSessions();
+    }, 10_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [activeSessionId, setActiveSession, setSessions]);
 
   return (
     <div className="flex h-full relative">

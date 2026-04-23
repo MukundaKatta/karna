@@ -26,15 +26,38 @@ export class OpenAIProvider implements ModelProvider {
   private readonly client: OpenAI | null;
   private readonly available: boolean;
 
-  constructor(apiKey?: string) {
-    const key = apiKey ?? process.env.OPENAI_API_KEY;
+  constructor(config?: {
+    apiKey?: string;
+    baseURL?: string;
+    organization?: string;
+    defaultHeaders?: Record<string, string>;
+  }) {
+    const key = config?.apiKey ?? process.env.OPENAI_API_KEY;
     if (!key) {
       logger.warn("OpenAI API key not configured — OpenAI models will be unavailable");
       this.client = null;
       this.available = false;
       return;
     }
-    this.client = new OpenAI({ apiKey: key });
+
+    const baseURL = config?.baseURL ?? process.env.OPENAI_BASE_URL;
+    const organization = config?.organization ?? process.env.OPENAI_ORGANIZATION;
+    const defaultHeaders = {
+      ...(process.env.OPENAI_APP_NAME
+        ? { "X-Title": process.env.OPENAI_APP_NAME }
+        : {}),
+      ...(process.env.OPENAI_HTTP_REFERER
+        ? { "HTTP-Referer": process.env.OPENAI_HTTP_REFERER }
+        : {}),
+      ...(config?.defaultHeaders ?? {}),
+    };
+
+    this.client = new OpenAI({
+      apiKey: key,
+      ...(baseURL ? { baseURL } : {}),
+      ...(organization ? { organization } : {}),
+      ...(Object.keys(defaultHeaders).length > 0 ? { defaultHeaders } : {}),
+    });
     this.available = true;
   }
 

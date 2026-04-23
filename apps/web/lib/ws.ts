@@ -28,6 +28,7 @@ export class WSClient {
   private sessionId: string | null = null;
   private token: string | null = null;
   private channelId: string;
+  private reconnectEnabled = true;
 
   constructor(options: WSClientOptions = {}) {
     this.url = options.url ?? process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000/ws";
@@ -53,6 +54,7 @@ export class WSClient {
     if (this.ws?.readyState === WebSocket.OPEN) return;
     if (channelId) this.channelId = channelId;
 
+    this.reconnectEnabled = true;
     this.setState("connecting");
     this.ws = new WebSocket(this.url);
 
@@ -101,7 +103,9 @@ export class WSClient {
     this.ws.onclose = () => {
       this.stopHeartbeat();
       this.setState("disconnected");
-      this.attemptReconnect();
+      if (this.reconnectEnabled) {
+        this.attemptReconnect();
+      }
     };
 
     this.ws.onerror = () => {
@@ -110,6 +114,7 @@ export class WSClient {
   }
 
   disconnect(): void {
+    this.reconnectEnabled = false;
     this.reconnectAttempts = this.maxReconnectAttempts; // prevent reconnect
     this.stopHeartbeat();
     if (this.reconnectTimer) {
@@ -121,6 +126,17 @@ export class WSClient {
     this.sessionId = null;
     this.token = null;
     this.setState("disconnected");
+  }
+
+  selectSession(sessionId: string): void {
+    this.sessionId = sessionId;
+  }
+
+  startNewSession(): void {
+    const nextChannelId = `web-${crypto.randomUUID()}`;
+    this.disconnect();
+    this.reconnectAttempts = 0;
+    this.connect(nextChannelId);
   }
 
   send(data: unknown): void {
