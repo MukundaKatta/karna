@@ -22,7 +22,7 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY packages/shared packages/shared
 COPY apps/web apps/web
-COPY pnpm-workspace.yaml package.json .npmrc turbo.json ./
+COPY pnpm-workspace.yaml package.json .npmrc turbo.json tsconfig.base.json ./
 
 RUN pnpm --filter @karna/shared build
 RUN pnpm --filter @karna/web build
