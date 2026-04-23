@@ -39,12 +39,16 @@ WORKDIR /app
 
 # Copy built artifacts from base
 COPY --from=base --chown=node:node /app/node_modules ./node_modules
+COPY --from=base --chown=node:node /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=base --chown=node:node /app/packages/shared/dist ./packages/shared/dist
 COPY --from=base --chown=node:node /app/packages/shared/package.json ./packages/shared/
+COPY --from=base --chown=node:node /app/packages/supabase/node_modules ./packages/supabase/node_modules
 COPY --from=base --chown=node:node /app/packages/supabase/dist ./packages/supabase/dist
 COPY --from=base --chown=node:node /app/packages/supabase/package.json ./packages/supabase/
+COPY --from=base --chown=node:node /app/agent/node_modules ./agent/node_modules
 COPY --from=base --chown=node:node /app/agent/dist ./agent/dist
 COPY --from=base --chown=node:node /app/agent/package.json ./agent/
+COPY --from=base --chown=node:node /app/gateway/node_modules ./gateway/node_modules
 COPY --from=base --chown=node:node /app/gateway/dist ./gateway/dist
 COPY --from=base --chown=node:node /app/gateway/package.json ./gateway/
 COPY --from=base --chown=node:node /app/package.json /app/pnpm-workspace.yaml ./
