@@ -37,7 +37,7 @@ describe("runtime routes", () => {
         maxConnections: 25,
         heartbeatIntervalMs: 20_000,
         sessionTimeoutMs: 8_000,
-        corsOrigin: "https://karna.example.com",
+        cors: { origins: ["https://karna.example.com"] },
       },
       agent: {
         defaultModel: "claude-sonnet-4-20250514",
