@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   MessageSquare,
   LayoutDashboard,
@@ -22,6 +22,8 @@ import {
   X,
   Activity,
   GitBranch,
+  LifeBuoy,
+  LogOut,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -78,6 +80,7 @@ const navItems: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { sidebarCollapsed, toggleSidebar } = useDashboardStore();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["Dashboard"]),
@@ -123,6 +126,15 @@ export function Sidebar() {
   const isActive = (href: string) => {
     if (href === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(href);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await fetch("/api/auth/beta", { method: "DELETE" });
+    } finally {
+      router.push("/sign-in");
+      router.refresh();
+    }
   };
 
   const sidebarContent = (
@@ -210,6 +222,37 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      <div className="border-t border-dark-700 px-2 py-3">
+        {!sidebarCollapsed && (
+          <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-dark-500">
+            Help
+          </div>
+        )}
+        <div className="space-y-1">
+          <Link
+            href="/status"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 transition-colors"
+          >
+            <Activity size={18} />
+            {!sidebarCollapsed && <span>Status</span>}
+          </Link>
+          <Link
+            href="/support"
+            className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 transition-colors"
+          >
+            <LifeBuoy size={18} />
+            {!sidebarCollapsed && <span>Support</span>}
+          </Link>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 transition-colors"
+          >
+            <LogOut size={18} />
+            {!sidebarCollapsed && <span>Leave beta</span>}
+          </button>
+        </div>
+      </div>
 
       {/* Collapse toggle (desktop only) */}
       <div className="border-t border-dark-700 p-2 hidden md:block">

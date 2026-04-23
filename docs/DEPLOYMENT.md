@@ -29,6 +29,8 @@ During service creation, provide:
   Use a Google AI Studio key.
 - `GATEWAY_CORS_ORIGINS`
   Replace the default with your actual public frontend domain once you know it.
+- `KARNA_BETA_ACCESS_CODE`
+  Recommended for invite-only beta deployments so public users must enter a code before reaching the live app.
 
 Render generates `GATEWAY_AUTH_TOKEN` automatically from the Blueprint.
 
@@ -40,6 +42,8 @@ You still need to set these public browser env vars after the gateway has a publ
 
 - `NEXT_PUBLIC_GATEWAY_URL=https://your-gateway-host`
 - `NEXT_PUBLIC_WS_URL=wss://your-gateway-host/ws`
+- `KARNA_WEB_SESSION_SECRET=your-random-secret`
+  Optional but recommended if you enable `KARNA_BETA_ACCESS_CODE`.
 
 ### 2. Optional: point Vercel at the gateway instead
 
@@ -69,9 +73,17 @@ curl https://your-web-host/api/gateway
 
 Then open the chat UI and verify:
 
+- the sign-in flow behaves the way you expect for public beta access
 - the gateway status is connected
 - sessions appear in the sidebar
 - one real model reply completes end to end
+
+Public trust pages you can link immediately:
+
+- `/status`
+- `/support`
+- `/privacy`
+- `/terms`
 
 ## Environment notes
 
