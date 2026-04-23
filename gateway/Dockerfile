@@ -32,25 +32,21 @@ FROM node:22-slim AS production
 
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Create non-root user
-RUN groupadd --gid 1000 karna && \
-    useradd --uid 1000 --gid karna --shell /bin/sh --create-home karna
-
 WORKDIR /app
 
 # Copy built artifacts from base
-COPY --from=base --chown=karna:karna /app/node_modules ./node_modules
-COPY --from=base --chown=karna:karna /app/packages/shared/dist ./packages/shared/dist
-COPY --from=base --chown=karna:karna /app/packages/shared/package.json ./packages/shared/
-COPY --from=base --chown=karna:karna /app/packages/supabase/dist ./packages/supabase/dist
-COPY --from=base --chown=karna:karna /app/packages/supabase/package.json ./packages/supabase/
-COPY --from=base --chown=karna:karna /app/gateway/dist ./gateway/dist
-COPY --from=base --chown=karna:karna /app/gateway/package.json ./gateway/
-COPY --from=base --chown=karna:karna /app/package.json /app/pnpm-workspace.yaml ./
-COPY --from=base --chown=karna:karna /app/config ./config
+COPY --from=base --chown=node:node /app/node_modules ./node_modules
+COPY --from=base --chown=node:node /app/packages/shared/dist ./packages/shared/dist
+COPY --from=base --chown=node:node /app/packages/shared/package.json ./packages/shared/
+COPY --from=base --chown=node:node /app/packages/supabase/dist ./packages/supabase/dist
+COPY --from=base --chown=node:node /app/packages/supabase/package.json ./packages/supabase/
+COPY --from=base --chown=node:node /app/gateway/dist ./gateway/dist
+COPY --from=base --chown=node:node /app/gateway/package.json ./gateway/
+COPY --from=base --chown=node:node /app/package.json /app/pnpm-workspace.yaml ./
+COPY --from=base --chown=node:node /app/config ./config
 
 # Switch to non-root user
-USER karna
+USER node
 
 ENV NODE_ENV=production
 
