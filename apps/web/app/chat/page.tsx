@@ -257,6 +257,10 @@ export default function ChatPage() {
   const handleSend = () => {
     const content = input.trim();
     if (!content || agentState === "thinking" || agentState === "streaming") return;
+    // Guard: if the gateway isn't connected we'd otherwise leave the user
+    // stuck on an optimistic "Thinking..." state forever with no indication
+    // of why nothing is happening.
+    if (wsState !== "connected") return;
 
     const msg: ChatMessageUI = {
       id: `user-${Date.now()}`,
@@ -329,6 +333,22 @@ export default function ChatPage() {
         </div>
       </div>
 
+      {/* Disconnected banner — surface why sends may be silently dropped */}
+      {wsState !== "connected" && (
+        <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+          <span className="text-yellow-400 text-sm font-medium">
+            {wsState === "connecting" ? "Connecting to gateway\u2026" : "Gateway not connected"}
+          </span>
+          <span className="text-yellow-400/70 text-xs sm:text-sm">
+            Start it locally with{" "}
+            <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">pnpm gateway:dev</code>
+            {" "}or set{" "}
+            <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_WS_URL</code>
+            .
+          </span>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto">
         {messages.length === 0 ? (
@@ -397,14 +417,22 @@ export default function ChatPage() {
           </button>
           <button
             onClick={handleSend}
-            disabled={!input.trim() || agentState === "thinking" || agentState === "streaming"}
+            disabled={
+              !input.trim() ||
+              agentState === "thinking" ||
+              agentState === "streaming" ||
+              wsState !== "connected"
+            }
             className={cn(
               "p-2.5 rounded-lg transition-colors shrink-0",
-              input.trim() && agentState !== "thinking" && agentState !== "streaming"
+              input.trim() &&
+                agentState !== "thinking" &&
+                agentState !== "streaming" &&
+                wsState === "connected"
                 ? "bg-accent-600 text-white hover:bg-accent-500 active:scale-95"
                 : "bg-dark-700 text-dark-500 cursor-not-allowed",
             )}
-            title="Send message"
+            title={wsState === "connected" ? "Send message" : "Gateway not connected"}
           >
             {agentState === "thinking" || agentState === "streaming" ? (
               <Loader2 size={18} className="animate-spin" />

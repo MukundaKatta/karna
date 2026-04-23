@@ -1,10 +1,11 @@
 "use client";
 
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { User, Bot, ChevronDown, ChevronRight, Wrench } from "lucide-react";
 import { useState } from "react";
 import type { ChatMessageUI, ToolCallUI } from "@/lib/store";
 import { Badge } from "./Badge";
+import { RelativeTime } from "./RelativeTime";
 
 interface ChatMessageProps {
   message: ChatMessageUI;
@@ -146,7 +147,7 @@ export function ChatMessage({ message, onToolApproval }: ChatMessageProps) {
 
         {/* Timestamp */}
         <span className="text-xs text-dark-500 mt-1 px-1">
-          {formatRelativeTime(message.timestamp)}
+          <RelativeTime timestamp={message.timestamp} />
           {message.metadata?.model && (
             <span className="ml-2 text-dark-600">{message.metadata.model}</span>
           )}

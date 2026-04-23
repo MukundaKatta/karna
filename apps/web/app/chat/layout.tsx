@@ -1,11 +1,12 @@
 "use client";
 
 import { mapGatewaySessionToChatSession } from "@/lib/chat";
-import { cn, formatRelativeTime, truncate } from "@/lib/utils";
+import { cn, truncate } from "@/lib/utils";
 import { useChatStore } from "@/lib/store";
 import { getWSClient } from "@/lib/ws";
 import { Plus, MessageSquare, Search, PanelLeftClose, PanelLeft } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { RelativeTime } from "@/components/RelativeTime";
 
 function SessionSidebar({
   open,
@@ -115,7 +116,7 @@ function SessionSidebar({
                     {truncate(session.title, 30)}
                   </p>
                   <p className="text-xs text-dark-500 mt-0.5">
-                    {formatRelativeTime(session.updatedAt)}
+                    <RelativeTime timestamp={session.updatedAt} />
                     {session.messageCount > 0 && ` \u00b7 ${session.messageCount} msgs`}
                   </p>
                 </div>
