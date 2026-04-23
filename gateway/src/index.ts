@@ -32,6 +32,11 @@ import {
   getAnalyticsWindowStart,
   parseAnalyticsPeriod,
 } from "./analytics/summary.js";
+import {
+  resolveGatewayCorsOrigins,
+  resolveGatewayHost,
+  resolveGatewayPort,
+} from "./config/runtime-env.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { WorkflowEngine } from "@karna/agent/workflows/engine.js";
@@ -56,8 +61,8 @@ async function main(): Promise<void> {
   // Load configuration
   const config = await loadConfig();
   const configPath = getConfigPath();
-  const port = Number(process.env["GATEWAY_PORT"]) || config.gateway.port;
-  const host = process.env["GATEWAY_HOST"] ?? config.gateway.host;
+  const port = resolveGatewayPort(config);
+  const host = resolveGatewayHost(config);
 
   // Initialize core services
   const sessionManager = new SessionManager({
@@ -120,9 +125,7 @@ async function main(): Promise<void> {
 
   // ─── CORS ──────────────────────────────────────────────────────────────
 
-  const corsOrigins = process.env["CORS_ORIGINS"]?.split(",").map((o) => o.trim()).filter(Boolean)
-    ?? (config.gateway.corsOrigin ? [config.gateway.corsOrigin] : undefined)
-    ?? ["http://localhost:3000", "http://localhost:5173"];
+  const corsOrigins = resolveGatewayCorsOrigins(config);
 
   await server.register(cors, {
     origin: corsOrigins,

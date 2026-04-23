@@ -17,7 +17,7 @@ const logger = createLogger({ name: "karna-cloud" });
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const port = Number(process.env["CLOUD_PORT"]) || 3100;
+  const port = resolveCloudPort();
   const host = process.env["CLOUD_HOST"] ?? "0.0.0.0";
 
   // ─── Create Fastify Server ──────────────────────────────────────────
@@ -33,12 +33,7 @@ async function main(): Promise<void> {
   // ─── CORS ─────────────────────────────────────────────────────────────
 
   await server.register(cors, {
-    origin: process.env["CORS_ORIGINS"]?.split(",") ?? [
-      "http://localhost:3000",
-      "http://localhost:5173",
-      "https://cloud.karna.ai",
-      "https://app.karna.ai",
-    ],
+    origin: resolveCloudCorsOrigins(),
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-API-Key", "X-Channel"],
     credentials: true,
@@ -124,6 +119,37 @@ async function main(): Promise<void> {
     logger.fatal({ error: String(error) }, "Failed to start Karna Cloud API");
     process.exit(1);
   }
+}
+
+function resolveCloudPort(): number {
+  const candidates = [process.env["CLOUD_PORT"], process.env["CLOUD_API_PORT"], process.env["PORT"]];
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue;
+    }
+
+    const parsed = Number(candidate);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  return 3100;
+}
+
+function resolveCloudCorsOrigins(): string[] {
+  const rawOrigins = process.env["CLOUD_CORS_ORIGINS"] ?? process.env["CORS_ORIGINS"];
+  const envOrigins = rawOrigins?.split(",").map((origin) => origin.trim()).filter(Boolean);
+  if (envOrigins?.length) {
+    return envOrigins;
+  }
+
+  return [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://cloud.karna.ai",
+    "https://app.karna.ai",
+  ];
 }
 
 // ─── Process-Level Error Handlers ─────────────────────────────────────────

@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: karna-gateway
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerContext: .
+    dockerfilePath: ./gateway/Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: GATEWAY_AUTH_TOKEN
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_BASE_URL
+        value: https://generativelanguage.googleapis.com/v1beta/openai
+      - key: KARNA_DEFAULT_PROVIDER
+        value: openai
+      - key: KARNA_DEFAULT_MODEL
+        value: gemini-3-flash-preview
+      - key: GATEWAY_CORS_ORIGINS
+        value: https://karna-web.vercel.app

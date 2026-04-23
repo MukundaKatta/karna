@@ -116,6 +116,8 @@ pnpm --filter @karna/web dev
 Or visit the hosted demo: [karna-web.vercel.app](https://karna-web.vercel.app)
 </details>
 
+For a real public deployment, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the recommended gateway-on-Render plus web-on-Vercel setup.
+
 ## CLI Commands
 
 ```bash

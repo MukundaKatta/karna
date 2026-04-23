@@ -20,6 +20,10 @@ services:
       - GATEWAY_AUTH_TOKEN=${GATEWAY_AUTH_TOKEN}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
+      - KARNA_DEFAULT_PROVIDER=${KARNA_DEFAULT_PROVIDER:-}
+      - KARNA_DEFAULT_MODEL=${KARNA_DEFAULT_MODEL:-}
+      - GATEWAY_CORS_ORIGINS=${GATEWAY_CORS_ORIGINS:-http://localhost:3000}
       - SUPABASE_URL=http://supabase-kong:8000
       - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY:-}
       - REDIS_URL=redis://redis:6379
@@ -41,9 +45,9 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GATEWAY_URL=http://gateway:18789
-      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:18789
-      - NEXT_PUBLIC_WS_URL=ws://localhost:18789/ws
+      - GATEWAY_URL=${GATEWAY_URL:-http://gateway:18789}
+      - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-http://localhost:18789}
+      - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-ws://localhost:18789/ws}
     depends_on:
       gateway:
         condition: service_healthy

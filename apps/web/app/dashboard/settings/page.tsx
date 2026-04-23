@@ -80,6 +80,7 @@ interface RuntimePayload {
       configOverride: boolean;
       gatewayHostOverride: boolean;
       gatewayPortOverride: boolean;
+      gatewayCorsOriginsOverride: boolean;
       logLevelOverride: boolean;
       gatewayAuthTokenConfigured: boolean;
       supabaseUrlConfigured: boolean;
@@ -476,6 +477,7 @@ export default function SettingsPage() {
               {renderEnvBadge("config override", runtime.environment.configOverride)}
               {renderEnvBadge("host override", runtime.environment.gatewayHostOverride)}
               {renderEnvBadge("port override", runtime.environment.gatewayPortOverride)}
+              {renderEnvBadge("cors override", runtime.environment.gatewayCorsOriginsOverride)}
               {renderEnvBadge("log level override", runtime.environment.logLevelOverride)}
               {renderEnvBadge(
                 "gateway auth token env",

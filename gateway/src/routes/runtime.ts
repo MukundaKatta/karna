@@ -4,6 +4,13 @@ import type { WorkflowEngine } from "@karna/agent/workflows/engine.js";
 import type { AccessPolicyManager } from "../access/policies.js";
 import type { KarnaConfig, ModelConfig } from "../config/schema.js";
 import { getEffectiveDefaultModel, getEffectiveDefaultProvider } from "../catalog/default-agents.js";
+import {
+  hasGatewayCorsOverride,
+  hasGatewayPortOverride,
+  resolveGatewayCorsOrigins,
+  resolveGatewayHost,
+  resolveGatewayPort,
+} from "../config/runtime-env.js";
 import type { ConnectedClient } from "../protocol/handler.js";
 import type { SessionManager } from "../session/manager.js";
 
@@ -123,12 +130,12 @@ export function registerRuntimeRoutes(
           configFileExists: existsSync(configPath),
         },
         gateway: {
-          host: process.env["GATEWAY_HOST"] ?? config.gateway.host,
+          host: resolveGatewayHost(config),
           port: resolveGatewayPort(config),
           maxConnections: config.gateway.maxConnections,
           heartbeatIntervalMs: config.gateway.heartbeatIntervalMs,
           sessionTimeoutMs: config.gateway.sessionTimeoutMs,
-          corsOrigin: config.gateway.corsOrigin,
+          corsOrigin: resolveGatewayCorsOrigins(config).join(","),
           authEnabled: Boolean(config.gateway.authToken || process.env["GATEWAY_AUTH_TOKEN"]),
         },
         agent: {
@@ -155,7 +162,8 @@ export function registerRuntimeRoutes(
         environment: {
           configOverride: Boolean(process.env["KARNA_CONFIG"]),
           gatewayHostOverride: Boolean(process.env["GATEWAY_HOST"]),
-          gatewayPortOverride: Boolean(process.env["GATEWAY_PORT"]),
+          gatewayPortOverride: hasGatewayPortOverride(),
+          gatewayCorsOriginsOverride: hasGatewayCorsOverride(),
           logLevelOverride: Boolean(process.env["LOG_LEVEL"]),
           gatewayAuthTokenConfigured: Boolean(process.env["GATEWAY_AUTH_TOKEN"]),
           supabaseUrlConfigured: Boolean(process.env["SUPABASE_URL"]),
@@ -195,11 +203,6 @@ export function registerRuntimeRoutes(
       },
     };
   });
-}
-
-function resolveGatewayPort(config: KarnaConfig): number {
-  const envPort = Number(process.env["GATEWAY_PORT"]);
-  return Number.isFinite(envPort) && envPort > 0 ? envPort : config.gateway.port;
 }
 
 function resolveEffectiveDefaultModel(config: KarnaConfig): string {

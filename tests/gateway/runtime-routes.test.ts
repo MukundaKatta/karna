@@ -15,6 +15,8 @@ describe("runtime routes", () => {
   let connectedClients: Map<string, ConnectedClient>;
   const originalGatewayHost = process.env["GATEWAY_HOST"];
   const originalGatewayPort = process.env["GATEWAY_PORT"];
+  const originalPlatformPort = process.env["PORT"];
+  const originalGatewayCorsOrigins = process.env["GATEWAY_CORS_ORIGINS"];
   const originalDefaultProvider = process.env["KARNA_DEFAULT_PROVIDER"];
   const originalDefaultModel = process.env["KARNA_DEFAULT_MODEL"];
   const originalOpenAiKey = process.env["OPENAI_API_KEY"];
@@ -132,6 +134,10 @@ describe("runtime routes", () => {
     else process.env["GATEWAY_HOST"] = originalGatewayHost;
     if (originalGatewayPort === undefined) delete process.env["GATEWAY_PORT"];
     else process.env["GATEWAY_PORT"] = originalGatewayPort;
+    if (originalPlatformPort === undefined) delete process.env["PORT"];
+    else process.env["PORT"] = originalPlatformPort;
+    if (originalGatewayCorsOrigins === undefined) delete process.env["GATEWAY_CORS_ORIGINS"];
+    else process.env["GATEWAY_CORS_ORIGINS"] = originalGatewayCorsOrigins;
     if (originalDefaultProvider === undefined) delete process.env["KARNA_DEFAULT_PROVIDER"];
     else process.env["KARNA_DEFAULT_PROVIDER"] = originalDefaultProvider;
     if (originalDefaultModel === undefined) delete process.env["KARNA_DEFAULT_MODEL"];
@@ -230,6 +236,7 @@ describe("runtime routes", () => {
   it("prefers live environment overrides for gateway and default model reporting", async () => {
     process.env["GATEWAY_HOST"] = "127.0.0.9";
     process.env["GATEWAY_PORT"] = "4999";
+    process.env["GATEWAY_CORS_ORIGINS"] = "https://app.karna.ai, https://karna-web.vercel.app";
     process.env["KARNA_DEFAULT_PROVIDER"] = "openai";
     process.env["KARNA_DEFAULT_MODEL"] = "gemini-3-flash-preview";
     process.env["OPENAI_API_KEY"] = "env-openai-key";
@@ -245,6 +252,7 @@ describe("runtime routes", () => {
     expect(payload.gateway).toMatchObject({
       host: "127.0.0.9",
       port: 4999,
+      corsOrigin: "https://app.karna.ai,https://karna-web.vercel.app",
     });
     expect(payload.agent).toMatchObject({
       defaultModel: "gemini-3-flash-preview",
@@ -264,5 +272,24 @@ describe("runtime routes", () => {
         }),
       ]),
     );
+  });
+
+  it("falls back to the platform PORT when GATEWAY_PORT is unset", async () => {
+    delete process.env["GATEWAY_PORT"];
+    process.env["PORT"] = "6123";
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/runtime",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json().runtime;
+    expect(payload.gateway).toMatchObject({
+      port: 6123,
+    });
+    expect(payload.environment).toMatchObject({
+      gatewayPortOverride: true,
+    });
   });
 });
