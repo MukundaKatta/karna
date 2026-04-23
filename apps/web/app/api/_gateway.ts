@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:4000";
+import { resolveServerGatewayUrl } from "@/lib/runtime-config";
 
 export async function proxyGatewayGet(
   request: NextRequest,
@@ -18,10 +17,18 @@ export async function proxyGateway(
     timeoutMs?: number;
   } = {},
 ): Promise<NextResponse> {
+  const gateway = resolveServerGatewayUrl();
+  if (!gateway.url) {
+    return NextResponse.json(
+      { error: gateway.error ?? "Gateway URL is not configured" },
+      { status: 503 },
+    );
+  }
+
   try {
     const method = options.method ?? request.method;
     const search = request.nextUrl.searchParams.toString();
-    const url = `${GATEWAY_URL}${path}${search ? `?${search}` : ""}`;
+    const url = `${gateway.url}${path}${search ? `?${search}` : ""}`;
     const body =
       method === "GET" || method === "HEAD" ? undefined : await request.text();
     const response = await fetch(url, {

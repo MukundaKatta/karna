@@ -3,15 +3,17 @@
 Karna is easiest to run publicly with:
 
 - the gateway on a container host such as Render
-- the web app on Vercel
+- the web app on Vercel or on the same Render Blueprint
 
 That keeps the websocket-heavy backend on infrastructure that likes long-lived Node processes, while the Next.js dashboard stays on the platform it already targets.
 
 ## Recommended production path
 
-### 1. Deploy the gateway
+### 1. Deploy the gateway and web shell
+This repo includes [render.yaml](../render.yaml) for:
 
-This repo includes [render.yaml](../render.yaml) for a Render web service named `karna-gateway`.
+- `karna-gateway`
+- `karna-web`
 
 The Blueprint defaults to Render's `free` web service so you can bring up a public endpoint without an immediate billing step. If you want steadier websocket behavior and no spin-downs, upgrade the service to `starter` or above after the first deploy.
 
@@ -26,11 +28,20 @@ During service creation, provide:
 - `OPENAI_API_KEY`
   Use a Google AI Studio key.
 - `GATEWAY_CORS_ORIGINS`
-  Keep `https://karna-web.vercel.app` or replace it with your own frontend domain.
+  Replace the default with your actual public frontend domain once you know it.
 
 Render generates `GATEWAY_AUTH_TOKEN` automatically from the Blueprint.
 
-### 2. Point Vercel at the gateway
+For the `karna-web` service in the same Blueprint, Render automatically wires:
+
+- `GATEWAY_URL` to the private `karna-gateway` host/port
+
+You still need to set these public browser env vars after the gateway has a public URL:
+
+- `NEXT_PUBLIC_GATEWAY_URL=https://your-gateway-host`
+- `NEXT_PUBLIC_WS_URL=wss://your-gateway-host/ws`
+
+### 2. Optional: point Vercel at the gateway instead
 
 In the `karna-web` Vercel project, set these production environment variables to the public gateway URL:
 
@@ -52,6 +63,7 @@ curl https://your-gateway-host/api/runtime
 Web checks:
 
 ```bash
+curl https://your-web-host/api/health
 curl https://your-web-host/api/gateway
 ```
 
@@ -67,5 +79,11 @@ The gateway now supports both platform-standard and Karna-specific env names:
 
 - port: `GATEWAY_PORT` or `PORT`
 - CORS: `GATEWAY_CORS_ORIGINS` or `CORS_ORIGINS`
+
+The web app now behaves safely in production too:
+
+- server proxy: `GATEWAY_URL` or `NEXT_PUBLIC_GATEWAY_URL`
+- browser REST client: `NEXT_PUBLIC_GATEWAY_URL`
+- browser websocket: `NEXT_PUBLIC_WS_URL`, or it derives from `NEXT_PUBLIC_GATEWAY_URL`
 
 That makes Docker, Render, and similar hosts behave consistently without extra glue.

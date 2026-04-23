@@ -1,4 +1,5 @@
 /** WebSocket client for real-time Gateway communication */
+import { resolvePublicWebSocketUrl } from "./runtime-config";
 
 export type WSMessageHandler = (data: unknown) => void;
 export type WSStateHandler = (state: WSState) => void;
@@ -15,7 +16,7 @@ interface WSClientOptions {
 
 export class WSClient {
   private ws: WebSocket | null = null;
-  private url: string;
+  private url: string | null;
   private reconnectInterval: number;
   private maxReconnectAttempts: number;
   private heartbeatInterval: number;
@@ -29,9 +30,16 @@ export class WSClient {
   private token: string | null = null;
   private channelId: string;
   private reconnectEnabled = true;
+  private configurationError: string | null = null;
 
   constructor(options: WSClientOptions = {}) {
-    this.url = options.url ?? process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:4000/ws";
+    if (options.url) {
+      this.url = options.url;
+    } else {
+      const resolvedWsUrl = resolvePublicWebSocketUrl();
+      this.url = resolvedWsUrl.url;
+      this.configurationError = resolvedWsUrl.error;
+    }
     this.reconnectInterval = options.reconnectInterval ?? 3000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
     this.heartbeatInterval = options.heartbeatInterval ?? 30000;
@@ -50,9 +58,18 @@ export class WSClient {
     return this.channelId;
   }
 
+  get currentConfigurationError(): string | null {
+    return this.configurationError;
+  }
+
   connect(channelId?: string): void {
     if (this.ws?.readyState === WebSocket.OPEN) return;
     if (channelId) this.channelId = channelId;
+
+    if (!this.url) {
+      this.setState("error");
+      return;
+    }
 
     this.reconnectEnabled = true;
     this.setState("connecting");

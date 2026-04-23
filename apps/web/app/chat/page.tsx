@@ -34,6 +34,7 @@ export default function ChatPage() {
 
   const [input, setInput] = useState("");
   const [voiceMode, setVoiceMode] = useState(false);
+  const [wsConfigError, setWsConfigError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const streamMessageIdRef = useRef<string | null>(null);
@@ -45,6 +46,7 @@ export default function ChatPage() {
   // Connect WebSocket
   useEffect(() => {
     const ws = getWSClient();
+    setWsConfigError(ws.currentConfigurationError);
     const unsubState = ws.onStateChange((state) => setWSState(state));
     const unsubMsg = ws.onMessage((data) => {
       const msg = data as Record<string, unknown>;
@@ -337,14 +339,30 @@ export default function ChatPage() {
       {wsState !== "connected" && (
         <div className="bg-yellow-500/10 border-b border-yellow-500/30 px-4 py-2 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
           <span className="text-yellow-400 text-sm font-medium">
-            {wsState === "connecting" ? "Connecting to gateway\u2026" : "Gateway not connected"}
+            {wsState === "connecting"
+              ? "Connecting to gateway\u2026"
+              : wsConfigError
+                ? "Gateway configuration is incomplete"
+                : "Gateway not connected"}
           </span>
           <span className="text-yellow-400/70 text-xs sm:text-sm">
-            Start it locally with{" "}
-            <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">pnpm gateway:dev</code>
-            {" "}or set{" "}
-            <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_WS_URL</code>
-            .
+            {wsConfigError ? (
+              <>
+                {wsConfigError}. Set{" "}
+                <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GATEWAY_URL</code>
+                {" "}or{" "}
+                <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_WS_URL</code>
+                .
+              </>
+            ) : (
+              <>
+                Start it locally with{" "}
+                <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">pnpm gateway:dev</code>
+                {" "}or set{" "}
+                <code className="bg-dark-700 px-1.5 py-0.5 rounded text-xs">NEXT_PUBLIC_GATEWAY_URL</code>
+                .
+              </>
+            )}
           </span>
         </div>
       )}

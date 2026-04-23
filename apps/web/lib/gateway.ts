@@ -1,6 +1,6 @@
 /** Gateway API client */
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_GATEWAY_URL ?? "http://localhost:4000";
+import { resolvePublicGatewayUrl } from "./runtime-config";
 
 interface RequestOptions {
   method?: string;
@@ -22,8 +22,12 @@ class GatewayError extends Error {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, headers = {}, signal } = options;
+  const gateway = resolvePublicGatewayUrl();
+  if (!gateway.url) {
+    throw new GatewayError(503, gateway.error ?? "Gateway URL is not configured");
+  }
 
-  const url = `${GATEWAY_URL}${path}`;
+  const url = `${gateway.url}${path}`;
   const res = await fetch(url, {
     method,
     headers: {

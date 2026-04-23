@@ -1,10 +1,20 @@
 import { NextResponse } from "next/server";
-
-const GATEWAY_URL = process.env.GATEWAY_URL ?? "http://localhost:4000";
+import { resolveServerGatewayUrl } from "@/lib/runtime-config";
 
 export async function GET() {
+  const gateway = resolveServerGatewayUrl();
+  if (!gateway.url) {
+    return NextResponse.json(
+      {
+        status: "unreachable",
+        error: gateway.error ?? "Gateway URL is not configured",
+      },
+      { status: 503 },
+    );
+  }
+
   try {
-    const res = await fetch(`${GATEWAY_URL}/health`, {
+    const res = await fetch(`${gateway.url}/health`, {
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
