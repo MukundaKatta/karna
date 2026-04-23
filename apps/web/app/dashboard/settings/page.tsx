@@ -16,6 +16,7 @@ import {
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
 import { useVoiceSettingsStore } from "@/lib/store";
+import { resolveGatewayDisplayInfo } from "@/lib/runtime-display";
 
 interface RuntimePayload {
   runtime: {
@@ -133,6 +134,13 @@ interface GatewayHealthResponse {
   error?: string;
 }
 
+interface RuntimeConfigPayload {
+  gatewayUrl: string | null;
+  webSocketUrl: string | null;
+  error: string | null;
+  configured: boolean;
+}
+
 type Notice = {
   tone: "success" | "warning";
   message: string;
@@ -141,6 +149,7 @@ type Notice = {
 export default function SettingsPage() {
   const [runtime, setRuntime] = useState<RuntimePayload["runtime"] | null>(null);
   const [health, setHealth] = useState<GatewayHealthResponse | null>(null);
+  const [runtimeConfig, setRuntimeConfig] = useState<RuntimeConfigPayload | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
@@ -175,9 +184,10 @@ export default function SettingsPage() {
     setError(null);
 
     try {
-      const [runtimeRes, healthRes] = await Promise.all([
+      const [runtimeRes, healthRes, runtimeConfigRes] = await Promise.all([
         fetch("/api/runtime", { cache: "no-store" }),
         fetch("/api/gateway", { cache: "no-store" }),
+        fetch("/api/runtime-config", { cache: "no-store" }),
       ]);
 
       if (!runtimeRes.ok) {
@@ -191,12 +201,17 @@ export default function SettingsPage() {
             status: "unreachable",
             error: `Gateway returned ${healthRes.status}`,
           } satisfies GatewayHealthResponse);
+      const runtimeConfigPayload = ((await runtimeConfigRes
+        .json()
+        .catch(() => null)) ?? null) as RuntimeConfigPayload | null;
 
       setRuntime(runtimePayload.runtime);
       setHealth(healthPayload);
+      setRuntimeConfig(runtimeConfigPayload);
     } catch (fetchError) {
       setRuntime(null);
       setHealth(null);
+      setRuntimeConfig(null);
       setError(
         fetchError instanceof Error
           ? fetchError.message
@@ -313,6 +328,14 @@ export default function SettingsPage() {
     );
   }
 
+  const gatewayDisplay = runtime
+    ? resolveGatewayDisplayInfo(
+        runtime.gateway.host,
+        runtime.gateway.port,
+        runtimeConfig?.gatewayUrl,
+      )
+    : null;
+
   return (
     <div className="p-4 sm:p-6 space-y-6 sm:space-y-8 max-w-6xl overflow-y-auto h-full">
       {error && (
@@ -388,7 +411,7 @@ export default function SettingsPage() {
               icon={<Server size={18} />}
               title="Gateway"
               value={health?.status ?? "unknown"}
-              subtitle={displayGatewayUrl(runtime.gateway.host, runtime.gateway.port)}
+              subtitle={gatewayDisplay?.primaryUrl ?? "gateway url unavailable"}
               badge={statusBadge(health?.status)}
             />
             <MetricCard
@@ -453,7 +476,16 @@ export default function SettingsPage() {
                   { label: "Environment", value: runtime.instance.env },
                   { label: "Version", value: runtime.instance.version },
                   { label: "Config Path", value: runtime.instance.configPath, mono: true },
-                  { label: "Gateway URL", value: displayGatewayUrl(runtime.gateway.host, runtime.gateway.port), mono: true },
+                  {
+                    label: "Public Gateway URL",
+                    value: gatewayDisplay?.publicUrl ?? "not configured",
+                    mono: Boolean(gatewayDisplay?.publicUrl),
+                  },
+                  {
+                    label: "Bind Address",
+                    value: gatewayDisplay?.bindAddress ?? "unknown",
+                    mono: true,
+                  },
                   { label: "CORS Origin", value: runtime.gateway.corsOrigin || "not set" },
                 ]}
               />
@@ -842,11 +874,6 @@ function humanizeKey(value: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
-}
-
-function displayGatewayUrl(host: string, port: number): string {
-  const safeHost = host === "0.0.0.0" ? "localhost" : host;
-  return `http://${safeHost}:${port}`;
 }
 
 function healthVariant(status: GatewayHealthResponse["status"] | undefined) {
