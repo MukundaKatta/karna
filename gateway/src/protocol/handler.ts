@@ -15,11 +15,20 @@ import type {
   RTCHangupMessage,
 } from "./schema.js";
 import type { AuthContext } from "./auth.js";
-import { validateToken, generateChallenge, verifyChallenge, createAuthContext } from "./auth.js";
+import {
+  validateToken,
+  generateChallenge,
+  verifyChallenge,
+  createAuthContext,
+} from "./auth.js";
 import type { SessionManager } from "../session/manager.js";
 import type { HeartbeatScheduler } from "../heartbeat/scheduler.js";
 import type { StreamCallback } from "@karna/agent/runtime.js";
-import { handleVoiceStart, handleVoiceAudioChunk, handleVoiceEnd } from "../voice/handler.js";
+import {
+  handleVoiceStart,
+  handleVoiceAudioChunk,
+  handleVoiceEnd,
+} from "../voice/handler.js";
 import { appendToTranscript, readTranscript } from "../session/store.js";
 import { Orchestrator } from "@karna/agent/orchestration/orchestrator.js";
 import type { DelegationRecord } from "@karna/shared/types/orchestration.js";
@@ -78,9 +87,14 @@ interface OrchestratorLike {
 
 let orchestrator: OrchestratorLike | null = null;
 let orchestratorFactory: (() => Promise<OrchestratorLike>) | null = null;
-const pendingApprovals = new Map<string, { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }>();
+const pendingApprovals = new Map<
+  string,
+  { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }
+>();
 
-export function setOrchestratorFactoryForTests(factory: (() => Promise<OrchestratorLike>) | null): void {
+export function setOrchestratorFactoryForTests(
+  factory: (() => Promise<OrchestratorLike>) | null,
+): void {
   orchestratorFactory = factory;
   orchestrator = null;
 }
@@ -194,7 +208,12 @@ function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
   }
 }
 
-function sendError(ws: WebSocket, code: string, message: string, retryable = false): void {
+function sendError(
+  ws: WebSocket,
+  code: string,
+  message: string,
+  retryable = false,
+): void {
   sendMessage(ws, {
     id: nanoid(),
     type: "error",
@@ -211,17 +230,31 @@ function normalizeOrigin(origin: string): string {
   }
 }
 
-function isTrustedPublicWebConnection(
+function isTrustedPublicConnection(
   channelType: string,
+  channelId: string,
   requestOrigin: string | null | undefined,
   allowedOrigins: string[] | undefined,
+  metadata: Record<string, unknown> | undefined,
 ): boolean {
-  if (channelType !== "web" || !requestOrigin || !allowedOrigins?.length) {
-    return false;
+  if (channelType === "web") {
+    if (!requestOrigin || !allowedOrigins?.length) {
+      return false;
+    }
+
+    const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
+    return allowedOrigins.some(
+      (origin) => normalizeOrigin(origin) === normalizedRequestOrigin,
+    );
   }
 
-  const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
-  return allowedOrigins.some((origin) => normalizeOrigin(origin) === normalizedRequestOrigin);
+  if (channelType === "mobile") {
+    return (
+      channelId.startsWith("mobile-") && metadata?.["platform"] === "mobile"
+    );
+  }
+
+  return false;
 }
 
 /**
@@ -230,11 +263,16 @@ function isTrustedPublicWebConnection(
  * is surfaced to end users.
  */
 export function sanitizeAgentError(raw: string | undefined): string {
-  if (!raw) return "The agent was unable to complete this request. Please try again.";
+  if (!raw)
+    return "The agent was unable to complete this request. Please try again.";
   const lower = raw.toLowerCase();
   // Provider API errors — keep vague, don't leak HTTP status
   if (lower.includes("api error") || lower.includes("status code")) {
-    if (lower.includes("401") || lower.includes("403") || lower.includes("unauthorized")) {
+    if (
+      lower.includes("401") ||
+      lower.includes("403") ||
+      lower.includes("unauthorized")
+    ) {
       return "The AI provider rejected the request. Check that the server-side API key is valid.";
     }
     if (lower.includes("429") || lower.includes("rate limit")) {
@@ -243,7 +281,12 @@ export function sanitizeAgentError(raw: string | undefined): string {
     if (lower.includes("400") || lower.includes("bad request")) {
       return "The AI provider rejected the request format. This is a server-side bug; please report it.";
     }
-    if (lower.includes("500") || lower.includes("502") || lower.includes("503") || lower.includes("504")) {
+    if (
+      lower.includes("500") ||
+      lower.includes("502") ||
+      lower.includes("503") ||
+      lower.includes("504")
+    ) {
       return "The AI provider is temporarily unavailable. Please try again in a moment.";
     }
     return "The AI provider returned an error. Please try again.";
@@ -303,9 +346,14 @@ export async function runSessionTurn(
           );
           if (toolSpanId) {
             toolSpanIds.set(event.id, toolSpanId);
-            options.traceCollector?.addSpanEvent(traceId, toolSpanId, "requested", {
-              toolCallId: event.id,
-            });
+            options.traceCollector?.addSpanEvent(
+              traceId,
+              toolSpanId,
+              "requested",
+              {
+                toolCallId: event.id,
+              },
+            );
             options.traceCollector?.endSpan(traceId, toolSpanId, {
               toolCallId: event.id,
               requested: true,
@@ -320,7 +368,11 @@ export async function runSessionTurn(
           });
           break;
         case "done":
-          options.traceCollector?.addSpanEvent(traceId, modelSpanId, "stream.complete");
+          options.traceCollector?.addSpanEvent(
+            traceId,
+            modelSpanId,
+            "stream.complete",
+          );
           break;
       }
     }
@@ -328,42 +380,40 @@ export async function runSessionTurn(
     options.streamCallback?.(event);
   });
   orch.setDelegationCallback(options.delegationCallback ?? (() => {}));
-  orch.setApprovalCallback(
-    async (request) => {
-      const result = await (
-        options.approvalCallback
-          ?? (async (pendingRequest) => ({
-            toolCallId: pendingRequest.toolCallId,
-            approved: false,
-            reason: "Injected session turns cannot request tool approval",
-            respondedAt: Date.now(),
-          }))
-      )(request);
+  orch.setApprovalCallback(async (request) => {
+    const result = await (
+      options.approvalCallback ??
+      (async (pendingRequest) => ({
+        toolCallId: pendingRequest.toolCallId,
+        approved: false,
+        reason: "Injected session turns cannot request tool approval",
+        respondedAt: Date.now(),
+      }))
+    )(request);
 
-      if (traceId) {
-        const toolSpanId = toolSpanIds.get(request.toolCallId);
-        if (toolSpanId) {
-          options.traceCollector?.addSpanEvent(
+    if (traceId) {
+      const toolSpanId = toolSpanIds.get(request.toolCallId);
+      if (toolSpanId) {
+        options.traceCollector?.addSpanEvent(
+          traceId,
+          toolSpanId,
+          result.approved ? "approved" : "rejected",
+          {
+            toolCallId: request.toolCallId,
+          },
+        );
+        if (!result.approved) {
+          options.traceCollector?.setSpanError(
             traceId,
             toolSpanId,
-            result.approved ? "approved" : "rejected",
-            {
-              toolCallId: request.toolCallId,
-            },
+            result.reason ?? "Tool request rejected",
           );
-          if (!result.approved) {
-            options.traceCollector?.setSpanError(
-              traceId,
-              toolSpanId,
-              result.reason ?? "Tool request rejected",
-            );
-          }
         }
       }
+    }
 
-      return result;
-    },
-  );
+    return result;
+  });
 
   let result: Awaited<ReturnType<OrchestratorLike["handleMessage"]>>;
   try {
@@ -415,9 +465,14 @@ export async function runSessionTurn(
       options.traceCollector?.setSpanError(traceId, modelSpanId, result.error);
     }
     if (result.delegations.length > 0) {
-      options.traceCollector?.addSpanEvent(traceId, modelSpanId, "delegations", {
-        count: result.delegations.length,
-      });
+      options.traceCollector?.addSpanEvent(
+        traceId,
+        modelSpanId,
+        "delegations",
+        {
+          count: result.delegations.length,
+        },
+      );
     }
     options.traceCollector?.endSpan(traceId, modelSpanId, {
       agentId: result.agentId,
@@ -483,7 +538,11 @@ export async function handleMessage(
         break;
 
       case "voice.audio.chunk":
-        handleVoiceAudioChunk(ws, (message as VoiceAudioChunkMessage).payload, context);
+        handleVoiceAudioChunk(
+          ws,
+          (message as VoiceAudioChunkMessage).payload,
+          context,
+        );
         break;
 
       case "voice.end":
@@ -496,18 +555,34 @@ export async function handleMessage(
       case "rtc.hangup":
         await handleRTCSignal(
           ws,
-          message as RTCOfferMessage | RTCAnswerMessage | RTCIceCandidateMessage | RTCHangupMessage,
+          message as
+            | RTCOfferMessage
+            | RTCAnswerMessage
+            | RTCIceCandidateMessage
+            | RTCHangupMessage,
           context,
         );
         break;
 
       default:
         logger.warn({ type: message.type }, "Unhandled message type");
-        sendError(ws, "UNHANDLED_TYPE", `No handler for message type: ${message.type}`);
+        sendError(
+          ws,
+          "UNHANDLED_TYPE",
+          `No handler for message type: ${message.type}`,
+        );
     }
   } catch (error) {
-    logger.error({ error: String(error), type: message.type }, "Error handling message");
-    sendError(ws, "INTERNAL_ERROR", "An internal error occurred while processing the message", true);
+    logger.error(
+      { error: String(error), type: message.type },
+      "Error handling message",
+    );
+    sendError(
+      ws,
+      "INTERNAL_ERROR",
+      "An internal error occurred while processing the message",
+      true,
+    );
   }
 }
 
@@ -524,14 +599,16 @@ async function handleConnect(
   // Extract token from metadata if provided
   const token = (metadata?.["token"] as string) ?? "";
   const role = (metadata?.["role"] as "operator" | "node") ?? "operator";
-  const trustedPublicWebConnection = isTrustedPublicWebConnection(
+  const trustedPublicConnection = isTrustedPublicConnection(
     channelType,
+    channelId,
     context.requestOrigin,
     context.allowedOrigins,
+    metadata,
   );
 
   if (!validateToken(token)) {
-    if (!trustedPublicWebConnection) {
+    if (!trustedPublicConnection) {
       // Send challenge for authentication
       const challenge = generateChallenge();
       sendMessage(ws, {
@@ -547,8 +624,8 @@ async function handleConnect(
     }
 
     logger.info(
-      { channelId, requestOrigin: context.requestOrigin },
-      "Allowing trusted public web connection without gateway auth token",
+      { channelType, channelId, requestOrigin: context.requestOrigin },
+      "Allowing trusted public connection without gateway auth token",
     );
   }
 
@@ -556,7 +633,7 @@ async function handleConnect(
   const auth = createAuthContext(
     channelId,
     role,
-    token || `public-web:${channelId}`,
+    token || `public-${channelType}:${channelId}`,
   );
 
   const session = context.sessionManager.createSession(
@@ -605,7 +682,10 @@ async function handleConnect(
     },
   });
 
-  logger.info({ sessionId: session.id, channelType, channelId }, "Connection established");
+  logger.info(
+    { sessionId: session.id, channelType, channelId },
+    "Connection established",
+  );
 }
 
 async function handleChatMessage(
@@ -615,7 +695,11 @@ async function handleChatMessage(
 ): Promise<void> {
   // Auth gate: require authenticated connection before processing messages
   if (!context.auth) {
-    sendError(ws, "UNAUTHENTICATED", "Must send a 'connect' message before chat messages");
+    sendError(
+      ws,
+      "UNAUTHENTICATED",
+      "Must send a 'connect' message before chat messages",
+    );
     return;
   }
 
@@ -637,13 +721,19 @@ async function handleChatMessage(
     const routing = resolveChatRoutingContext(session, message);
 
     if (routing.isDirectMessage) {
-      const decision = context.accessPolicies.checkDmAccess(session.channelType, routing.userId);
+      const decision = context.accessPolicies.checkDmAccess(
+        session.channelType,
+        routing.userId,
+      );
 
       if (!decision.allowed) {
         let response = decision.reason;
 
         if (decision.reason.includes("Pairing required")) {
-          const pairing = context.accessPolicies.issuePairingCode(session.channelType, routing.userId);
+          const pairing = context.accessPolicies.issuePairingCode(
+            session.channelType,
+            routing.userId,
+          );
           response =
             `Karna is locked for new ${session.channelType} DMs.\n\n` +
             `Approve this conversation with:\n` +
@@ -678,7 +768,12 @@ async function handleChatMessage(
         });
 
         logger.info(
-          { sessionId, channelType: session.channelType, userId: routing.userId, reason: decision.reason },
+          {
+            sessionId,
+            channelType: session.channelType,
+            userId: routing.userId,
+            reason: decision.reason,
+          },
           "Blocked inbound chat by DM access policy",
         );
         return;
@@ -702,7 +797,12 @@ async function handleChatMessage(
         });
 
         logger.info(
-          { sessionId, channelType: session.channelType, userId: routing.userId, reason: decision.reason },
+          {
+            sessionId,
+            channelType: session.channelType,
+            userId: routing.userId,
+            reason: decision.reason,
+          },
           "Blocked inbound chat by group access policy",
         );
         return;
@@ -710,7 +810,10 @@ async function handleChatMessage(
     }
   }
 
-  logger.info({ sessionId, role, contentLength: content.length }, "Chat message received");
+  logger.info(
+    { sessionId, role, contentLength: content.length },
+    "Chat message received",
+  );
 
   // Persist user message to transcript
   await appendToTranscript(sessionId, {
@@ -862,7 +965,10 @@ async function handleChatMessage(
       payload: { state: "idle" },
     });
   } catch (error) {
-    logger.error({ error: String(error), sessionId }, "Failed to process chat message");
+    logger.error(
+      { error: String(error), sessionId },
+      "Failed to process chat message",
+    );
     sendError(ws, "AGENT_ERROR", "Failed to process message", true);
     sendMessage(ws, {
       id: nanoid(),
@@ -895,7 +1001,10 @@ async function handleToolApprovalResponse(
     clearTimeout(pending.timer);
     pending.resolve(approved);
     pendingApprovals.delete(toolCallId);
-    logger.info({ toolCallId, approved }, "Forwarded approval to agent runtime");
+    logger.info(
+      { toolCallId, approved },
+      "Forwarded approval to agent runtime",
+    );
   } else {
     logger.warn({ toolCallId }, "No pending approval found for tool call");
   }
@@ -942,7 +1051,11 @@ async function handleSkillInvoke(
 ): Promise<void> {
   // Auth gate: require authenticated connection
   if (!context.auth) {
-    sendError(ws, "UNAUTHENTICATED", "Must send a 'connect' message before invoking skills");
+    sendError(
+      ws,
+      "UNAUTHENTICATED",
+      "Must send a 'connect' message before invoking skills",
+    );
     return;
   }
 
@@ -968,22 +1081,36 @@ async function handleSkillInvoke(
     const session = context.sessionManager.getSession(sessionId ?? "");
 
     if (!session) {
-      sendError(ws, "SESSION_NOT_FOUND", "Session not found for skill invocation");
+      sendError(
+        ws,
+        "SESSION_NOT_FOUND",
+        "Session not found for skill invocation",
+      );
       return;
     }
 
     const skillPrompt = `[Skill Invocation] Execute skill "${skillId}" with action "${action}". Parameters: ${JSON.stringify(parameters ?? {})}`;
     const traceId = context.traceCollector?.startTrace(session.id);
     const skillSpanId = traceId
-      ? context.traceCollector?.startSpan(traceId, `${skillId}:${action}`, "skill")
+      ? context.traceCollector?.startSpan(
+          traceId,
+          `${skillId}:${action}`,
+          "skill",
+        )
       : "";
     let result: Awaited<ReturnType<OrchestratorLike["handleMessage"]>>;
     try {
       result = await orch.handleMessage(session, skillPrompt, []);
     } catch (error) {
       if (traceId && skillSpanId) {
-        context.traceCollector?.setSpanError(traceId, skillSpanId, String(error));
-        context.traceCollector?.endSpan(traceId, skillSpanId, { success: false });
+        context.traceCollector?.setSpanError(
+          traceId,
+          skillSpanId,
+          String(error),
+        );
+        context.traceCollector?.endSpan(traceId, skillSpanId, {
+          success: false,
+        });
         context.traceCollector?.endTrace(traceId, {
           success: false,
           model: "",
@@ -997,7 +1124,11 @@ async function handleSkillInvoke(
 
     if (traceId && skillSpanId) {
       if (!result.success && result.error) {
-        context.traceCollector?.setSpanError(traceId, skillSpanId, result.error);
+        context.traceCollector?.setSpanError(
+          traceId,
+          skillSpanId,
+          result.error,
+        );
       }
       context.traceCollector?.endSpan(traceId, skillSpanId, {
         agentId: result.agentId,
@@ -1026,7 +1157,10 @@ async function handleSkillInvoke(
       },
     });
   } catch (error) {
-    logger.error({ error: String(error), skillId, action }, "Skill invocation failed");
+    logger.error(
+      { error: String(error), skillId, action },
+      "Skill invocation failed",
+    );
     sendMessage(ws, {
       id: nanoid(),
       type: "skill.result",
@@ -1052,26 +1186,44 @@ async function handleSkillInvoke(
 
 async function handleRTCSignal(
   ws: WebSocket,
-  message: RTCOfferMessage | RTCAnswerMessage | RTCIceCandidateMessage | RTCHangupMessage,
+  message:
+    | RTCOfferMessage
+    | RTCAnswerMessage
+    | RTCIceCandidateMessage
+    | RTCHangupMessage,
   context: ConnectionContext,
 ): Promise<void> {
   if (!context.auth) {
-    sendError(ws, "UNAUTHENTICATED", "Must send a 'connect' message before RTC signaling");
+    sendError(
+      ws,
+      "UNAUTHENTICATED",
+      "Must send a 'connect' message before RTC signaling",
+    );
     return;
   }
 
-  const sourceChannelId = resolveClientIdBySocket(context.connectedClients, ws) ?? context.auth.deviceId;
+  const sourceChannelId =
+    resolveClientIdBySocket(context.connectedClients, ws) ??
+    context.auth.deviceId;
   const targetChannelId = message.payload.targetChannelId;
 
   if (targetChannelId === sourceChannelId) {
-    sendError(ws, "RTC_INVALID_TARGET", "Cannot start a live voice session with the same channel");
+    sendError(
+      ws,
+      "RTC_INVALID_TARGET",
+      "Cannot start a live voice session with the same channel",
+    );
     return;
   }
 
   const targetClient = context.connectedClients.get(targetChannelId);
 
   if (!targetClient || targetClient.ws.readyState !== targetClient.ws.OPEN) {
-    sendError(ws, "RTC_PEER_NOT_FOUND", `Target peer ${targetChannelId} is not connected`);
+    sendError(
+      ws,
+      "RTC_PEER_NOT_FOUND",
+      `Target peer ${targetChannelId} is not connected`,
+    );
     return;
   }
 
@@ -1084,7 +1236,12 @@ async function handleRTCSignal(
   });
 
   logger.info(
-    { type: message.type, sourceChannelId, targetChannelId, sessionId: message.sessionId },
+    {
+      type: message.type,
+      sourceChannelId,
+      targetChannelId,
+      sessionId: message.sessionId,
+    },
     "Forwarded RTC signaling message",
   );
 }
@@ -1113,7 +1270,10 @@ export function broadcastToSession(
   let sent = 0;
 
   for (const [clientId, client] of connectedClients) {
-    if (client.sessionIds.has(sessionId) && client.ws.readyState === client.ws.OPEN) {
+    if (
+      client.sessionIds.has(sessionId) &&
+      client.ws.readyState === client.ws.OPEN
+    ) {
       try {
         client.ws.send(JSON.stringify(message));
         sent++;
@@ -1155,7 +1315,10 @@ function deriveUserId(
   return channelId;
 }
 
-function resolveChatRoutingContext(session: Session, message: ChatMessage): ChatRoutingContext {
+function resolveChatRoutingContext(
+  session: Session,
+  message: ChatMessage,
+): ChatRoutingContext {
   const sessionMetadata = asMetadataRecord(session.metadata);
   const messageMetadata = asMetadataRecord(message.payload.metadata);
   const combinedMetadata = { ...sessionMetadata, ...messageMetadata };
@@ -1176,7 +1339,10 @@ function resolveChatRoutingContext(session: Session, message: ChatMessage): Chat
   };
 }
 
-function inferDirectMessage(channelType: string, metadata: Record<string, unknown>): boolean {
+function inferDirectMessage(
+  channelType: string,
+  metadata: Record<string, unknown>,
+): boolean {
   const explicitDirect = coerceBoolean(metadata["isDirectMessage"]);
   if (explicitDirect !== undefined) return explicitDirect;
 
@@ -1186,10 +1352,19 @@ function inferDirectMessage(channelType: string, metadata: Record<string, unknow
   const conversationType = firstNonEmptyString(metadata["conversationType"]);
   if (conversationType) {
     const normalized = conversationType.toLowerCase();
-    if (normalized === "personal" || normalized === "im" || normalized === "dm" || normalized === "direct") {
+    if (
+      normalized === "personal" ||
+      normalized === "im" ||
+      normalized === "dm" ||
+      normalized === "direct"
+    ) {
       return true;
     }
-    if (normalized === "channel" || normalized === "groupchat" || normalized === "group") {
+    if (
+      normalized === "channel" ||
+      normalized === "groupchat" ||
+      normalized === "group"
+    ) {
       return false;
     }
   }

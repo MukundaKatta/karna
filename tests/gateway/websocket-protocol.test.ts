@@ -16,7 +16,10 @@ import {
   type ConnectionContext,
 } from "../../gateway/src/protocol/handler.js";
 import { createAuthContext } from "../../gateway/src/protocol/auth.js";
-import { appendToTranscript, readTranscript } from "../../gateway/src/session/store.js";
+import {
+  appendToTranscript,
+  readTranscript,
+} from "../../gateway/src/session/store.js";
 import { TraceCollector } from "../../gateway/src/observability/trace-collector.js";
 
 vi.mock("../../gateway/src/session/store.js", () => ({
@@ -36,14 +39,21 @@ function createSocket() {
   };
 }
 
-function createContext(overrides?: Partial<ConnectionContext>): ConnectionContext {
-  const sessionManager = overrides?.sessionManager ?? new SessionManager({ flushIntervalMs: 300_000 });
+function createContext(
+  overrides?: Partial<ConnectionContext>,
+): ConnectionContext {
+  const sessionManager =
+    overrides?.sessionManager ??
+    new SessionManager({ flushIntervalMs: 300_000 });
   return {
     ws: overrides?.ws ?? (createSocket() as never),
     auth: overrides?.auth ?? null,
     sessionManager,
-    heartbeatScheduler: overrides?.heartbeatScheduler ?? ({ stopAll() {} } as never),
-    accessPolicies: overrides?.accessPolicies ?? new AccessPolicyManager({ storagePath: false }),
+    heartbeatScheduler:
+      overrides?.heartbeatScheduler ?? ({ stopAll() {} } as never),
+    accessPolicies:
+      overrides?.accessPolicies ??
+      new AccessPolicyManager({ storagePath: false }),
     connectedClients: overrides?.connectedClients ?? new Map(),
     traceCollector: overrides?.traceCollector,
     requestOrigin: overrides?.requestOrigin ?? null,
@@ -66,7 +76,8 @@ describe("gateway websocket protocol", () => {
     resetProtocolTestState();
     if (originalNodeEnv === undefined) delete process.env["NODE_ENV"];
     else process.env["NODE_ENV"] = originalNodeEnv;
-    if (originalGatewayToken === undefined) delete process.env["GATEWAY_AUTH_TOKEN"];
+    if (originalGatewayToken === undefined)
+      delete process.env["GATEWAY_AUTH_TOKEN"];
     else process.env["GATEWAY_AUTH_TOKEN"] = originalGatewayToken;
   });
 
@@ -130,10 +141,16 @@ describe("gateway websocket protocol", () => {
       context,
     );
 
-    expect((ws.sent[0]?.payload as Record<string, unknown>)?.["sessionId"]).toBe("adapter-session-1");
-    expect((ws.sent[1]?.payload as Record<string, unknown>)?.["sessionId"]).toBe("adapter-session-1");
+    expect(
+      (ws.sent[0]?.payload as Record<string, unknown>)?.["sessionId"],
+    ).toBe("adapter-session-1");
+    expect(
+      (ws.sent[1]?.payload as Record<string, unknown>)?.["sessionId"],
+    ).toBe("adapter-session-1");
     expect(context.sessionManager.activeSessionCount).toBe(1);
-    expect(context.sessionManager.getSession("adapter-session-1")?.metadata).toMatchObject({
+    expect(
+      context.sessionManager.getSession("adapter-session-1")?.metadata,
+    ).toMatchObject({
       userId: "user-1",
       isDirectMessage: true,
     });
@@ -198,6 +215,58 @@ describe("gateway websocket protocol", () => {
     expect(context.auth?.token).toContain("public-web:");
   });
 
+  it("acknowledges trusted public mobile connects in production without a token", async () => {
+    process.env["NODE_ENV"] = "production";
+    process.env["GATEWAY_AUTH_TOKEN"] = "prod-secret-token-1234";
+
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-connect-mobile",
+        type: "connect",
+        timestamp: Date.now(),
+        payload: {
+          channelType: "mobile",
+          channelId: "mobile-review-device",
+          metadata: { platform: "mobile" },
+        },
+      },
+      context,
+    );
+
+    expect(ws.sent[0]?.type).toBe("connect.ack");
+    expect(context.sessionManager.activeSessionCount).toBe(1);
+    expect(context.auth?.token).toContain("public-mobile:");
+  });
+
+  it("keeps challenging mobile connects without the public mobile metadata", async () => {
+    process.env["NODE_ENV"] = "production";
+    process.env["GATEWAY_AUTH_TOKEN"] = "prod-secret-token-1234";
+
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-connect-mobile-missing-platform",
+        type: "connect",
+        timestamp: Date.now(),
+        payload: {
+          channelType: "mobile",
+          channelId: "mobile-review-device",
+          metadata: {},
+        },
+      },
+      context,
+    );
+
+    expect(ws.sent[0]?.type).toBe("connect.challenge");
+  });
+
   it("rejects chat messages before connect", async () => {
     const ws = createSocket();
     const context = createContext({ ws: ws as never });
@@ -218,25 +287,41 @@ describe("gateway websocket protocol", () => {
     );
 
     expect(ws.sent.at(-1)?.type).toBe("error");
-    expect((ws.sent.at(-1)?.payload as Record<string, unknown>)?.code).toBe("UNAUTHENTICATED");
+    expect((ws.sent.at(-1)?.payload as Record<string, unknown>)?.code).toBe(
+      "UNAUTHENTICATED",
+    );
   });
 
   it("routes authenticated chat messages through the orchestrator and streams results", async () => {
     const ws = createSocket();
     const traceCollector = new TraceCollector();
     const context = createContext({ ws: ws as never, traceCollector });
-    const session = context.sessionManager.createSession("agent-1", "webchat", "user-1");
+    const session = context.sessionManager.createSession(
+      "agent-1",
+      "webchat",
+      "user-1",
+    );
     context.auth = createAuthContext("device-1", "operator", "token");
 
     setOrchestratorFactoryForTests(async () => {
-      let streamCallback: ((event: { type: "text" | "tool_use"; text?: string; id?: string; name?: string; input?: unknown }) => void) | null = null;
-      let delegationCallback: ((record: {
-        fromAgentId: string;
-        toAgentId: string;
-        reason: string;
-        task: string;
-        timestamp: number;
-      }) => void) | null = null;
+      let streamCallback:
+        | ((event: {
+            type: "text" | "tool_use";
+            text?: string;
+            id?: string;
+            name?: string;
+            input?: unknown;
+          }) => void)
+        | null = null;
+      let delegationCallback:
+        | ((record: {
+            fromAgentId: string;
+            toAgentId: string;
+            reason: string;
+            task: string;
+            timestamp: number;
+          }) => void)
+        | null = null;
 
       return {
         activeAgentCount: 2,
@@ -322,7 +407,11 @@ describe("gateway websocket protocol", () => {
   it("gates external DMs with a pairing code before running the agent", async () => {
     const ws = createSocket();
     const context = createContext({ ws: ws as never });
-    const session = context.sessionManager.createSession("12345", "telegram", "12345");
+    const session = context.sessionManager.createSession(
+      "12345",
+      "telegram",
+      "12345",
+    );
     context.auth = createAuthContext("telegram-12345", "operator", "token");
 
     await handleMessage(
@@ -342,19 +431,30 @@ describe("gateway websocket protocol", () => {
 
     expect(appendToTranscript).not.toHaveBeenCalled();
     expect(readTranscript).not.toHaveBeenCalled();
-    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(true);
+    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(
+      true,
+    );
 
-    const response = ws.sent.find((message) => message.type === "agent.response");
-    expect((response?.payload as Record<string, string>)?.content).toContain("karna access approve telegram");
+    const response = ws.sent.find(
+      (message) => message.type === "agent.response",
+    );
+    expect((response?.payload as Record<string, string>)?.content).toContain(
+      "karna access approve telegram",
+    );
   });
 
   it("allows group messages when routing metadata marks them as mentions", async () => {
     const ws = createSocket();
     const context = createContext({ ws: ws as never });
-    const session = context.sessionManager.createSession("discord-channel", "discord", "user-1", {
-      isDirectMessage: false,
-      channelId: "discord-channel",
-    });
+    const session = context.sessionManager.createSession(
+      "discord-channel",
+      "discord",
+      "user-1",
+      {
+        isDirectMessage: false,
+        channelId: "discord-channel",
+      },
+    );
     context.auth = createAuthContext("discord-channel", "operator", "token");
 
     setOrchestratorFactoryForTests(async () => ({
@@ -397,7 +497,9 @@ describe("gateway websocket protocol", () => {
 
     expect(appendToTranscript).toHaveBeenCalledTimes(2);
     expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
-    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(true);
+    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(
+      true,
+    );
   });
 
   it("suppresses group messages when group activation is off", async () => {
@@ -405,10 +507,15 @@ describe("gateway websocket protocol", () => {
     const accessPolicies = new AccessPolicyManager({ storagePath: false });
     accessPolicies.setGroupActivation("discord", "off");
     const context = createContext({ ws: ws as never, accessPolicies });
-    const session = context.sessionManager.createSession("discord-channel", "discord", "user-1", {
-      isDirectMessage: false,
-      channelId: "discord-channel",
-    });
+    const session = context.sessionManager.createSession(
+      "discord-channel",
+      "discord",
+      "user-1",
+      {
+        isDirectMessage: false,
+        channelId: "discord-channel",
+      },
+    );
     context.auth = createAuthContext("discord-channel", "operator", "token");
 
     await handleMessage(
@@ -443,10 +550,15 @@ describe("gateway websocket protocol", () => {
     accessPolicies.setGroupActivation("discord", "allowlist");
     accessPolicies.addToAllowlist("discord", "guild-user-2");
     const context = createContext({ ws: ws as never, accessPolicies });
-    const session = context.sessionManager.createSession("discord-channel", "discord", "user-1", {
-      isDirectMessage: false,
-      channelId: "discord-channel",
-    });
+    const session = context.sessionManager.createSession(
+      "discord-channel",
+      "discord",
+      "user-1",
+      {
+        isDirectMessage: false,
+        channelId: "discord-channel",
+      },
+    );
     context.auth = createAuthContext("discord-channel", "operator", "token");
 
     setOrchestratorFactoryForTests(async () => ({
@@ -487,17 +599,24 @@ describe("gateway websocket protocol", () => {
 
     expect(appendToTranscript).toHaveBeenCalledTimes(2);
     expect(readTranscript).toHaveBeenCalledWith(session.id, 50);
-    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(true);
+    expect(ws.sent.some((message) => message.type === "agent.response")).toBe(
+      true,
+    );
   });
 
   it("treats telegram supergroups as group chats when metadata says so", async () => {
     const ws = createSocket();
     const context = createContext({ ws: ws as never });
-    const session = context.sessionManager.createSession("-100123", "telegram", "user-1", {
-      conversationType: "supergroup",
-      isDirectMessage: false,
-      chatId: -100123,
-    });
+    const session = context.sessionManager.createSession(
+      "-100123",
+      "telegram",
+      "user-1",
+      {
+        conversationType: "supergroup",
+        isDirectMessage: false,
+        chatId: -100123,
+      },
+    );
     context.auth = createAuthContext("telegram--100123", "operator", "token");
 
     await handleMessage(
@@ -529,10 +648,22 @@ describe("gateway websocket protocol", () => {
   it("relays rtc signaling messages to the requested peer and stamps sourceChannelId", async () => {
     const sourceWs = createSocket();
     const targetWs = createSocket();
-    const sourceSessionManager = new SessionManager({ flushIntervalMs: 300_000 });
-    const targetSessionManager = new SessionManager({ flushIntervalMs: 300_000 });
-    const sourceSession = sourceSessionManager.createSession("caller-web", "web", "user-1");
-    const targetSession = targetSessionManager.createSession("callee-mobile", "mobile", "user-1");
+    const sourceSessionManager = new SessionManager({
+      flushIntervalMs: 300_000,
+    });
+    const targetSessionManager = new SessionManager({
+      flushIntervalMs: 300_000,
+    });
+    const sourceSession = sourceSessionManager.createSession(
+      "caller-web",
+      "web",
+      "user-1",
+    );
+    const targetSession = targetSessionManager.createSession(
+      "callee-mobile",
+      "mobile",
+      "user-1",
+    );
 
     const connectedClients = new Map([
       [
@@ -583,8 +714,12 @@ describe("gateway websocket protocol", () => {
     expect(sourceWs.sent).toHaveLength(0);
     expect(targetWs.sent).toHaveLength(1);
     expect(targetWs.sent[0]?.type).toBe("rtc.offer");
-    expect((targetWs.sent[0]?.payload as Record<string, unknown>)?.sourceChannelId).toBe("caller-web");
-    expect((targetWs.sent[0]?.payload as Record<string, unknown>)?.targetChannelId).toBe("callee-mobile");
+    expect(
+      (targetWs.sent[0]?.payload as Record<string, unknown>)?.sourceChannelId,
+    ).toBe("caller-web");
+    expect(
+      (targetWs.sent[0]?.payload as Record<string, unknown>)?.targetChannelId,
+    ).toBe("callee-mobile");
   });
 
   it("returns an error when rtc signaling targets a disconnected peer", async () => {
@@ -628,7 +763,9 @@ describe("gateway websocket protocol", () => {
 
     expect(ws.sent).toHaveLength(1);
     expect(ws.sent[0]?.type).toBe("error");
-    expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe("RTC_PEER_NOT_FOUND");
+    expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe(
+      "RTC_PEER_NOT_FOUND",
+    );
   });
 
   it("rejects rtc signaling that targets the same channel", async () => {
@@ -672,6 +809,8 @@ describe("gateway websocket protocol", () => {
 
     expect(ws.sent).toHaveLength(1);
     expect(ws.sent[0]?.type).toBe("error");
-    expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe("RTC_INVALID_TARGET");
+    expect((ws.sent[0]?.payload as Record<string, unknown>)?.code).toBe(
+      "RTC_INVALID_TARGET",
+    );
   });
 });
