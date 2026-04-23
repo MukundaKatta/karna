@@ -2,9 +2,19 @@ import { existsSync } from "node:fs";
 import type { FastifyInstance } from "fastify";
 import type { WorkflowEngine } from "@karna/agent/workflows/engine.js";
 import type { AccessPolicyManager } from "../access/policies.js";
-import type { KarnaConfig } from "../config/schema.js";
+import type { KarnaConfig, ModelConfig } from "../config/schema.js";
+import { getEffectiveDefaultModel, getEffectiveDefaultProvider } from "../catalog/default-agents.js";
 import type { ConnectedClient } from "../protocol/handler.js";
 import type { SessionManager } from "../session/manager.js";
+
+interface RuntimeModelSummary {
+  id: string;
+  provider: string;
+  model: string;
+  hasApiKey: boolean;
+  baseUrl: string | null;
+  maxTokens: number | null;
+}
 
 export function registerRuntimeRoutes(
   app: FastifyInstance,
@@ -95,6 +105,13 @@ export function registerRuntimeRoutes(
 
     const workflows = workflowEngine.list();
     const workflowRuns = workflowEngine.getRuns(undefined, 500);
+    const effectiveDefaultModel = resolveEffectiveDefaultModel(config);
+    const effectiveDefaultProvider = resolveEffectiveDefaultProvider(config, effectiveDefaultModel);
+    const runtimeModels = buildRuntimeModels(
+      config,
+      effectiveDefaultProvider,
+      effectiveDefaultModel,
+    );
 
     return {
       runtime: {
@@ -106,8 +123,8 @@ export function registerRuntimeRoutes(
           configFileExists: existsSync(configPath),
         },
         gateway: {
-          host: config.gateway.host,
-          port: config.gateway.port,
+          host: process.env["GATEWAY_HOST"] ?? config.gateway.host,
+          port: resolveGatewayPort(config),
           maxConnections: config.gateway.maxConnections,
           heartbeatIntervalMs: config.gateway.heartbeatIntervalMs,
           sessionTimeoutMs: config.gateway.sessionTimeoutMs,
@@ -115,12 +132,12 @@ export function registerRuntimeRoutes(
           authEnabled: Boolean(config.gateway.authToken || process.env["GATEWAY_AUTH_TOKEN"]),
         },
         agent: {
-          defaultModel: config.agent.defaultModel,
+          defaultModel: effectiveDefaultModel,
           maxTokens: config.agent.maxTokens,
           temperature: config.agent.temperature,
           systemPromptConfigured: Boolean(config.agent.systemPrompt),
           workspacePath: config.agent.workspacePath ?? null,
-          providerCounts: summarizeProviderCounts(config),
+          providerCounts: summarizeProviderCounts(runtimeModels),
         },
         memory: {
           enabled: config.memory.enabled,
@@ -134,16 +151,7 @@ export function registerRuntimeRoutes(
           },
           connectionConfigured: resolveMemoryConnectionConfigured(config),
         },
-        models: Object.entries(config.models)
-          .sort(([left], [right]) => left.localeCompare(right))
-          .map(([id, model]) => ({
-            id,
-            provider: model.provider,
-            model: model.model,
-            hasApiKey: Boolean(model.apiKey),
-            baseUrl: model.baseUrl ?? null,
-            maxTokens: model.maxTokens ?? null,
-          })),
+        models: runtimeModels,
         environment: {
           configOverride: Boolean(process.env["KARNA_CONFIG"]),
           gatewayHostOverride: Boolean(process.env["GATEWAY_HOST"]),
@@ -151,6 +159,11 @@ export function registerRuntimeRoutes(
           logLevelOverride: Boolean(process.env["LOG_LEVEL"]),
           gatewayAuthTokenConfigured: Boolean(process.env["GATEWAY_AUTH_TOKEN"]),
           supabaseUrlConfigured: Boolean(process.env["SUPABASE_URL"]),
+          defaultProviderOverride: Boolean(process.env["KARNA_DEFAULT_PROVIDER"]),
+          defaultModelOverride: Boolean(process.env["KARNA_DEFAULT_MODEL"]),
+          anthropicApiKeyConfigured: Boolean(process.env["ANTHROPIC_API_KEY"]),
+          openaiApiKeyConfigured: Boolean(process.env["OPENAI_API_KEY"]),
+          openaiBaseUrlConfigured: Boolean(process.env["OPENAI_BASE_URL"]),
         },
         channels,
         access: {
@@ -184,6 +197,124 @@ export function registerRuntimeRoutes(
   });
 }
 
+function resolveGatewayPort(config: KarnaConfig): number {
+  const envPort = Number(process.env["GATEWAY_PORT"]);
+  return Number.isFinite(envPort) && envPort > 0 ? envPort : config.gateway.port;
+}
+
+function resolveEffectiveDefaultModel(config: KarnaConfig): string {
+  return process.env["KARNA_DEFAULT_MODEL"] ?? config.agent.defaultModel ?? getEffectiveDefaultModel();
+}
+
+function resolveEffectiveDefaultProvider(config: KarnaConfig, effectiveDefaultModel: string): string {
+  const providerOverride = process.env["KARNA_DEFAULT_PROVIDER"];
+  if (providerOverride === "anthropic" || providerOverride === "openai" || providerOverride === "local") {
+    return providerOverride;
+  }
+
+  const configuredModel = Object.values(config.models).find(
+    (model) => model.model === effectiveDefaultModel,
+  );
+  return configuredModel?.provider
+    ?? inferProviderFromModel(effectiveDefaultModel)
+    ?? getEffectiveDefaultProvider();
+}
+
+function inferProviderFromModel(model: string): "anthropic" | "openai" | "local" {
+  if (model.startsWith("claude") || model.startsWith("anthropic")) {
+    return "anthropic";
+  }
+  if (
+    model.startsWith("gpt")
+    || model.startsWith("o1")
+    || model.startsWith("o3")
+    || model.startsWith("gemini")
+    || model.startsWith("openrouter/")
+  ) {
+    return "openai";
+  }
+  return "local";
+}
+
+function buildRuntimeModels(
+  config: KarnaConfig,
+  effectiveDefaultProvider: string,
+  effectiveDefaultModel: string,
+): RuntimeModelSummary[] {
+  const configuredModels = Object.entries(config.models)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([id, model]) => toRuntimeModel(id, model));
+
+  const envDefaultModel = buildEnvironmentDefaultModel(
+    configuredModels,
+    effectiveDefaultProvider,
+    effectiveDefaultModel,
+  );
+
+  return [...configuredModels, ...(envDefaultModel ? [envDefaultModel] : [])].sort((left, right) =>
+    left.id.localeCompare(right.id),
+  );
+}
+
+function buildEnvironmentDefaultModel(
+  configuredModels: RuntimeModelSummary[],
+  effectiveDefaultProvider: string,
+  effectiveDefaultModel: string,
+): RuntimeModelSummary | null {
+  if (!effectiveDefaultModel || !providerHasEnvironmentCredentials(effectiveDefaultProvider)) {
+    return null;
+  }
+
+  const baseUrl =
+    effectiveDefaultProvider === "openai" ? process.env["OPENAI_BASE_URL"] ?? null : null;
+  const duplicate = configuredModels.some(
+    (model) =>
+      model.provider === effectiveDefaultProvider
+      && model.model === effectiveDefaultModel
+      && model.baseUrl === baseUrl,
+  );
+  if (duplicate) {
+    return null;
+  }
+
+  return {
+    id: "environment-default",
+    provider: effectiveDefaultProvider,
+    model: effectiveDefaultModel,
+    hasApiKey: true,
+    baseUrl,
+    maxTokens: null,
+  };
+}
+
+function toRuntimeModel(id: string, model: ModelConfig): RuntimeModelSummary {
+  return {
+    id,
+    provider: model.provider,
+    model: model.model,
+    hasApiKey: Boolean(model.apiKey || resolveEnvApiKey(model.provider)),
+    baseUrl:
+      model.baseUrl
+      ?? (model.provider === "openai" ? process.env["OPENAI_BASE_URL"] ?? null : null),
+    maxTokens: model.maxTokens ?? null,
+  };
+}
+
+function resolveEnvApiKey(provider: string): string | undefined {
+  switch (provider) {
+    case "anthropic":
+      return process.env["ANTHROPIC_API_KEY"];
+    case "openai":
+      return process.env["OPENAI_API_KEY"];
+    default:
+      return undefined;
+  }
+}
+
+function providerHasEnvironmentCredentials(provider: string): boolean {
+  return Boolean(resolveEnvApiKey(provider));
+}
+
 function resolveMemoryConnectionConfigured(config: KarnaConfig): boolean {
   switch (config.memory.backend) {
     case "sqlite":
@@ -198,24 +329,26 @@ function resolveMemoryConnectionConfigured(config: KarnaConfig): boolean {
   }
 }
 
-function summarizeProviderCounts(config: KarnaConfig) {
+function summarizeProviderCounts(models: RuntimeModelSummary[]) {
   const summary = {
     anthropic: 0,
     openai: 0,
     local: 0,
   };
 
-  for (const model of Object.values(config.models)) {
-    summary[model.provider] += 1;
+  for (const model of models) {
+    if (model.provider in summary) {
+      summary[model.provider as keyof typeof summary] += 1;
+    }
   }
 
   return {
     anthropic: {
-      configured: summary.anthropic > 0,
+      configured: summary.anthropic > 0 || Boolean(process.env["ANTHROPIC_API_KEY"]),
       modelCount: summary.anthropic,
     },
     openai: {
-      configured: summary.openai > 0,
+      configured: summary.openai > 0 || Boolean(process.env["OPENAI_API_KEY"]),
       modelCount: summary.openai,
     },
     local: {

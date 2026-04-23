@@ -56,6 +56,8 @@ export const HandoffResultSchema = z.object({
   response: z.string(),
   /** The agent that handled the request. */
   agentId: z.string(),
+  /** The model that produced the response, if known. */
+  model: z.string().optional(),
   /** Token usage for the handoff. */
   tokenUsage: z.object({
     inputTokens: z.number().int().nonnegative(),

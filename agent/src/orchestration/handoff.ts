@@ -105,6 +105,7 @@ export async function executeHandoff(
       success: false,
       response: `Agent "${payload.targetAgentId}" not found. Available agents: ${Array.from(agentDefinitions.keys()).join(", ")}`,
       agentId: payload.targetAgentId,
+      model: undefined,
       tokenUsage: { inputTokens: 0, outputTokens: 0 },
     };
   }
@@ -180,6 +181,7 @@ export async function executeHandoff(
         ? result.response
         : result.error ?? "Agent failed to produce a response",
       agentId: payload.targetAgentId,
+      model: result.model,
       tokenUsage: result.usage,
     };
   } catch (error) {
@@ -193,6 +195,7 @@ export async function executeHandoff(
       success: false,
       response: `Handoff to "${payload.targetAgentId}" failed: ${errorMessage}`,
       agentId: payload.targetAgentId,
+      model: targetDef.model,
       tokenUsage: { inputTokens: 0, outputTokens: 0 },
     };
   }

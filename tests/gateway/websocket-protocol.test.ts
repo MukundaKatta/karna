@@ -226,6 +226,7 @@ describe("gateway websocket protocol", () => {
             response: "Final reply",
             totalTokens: { inputTokens: 10, outputTokens: 20 },
             agentId: "karna-coder",
+            model: "gemini-3-flash-preview",
             delegations: [
               {
                 fromAgentId: "karna-general",
@@ -269,7 +270,17 @@ describe("gateway websocket protocol", () => {
     expect(traces).toHaveLength(1);
     expect(traces[0]?.sessionId).toBe(session.id);
     expect(traces[0]?.agentId).toBe("karna-coder");
+    expect(traces[0]?.model).toBe("gemini-3-flash-preview");
     expect(traces[0]?.spans.some((span) => span.kind === "model")).toBe(true);
+    expect(appendToTranscript).toHaveBeenLastCalledWith(
+      session.id,
+      expect.objectContaining({
+        role: "assistant",
+        metadata: expect.objectContaining({
+          model: "gemini-3-flash-preview",
+        }),
+      }),
+    );
   });
 
   it("gates external DMs with a pairing code before running the agent", async () => {
@@ -322,6 +333,7 @@ describe("gateway websocket protocol", () => {
           response: "Handled group message",
           totalTokens: { inputTokens: 5, outputTokens: 7 },
           agentId: "karna-general",
+          model: "gemini-3-flash-preview",
           delegations: [],
         };
       },

@@ -186,6 +186,7 @@ export class Orchestrator {
       return {
         response: `Agent "${targetAgentId}" not found`,
         agentId: targetAgentId,
+        model: undefined,
         delegations: [],
         totalTokens: { inputTokens: 0, outputTokens: 0 },
         success: false,
@@ -284,7 +285,7 @@ export class Orchestrator {
         return {
           response: handoffResult.response,
           agentId: handoffResult.agentId,
-          model: result.model,
+          model: handoffResult.model,
           delegations,
           totalTokens: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
           success: handoffResult.success,
@@ -338,6 +339,7 @@ export class Orchestrator {
       return {
         response: "Supervisor mode is not enabled",
         agentId: this.defaultAgentId,
+        model: this.agentDefinitions.get(this.defaultAgentId)?.model,
         delegations: [],
         totalTokens: { inputTokens: 0, outputTokens: 0 },
         success: false,
@@ -402,6 +404,7 @@ export class Orchestrator {
     return {
       response: aggregatedResponse,
       agentId: this.defaultAgentId,
+      model: this.agentDefinitions.get(this.defaultAgentId)?.model,
       delegations,
       totalTokens: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
       success: true,

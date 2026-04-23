@@ -363,6 +363,8 @@ export async function runSessionTurn(
     throw error;
   }
 
+  const resolvedModel = result.model ?? "";
+
   if (result.success) {
     await appendToTranscript(session.id, {
       id: nanoid(),
@@ -373,7 +375,7 @@ export async function runSessionTurn(
       metadata: {
         inputTokens: result.totalTokens.inputTokens,
         outputTokens: result.totalTokens.outputTokens,
-        model: result.agentId,
+        model: resolvedModel || undefined,
       },
     });
 
@@ -405,7 +407,7 @@ export async function runSessionTurn(
     options.traceCollector?.endTrace(traceId, {
       success: result.success,
       agentId: result.agentId,
-      model: result.model ?? "",
+      model: resolvedModel,
       inputTokens: result.totalTokens.inputTokens,
       outputTokens: result.totalTokens.outputTokens,
       error: result.error,
@@ -414,6 +416,7 @@ export async function runSessionTurn(
 
   return {
     ...result,
+    model: resolvedModel,
     activeAgentCount: orch.activeAgentCount,
   };
 }

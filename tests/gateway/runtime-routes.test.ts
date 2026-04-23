@@ -13,6 +13,12 @@ describe("runtime routes", () => {
   let accessPolicies: AccessPolicyManager;
   let workflowEngine: WorkflowEngine;
   let connectedClients: Map<string, ConnectedClient>;
+  const originalGatewayHost = process.env["GATEWAY_HOST"];
+  const originalGatewayPort = process.env["GATEWAY_PORT"];
+  const originalDefaultProvider = process.env["KARNA_DEFAULT_PROVIDER"];
+  const originalDefaultModel = process.env["KARNA_DEFAULT_MODEL"];
+  const originalOpenAiKey = process.env["OPENAI_API_KEY"];
+  const originalOpenAiBaseUrl = process.env["OPENAI_BASE_URL"];
 
   beforeEach(async () => {
     app = Fastify();
@@ -122,6 +128,18 @@ describe("runtime routes", () => {
   });
 
   afterEach(async () => {
+    if (originalGatewayHost === undefined) delete process.env["GATEWAY_HOST"];
+    else process.env["GATEWAY_HOST"] = originalGatewayHost;
+    if (originalGatewayPort === undefined) delete process.env["GATEWAY_PORT"];
+    else process.env["GATEWAY_PORT"] = originalGatewayPort;
+    if (originalDefaultProvider === undefined) delete process.env["KARNA_DEFAULT_PROVIDER"];
+    else process.env["KARNA_DEFAULT_PROVIDER"] = originalDefaultProvider;
+    if (originalDefaultModel === undefined) delete process.env["KARNA_DEFAULT_MODEL"];
+    else process.env["KARNA_DEFAULT_MODEL"] = originalDefaultModel;
+    if (originalOpenAiKey === undefined) delete process.env["OPENAI_API_KEY"];
+    else process.env["OPENAI_API_KEY"] = originalOpenAiKey;
+    if (originalOpenAiBaseUrl === undefined) delete process.env["OPENAI_BASE_URL"];
+    else process.env["OPENAI_BASE_URL"] = originalOpenAiBaseUrl;
     await app.close();
   });
 
@@ -207,5 +225,44 @@ describe("runtime routes", () => {
       disabled: 1,
       recentRuns: 1,
     });
+  });
+
+  it("prefers live environment overrides for gateway and default model reporting", async () => {
+    process.env["GATEWAY_HOST"] = "127.0.0.9";
+    process.env["GATEWAY_PORT"] = "4999";
+    process.env["KARNA_DEFAULT_PROVIDER"] = "openai";
+    process.env["KARNA_DEFAULT_MODEL"] = "gemini-3-flash-preview";
+    process.env["OPENAI_API_KEY"] = "env-openai-key";
+    process.env["OPENAI_BASE_URL"] = "https://generativelanguage.googleapis.com/v1beta/openai";
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/runtime",
+    });
+
+    expect(response.statusCode).toBe(200);
+    const payload = response.json().runtime;
+    expect(payload.gateway).toMatchObject({
+      host: "127.0.0.9",
+      port: 4999,
+    });
+    expect(payload.agent).toMatchObject({
+      defaultModel: "gemini-3-flash-preview",
+    });
+    expect(payload.agent.providerCounts.openai).toMatchObject({
+      configured: true,
+      modelCount: 2,
+    });
+    expect(payload.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "environment-default",
+          provider: "openai",
+          model: "gemini-3-flash-preview",
+          hasApiKey: true,
+          baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+        }),
+      ]),
+    );
   });
 });

@@ -1,7 +1,15 @@
 import type { AgentDefinition } from "@karna/shared/types/orchestration.js";
 
-const defaultProvider = process.env["KARNA_DEFAULT_PROVIDER"] ?? "anthropic";
-const defaultModel = process.env["KARNA_DEFAULT_MODEL"] ?? "claude-sonnet-4-20250514";
+export function getEffectiveDefaultProvider(): string {
+  return process.env["KARNA_DEFAULT_PROVIDER"] ?? "anthropic";
+}
+
+export function getEffectiveDefaultModel(): string {
+  return process.env["KARNA_DEFAULT_MODEL"] ?? "claude-sonnet-4-20250514";
+}
+
+const defaultProvider = getEffectiveDefaultProvider();
+const defaultModel = getEffectiveDefaultModel();
 
 export const DEFAULT_AGENTS: AgentDefinition[] = [
   {
