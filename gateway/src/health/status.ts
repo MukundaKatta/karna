@@ -1,4 +1,5 @@
 import pino from "pino";
+import { getHeapStatistics } from "node:v8";
 
 const logger = pino({ name: "health-status" });
 
@@ -45,6 +46,22 @@ export function setDatabaseChecker(fn: () => Promise<boolean>): void {
   fn().then((ok) => { lastDbStatus = ok ? "connected" : "disconnected"; }).catch(() => { lastDbStatus = "disconnected"; });
 }
 
+export function calculateHeapPressure(
+  heapUsedBytes: number,
+  heapTotalBytes: number,
+  heapLimitBytes = getHeapStatistics().heap_size_limit,
+): number {
+  if (Number.isFinite(heapLimitBytes) && heapLimitBytes > 0) {
+    return heapUsedBytes / heapLimitBytes;
+  }
+
+  if (Number.isFinite(heapTotalBytes) && heapTotalBytes > 0) {
+    return heapUsedBytes / heapTotalBytes;
+  }
+
+  return 0;
+}
+
 // ─── Health Check ───────────────────────────────────────────────────────────
 
 /**
@@ -62,14 +79,14 @@ export function getSystemHealth(): SystemHealth {
 
   const heapUsedMB = memory.heapUsed / 1024 / 1024;
   const heapTotalMB = memory.heapTotal / 1024 / 1024;
-  const heapUsageRatio = heapUsedMB / heapTotalMB;
+  const heapPressure = calculateHeapPressure(memory.heapUsed, memory.heapTotal);
 
-  if (heapUsageRatio > 0.95) {
+  if (heapPressure > 0.95) {
     status = "unhealthy";
-    logger.warn({ heapUsageRatio }, "Heap usage critically high");
-  } else if (heapUsageRatio > 0.8) {
+    logger.warn({ heapPressure }, "Heap usage critically high");
+  } else if (heapPressure > 0.8) {
     status = "degraded";
-    logger.warn({ heapUsageRatio }, "Heap usage elevated");
+    logger.warn({ heapPressure }, "Heap usage elevated");
   }
 
   // Async DB check — use cached result to keep health endpoint sync

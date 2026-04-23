@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
+  calculateHeapPressure,
   getSystemHealth,
   setConnectionCounter,
   setSessionCounter,
@@ -50,6 +51,26 @@ describe("Health Status", () => {
   it("includes database status as unknown by default", () => {
     const health = getSystemHealth();
     expect(health.database).toBe("unknown");
+  });
+
+  it("measures heap pressure against the V8 heap limit when available", () => {
+    const heapPressure = calculateHeapPressure(
+      24 * 1024 * 1024,
+      26 * 1024 * 1024,
+      512 * 1024 * 1024,
+    );
+
+    expect(heapPressure).toBeCloseTo(24 / 512, 4);
+  });
+
+  it("falls back to heapTotal when the heap limit is unavailable", () => {
+    const heapPressure = calculateHeapPressure(
+      24 * 1024 * 1024,
+      26 * 1024 * 1024,
+      Number.NaN,
+    );
+
+    expect(heapPressure).toBeCloseTo(24 / 26, 4);
   });
 
   it("reports database connected via checker", async () => {
