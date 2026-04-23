@@ -10,7 +10,8 @@ import { fetchTraceStats } from "../lib/traces.js";
 interface HealthResponse {
   status: string;
   version?: string;
-  uptime?: number;
+  uptime?: number; // milliseconds since the gateway started
+  uptimeHuman?: string;
   connections?: number;
   sessions?: number;
   model?: string;
@@ -59,10 +60,11 @@ async function showStatus(options: { gateway?: string }): Promise<void> {
     if (health.version) {
       console.log(chalk.dim("  Version:      ") + health.version);
     }
-    if (health.uptime !== undefined) {
-      console.log(
-        chalk.dim("  Uptime:       ") + formatUptime(health.uptime),
-      );
+    // Prefer the gateway's pre-formatted string; fall back to formatting
+    // the raw uptime field (which the gateway emits in milliseconds).
+    const uptimeStr = health.uptimeHuman ?? (health.uptime !== undefined ? formatUptime(health.uptime) : undefined);
+    if (uptimeStr) {
+      console.log(chalk.dim("  Uptime:       ") + uptimeStr);
     }
     if (health.connections !== undefined) {
       console.log(
@@ -139,7 +141,9 @@ async function fetchHealth(baseUrl: string): Promise<HealthResponse> {
   }
 }
 
-function formatUptime(seconds: number): string {
+function formatUptime(uptimeMs: number): string {
+  // Gateway reports uptime in milliseconds; convert before bucketing.
+  const seconds = Math.floor(uptimeMs / 1000);
   const days = Math.floor(seconds / 86400);
   const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
