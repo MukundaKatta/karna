@@ -15,6 +15,11 @@ interface WSClientOptions {
   channelId?: string;
 }
 
+type PendingChatMessage = {
+  content: string;
+  attachments?: Array<{ type: string; data?: string; name?: string }>;
+};
+
 export class WSClient {
   private ws: WebSocket | null = null;
   private url: string | null;
@@ -32,6 +37,7 @@ export class WSClient {
   private channelId: string;
   private reconnectEnabled = true;
   private configurationError: string | null = null;
+  private pendingChatMessages: PendingChatMessage[] = [];
 
   constructor(options: WSClientOptions = {}) {
     if (options.url) {
@@ -111,6 +117,13 @@ export class WSClient {
             this.channelId = data.payload.channelId;
           }
           this.token = data.payload.token;
+          this.flushPendingChatMessages();
+        }
+        if (data.type === "connect.challenge") {
+          this.pendingChatMessages = [];
+          this.configurationError = "Gateway authentication is blocking browser chat for this deployment.";
+          this.setState("error");
+          return;
         }
         // Handle heartbeat checks
         if (data.type === "heartbeat.check") {
@@ -162,6 +175,7 @@ export class WSClient {
 
   startNewSession(): void {
     const nextChannelId = `web-${crypto.randomUUID()}`;
+    this.pendingChatMessages = [];
     this.disconnect();
     this.reconnectAttempts = 0;
     this.connect(nextChannelId);
@@ -173,6 +187,11 @@ export class WSClient {
   }
 
   sendMessage(content: string, attachments?: Array<{ type: string; data?: string; name?: string }>): void {
+    if (!this.sessionId) {
+      this.pendingChatMessages.push({ content, attachments });
+      return;
+    }
+
     this.send({
       id: crypto.randomUUID(),
       type: "chat.message",
@@ -238,6 +257,19 @@ export class WSClient {
     this.reconnectTimer = setTimeout(() => {
       this.connect();
     }, this.reconnectInterval * Math.min(this.reconnectAttempts, 5));
+  }
+
+  private flushPendingChatMessages(): void {
+    if (!this.sessionId || this.pendingChatMessages.length === 0) {
+      return;
+    }
+
+    const queuedMessages = [...this.pendingChatMessages];
+    this.pendingChatMessages = [];
+
+    for (const message of queuedMessages) {
+      this.sendMessage(message.content, message.attachments);
+    }
   }
 }
 

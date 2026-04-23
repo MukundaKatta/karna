@@ -151,6 +151,8 @@ export interface ConnectionContext {
   connectedClients: Map<string, ConnectedClient>;
   auditLogger?: AuditLogger;
   traceCollector?: TraceCollector;
+  requestOrigin?: string | null;
+  allowedOrigins?: string[];
 }
 
 export interface ConnectedClient {
@@ -199,6 +201,27 @@ function sendError(ws: WebSocket, code: string, message: string, retryable = fal
     timestamp: Date.now(),
     payload: { code, message, retryable },
   });
+}
+
+function normalizeOrigin(origin: string): string {
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return origin.trim();
+  }
+}
+
+function isTrustedPublicWebConnection(
+  channelType: string,
+  requestOrigin: string | null | undefined,
+  allowedOrigins: string[] | undefined,
+): boolean {
+  if (channelType !== "web" || !requestOrigin || !allowedOrigins?.length) {
+    return false;
+  }
+
+  const normalizedRequestOrigin = normalizeOrigin(requestOrigin);
+  return allowedOrigins.some((origin) => normalizeOrigin(origin) === normalizedRequestOrigin);
 }
 
 /**
@@ -500,27 +523,40 @@ async function handleConnect(
 
   // Extract token from metadata if provided
   const token = (metadata?.["token"] as string) ?? "";
+  const role = (metadata?.["role"] as "operator" | "node") ?? "operator";
+  const trustedPublicWebConnection = isTrustedPublicWebConnection(
+    channelType,
+    context.requestOrigin,
+    context.allowedOrigins,
+  );
 
   if (!validateToken(token)) {
-    // Send challenge for authentication
-    const challenge = generateChallenge();
-    sendMessage(ws, {
-      id: nanoid(),
-      type: "connect.challenge",
-      timestamp: Date.now(),
-      payload: {
-        challenge: challenge.nonce,
-        expiresAt: challenge.expiresAt,
-      },
-    });
-    return;
+    if (!trustedPublicWebConnection) {
+      // Send challenge for authentication
+      const challenge = generateChallenge();
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "connect.challenge",
+        timestamp: Date.now(),
+        payload: {
+          challenge: challenge.nonce,
+          expiresAt: challenge.expiresAt,
+        },
+      });
+      return;
+    }
+
+    logger.info(
+      { channelId, requestOrigin: context.requestOrigin },
+      "Allowing trusted public web connection without gateway auth token",
+    );
   }
 
   // Authenticated — create session and acknowledge
   const auth = createAuthContext(
     channelId,
-    (metadata?.["role"] as "operator" | "node") ?? "operator",
-    token,
+    role,
+    token || `public-web:${channelId}`,
   );
 
   const session = context.sessionManager.createSession(

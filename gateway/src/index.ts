@@ -223,7 +223,7 @@ async function main(): Promise<void> {
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
 
-  server.get("/ws", { websocket: true }, (socket, _request) => {
+  server.get("/ws", { websocket: true }, (socket, request) => {
     const connectionId = nanoid();
     logger.info({ connectionId }, "WebSocket connection opened");
 
@@ -236,6 +236,8 @@ async function main(): Promise<void> {
       connectedClients,
       auditLogger,
       traceCollector,
+      requestOrigin: typeof request.headers.origin === "string" ? request.headers.origin : null,
+      allowedOrigins: corsOrigins,
     };
 
     socket.on("message", (rawData: Buffer | string) => {

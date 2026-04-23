@@ -46,6 +46,8 @@ function createContext(overrides?: Partial<ConnectionContext>): ConnectionContex
     accessPolicies: overrides?.accessPolicies ?? new AccessPolicyManager({ storagePath: false }),
     connectedClients: overrides?.connectedClients ?? new Map(),
     traceCollector: overrides?.traceCollector,
+    requestOrigin: overrides?.requestOrigin ?? null,
+    allowedOrigins: overrides?.allowedOrigins ?? [],
   };
 }
 
@@ -139,7 +141,7 @@ describe("gateway websocket protocol", () => {
 
   it("returns an auth challenge when production auth is not satisfied", async () => {
     process.env["NODE_ENV"] = "production";
-    delete process.env["GATEWAY_AUTH_TOKEN"];
+    process.env["GATEWAY_AUTH_TOKEN"] = "prod-secret-token-1234";
 
     const ws = createSocket();
     const context = createContext({ ws: ws as never });
@@ -160,6 +162,40 @@ describe("gateway websocket protocol", () => {
     );
 
     expect(ws.sent[0]?.type).toBe("connect.challenge");
+  });
+
+  it("acknowledges trusted public web connects in production without a token", async () => {
+    process.env["NODE_ENV"] = "production";
+    process.env["GATEWAY_AUTH_TOKEN"] = "prod-secret-token-1234";
+
+    const ws = createSocket();
+    const context = createContext({
+      ws: ws as never,
+      requestOrigin: "https://karna-web-0osh.onrender.com",
+      allowedOrigins: [
+        "https://karna-web.vercel.app",
+        "https://karna-web-0osh.onrender.com",
+      ],
+    });
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-connect-web",
+        type: "connect",
+        timestamp: Date.now(),
+        payload: {
+          channelType: "web",
+          channelId: "web-device-1",
+          metadata: {},
+        },
+      },
+      context,
+    );
+
+    expect(ws.sent[0]?.type).toBe("connect.ack");
+    expect(context.sessionManager.activeSessionCount).toBe(1);
+    expect(context.auth?.token).toContain("public-web:");
   });
 
   it("rejects chat messages before connect", async () => {

@@ -21,6 +21,7 @@ class MockWebSocket {
   onmessage: ((event: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
+  sent: Array<Record<string, unknown>> = [];
 
   constructor(public url: string) {
     MockWebSocket.instances.push(this);
@@ -30,7 +31,9 @@ class MockWebSocket {
     });
   }
 
-  send(_data: string): void {}
+  send(data: string): void {
+    this.sent.push(JSON.parse(data) as Record<string, unknown>);
+  }
 
   close(): void {
     this.readyState = 3;
@@ -101,5 +104,105 @@ describe("websocket runtime config", () => {
       expect(client.state).toBe("connected");
     });
     expect(client.currentConfigurationError).toBeNull();
+  });
+
+  it("queues chat messages until connect.ack provides a session id", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          gatewayUrl: "https://karna-gateway.onrender.com",
+          webSocketUrl: "wss://karna-gateway.onrender.com/ws",
+          configured: true,
+          error: null,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    ) as typeof fetch;
+
+    const client = new WSClient();
+    client.connect("web-runtime-test");
+
+    await vi.waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+    const socket = MockWebSocket.instances[0]!;
+
+    await vi.waitFor(() => {
+      expect(socket.sent[0]?.type).toBe("connect");
+    });
+
+    client.sendMessage("hello from prod");
+    expect(socket.sent).toHaveLength(1);
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        id: "ack-1",
+        type: "connect.ack",
+        timestamp: Date.now(),
+        payload: {
+          sessionId: "session-1",
+          channelId: "web-runtime-test",
+          token: "token-1",
+          expiresAt: Date.now() + 60_000,
+        },
+      }),
+    });
+
+    await vi.waitFor(() => {
+      expect(socket.sent).toHaveLength(2);
+    });
+    expect(socket.sent[1]).toMatchObject({
+      type: "chat.message",
+      sessionId: "session-1",
+      payload: {
+        content: "hello from prod",
+        role: "user",
+      },
+    });
+  });
+
+  it("surfaces a connect challenge as a browser configuration error", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          gatewayUrl: "https://karna-gateway.onrender.com",
+          webSocketUrl: "wss://karna-gateway.onrender.com/ws",
+          configured: true,
+          error: null,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    ) as typeof fetch;
+
+    const client = new WSClient();
+    client.connect("web-runtime-test");
+
+    await vi.waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+    const socket = MockWebSocket.instances[0]!;
+
+    socket.onmessage?.({
+      data: JSON.stringify({
+        id: "challenge-1",
+        type: "connect.challenge",
+        timestamp: Date.now(),
+        payload: {
+          challenge: "nonce",
+          expiresAt: Date.now() + 30_000,
+        },
+      }),
+    });
+
+    await vi.waitFor(() => {
+      expect(client.state).toBe("error");
+    });
+    expect(client.currentConfigurationError).toContain("Gateway authentication");
   });
 });
