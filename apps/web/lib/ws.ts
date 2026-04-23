@@ -1,4 +1,5 @@
 /** WebSocket client for real-time Gateway communication */
+import { getBrowserRuntimeConfig } from "./browser-runtime-config";
 import { resolvePublicWebSocketUrl } from "./runtime-config";
 
 export type WSMessageHandler = (data: unknown) => void;
@@ -38,7 +39,7 @@ export class WSClient {
     } else {
       const resolvedWsUrl = resolvePublicWebSocketUrl();
       this.url = resolvedWsUrl.url;
-      this.configurationError = resolvedWsUrl.error;
+      this.configurationError = this.url || typeof window !== "undefined" ? null : resolvedWsUrl.error;
     }
     this.reconnectInterval = options.reconnectInterval ?? 3000;
     this.maxReconnectAttempts = options.maxReconnectAttempts ?? 10;
@@ -63,16 +64,26 @@ export class WSClient {
   }
 
   connect(channelId?: string): void {
-    if (this.ws?.readyState === WebSocket.OPEN) return;
+    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) return;
     if (channelId) this.channelId = channelId;
+    this.reconnectEnabled = true;
+    this.setState("connecting");
+    void this.openSocket();
+  }
+
+  private async openSocket(): Promise<void> {
+    if (!this.url) {
+      const runtimeConfig = await getBrowserRuntimeConfig();
+      this.url = runtimeConfig.webSocketUrl;
+      this.configurationError = runtimeConfig.error;
+    }
 
     if (!this.url) {
       this.setState("error");
       return;
     }
 
-    this.reconnectEnabled = true;
-    this.setState("connecting");
+    this.configurationError = null;
     this.ws = new WebSocket(this.url);
 
     this.ws.onopen = () => {

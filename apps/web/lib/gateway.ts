@@ -1,5 +1,6 @@
 /** Gateway API client */
 
+import { getBrowserRuntimeConfig } from "./browser-runtime-config";
 import { resolvePublicGatewayUrl } from "./runtime-config";
 
 interface RequestOptions {
@@ -22,7 +23,15 @@ class GatewayError extends Error {
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, headers = {}, signal } = options;
-  const gateway = resolvePublicGatewayUrl();
+  let gateway = resolvePublicGatewayUrl();
+  if (!gateway.url && typeof window !== "undefined") {
+    const runtimeConfig = await getBrowserRuntimeConfig();
+    gateway = {
+      url: runtimeConfig.gatewayUrl,
+      error: runtimeConfig.error,
+    };
+  }
+
   if (!gateway.url) {
     throw new GatewayError(503, gateway.error ?? "Gateway URL is not configured");
   }

@@ -1,0 +1,105 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  clearBrowserRuntimeConfigForTesting,
+} from "../../apps/web/lib/browser-runtime-config";
+import { WSClient } from "../../apps/web/lib/ws";
+
+const originalFetch = globalThis.fetch;
+const originalWebSocket = globalThis.WebSocket;
+const originalWindow = globalThis.window;
+const originalNodeEnv = process.env["NODE_ENV"];
+const originalPublicGatewayUrl = process.env["NEXT_PUBLIC_GATEWAY_URL"];
+const originalPublicWsUrl = process.env["NEXT_PUBLIC_WS_URL"];
+
+class MockWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static instances: MockWebSocket[] = [];
+
+  readyState = MockWebSocket.CONNECTING;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+
+  constructor(public url: string) {
+    MockWebSocket.instances.push(this);
+    queueMicrotask(() => {
+      this.readyState = MockWebSocket.OPEN;
+      this.onopen?.();
+    });
+  }
+
+  send(_data: string): void {}
+
+  close(): void {
+    this.readyState = 3;
+    this.onclose?.();
+  }
+}
+
+describe("websocket runtime config", () => {
+  beforeEach(() => {
+    clearBrowserRuntimeConfigForTesting();
+    MockWebSocket.instances = [];
+    process.env["NODE_ENV"] = "production";
+    delete process.env["NEXT_PUBLIC_GATEWAY_URL"];
+    delete process.env["NEXT_PUBLIC_WS_URL"];
+    globalThis.window = {} as Window & typeof globalThis;
+    globalThis.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+  });
+
+  afterEach(() => {
+    clearBrowserRuntimeConfigForTesting();
+    globalThis.fetch = originalFetch;
+    globalThis.WebSocket = originalWebSocket;
+    globalThis.window = originalWindow;
+
+    if (originalNodeEnv === undefined) {
+      delete process.env["NODE_ENV"];
+    } else {
+      process.env["NODE_ENV"] = originalNodeEnv;
+    }
+
+    if (originalPublicGatewayUrl === undefined) {
+      delete process.env["NEXT_PUBLIC_GATEWAY_URL"];
+    } else {
+      process.env["NEXT_PUBLIC_GATEWAY_URL"] = originalPublicGatewayUrl;
+    }
+
+    if (originalPublicWsUrl === undefined) {
+      delete process.env["NEXT_PUBLIC_WS_URL"];
+    } else {
+      process.env["NEXT_PUBLIC_WS_URL"] = originalPublicWsUrl;
+    }
+  });
+
+  it("fetches runtime config before opening the websocket in the browser", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          gatewayUrl: "https://karna-gateway.onrender.com",
+          webSocketUrl: "wss://karna-gateway.onrender.com/ws",
+          configured: true,
+          error: null,
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    ) as typeof fetch;
+
+    const client = new WSClient();
+    client.connect("web-runtime-test");
+
+    await vi.waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+    expect(MockWebSocket.instances[0]?.url).toBe("wss://karna-gateway.onrender.com/ws");
+    await vi.waitFor(() => {
+      expect(client.state).toBe("connected");
+    });
+    expect(client.currentConfigurationError).toBeNull();
+  });
+});

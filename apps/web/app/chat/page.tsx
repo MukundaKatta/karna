@@ -47,7 +47,10 @@ export default function ChatPage() {
   useEffect(() => {
     const ws = getWSClient();
     setWsConfigError(ws.currentConfigurationError);
-    const unsubState = ws.onStateChange((state) => setWSState(state));
+    const unsubState = ws.onStateChange((state) => {
+      setWSState(state);
+      setWsConfigError(ws.currentConfigurationError);
+    });
     const unsubMsg = ws.onMessage((data) => {
       const msg = data as Record<string, unknown>;
       const type = msg.type as string;

@@ -50,6 +50,12 @@ function normalizeWebSocketUrl(value: string): string {
   throw new Error(`WebSocket URL must start with ws://, wss://, http://, or https://, received "${trimmed}"`);
 }
 
+export interface BrowserRuntimeConfig {
+  gatewayUrl: string | null;
+  webSocketUrl: string | null;
+  error: string | null;
+}
+
 export function resolveServerGatewayUrl(): {
   url: string | null;
   error: string | null;
@@ -152,5 +158,16 @@ export function resolvePublicWebSocketUrl(): {
   return {
     url: null,
     error: gatewayUrl.error ?? "Set NEXT_PUBLIC_WS_URL or NEXT_PUBLIC_GATEWAY_URL for browser websocket access",
+  };
+}
+
+export function resolveBrowserRuntimeConfig(): BrowserRuntimeConfig {
+  const gatewayUrl = resolvePublicGatewayUrl();
+  const webSocketUrl = resolvePublicWebSocketUrl();
+
+  return {
+    gatewayUrl: gatewayUrl.url,
+    webSocketUrl: webSocketUrl.url,
+    error: webSocketUrl.error ?? gatewayUrl.error,
   };
 }
