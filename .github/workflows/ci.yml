@@ -124,7 +124,7 @@ jobs:
       - name: Skip deploy when Vercel secrets are unavailable
         if: env.VERCEL_TOKEN == '' || env.VERCEL_ORG_ID == '' || env.VERCEL_PROJECT_ID == ''
         run: |
-          echo "::warning title=Vercel auto-deploy disabled::VERCEL_TOKEN, VERCEL_ORG_ID, or VERCEL_PROJECT_ID is not set. Production at karna-web.vercel.app will not be updated by this merge. Add the repo secrets at https://github.com/${{ github.repository }}/settings/secrets/actions to re-enable auto-deploy."
+          echo "::warning title=Vercel auto-deploy disabled::VERCEL_TOKEN, VERCEL_ORG_ID, or VERCEL_PROJECT_ID is not set. The optional Vercel mirror will not be updated by this merge. The primary public Render deployment is configured separately. Add the repo secrets at https://github.com/${{ github.repository }}/settings/secrets/actions to re-enable the Vercel mirror."
           echo "## \u26a0\ufe0f Vercel auto-deploy skipped" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "Required secrets missing. To re-enable:" >> "$GITHUB_STEP_SUMMARY"

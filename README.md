@@ -2,7 +2,7 @@
 
 > Karna is an AI chief of staff for chats, voice notes, and follow-through. It helps you capture what matters, remember context, and turn conversations into finished work across the channels you already use.
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-karna--web.vercel.app-blue?style=for-the-badge)](https://karna-web.vercel.app)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-karna--web--0osh.onrender.com-blue?style=for-the-badge)](https://karna-web-0osh.onrender.com/landing.html)
 [![License](https://img.shields.io/github/license/MukundaKatta/karna?style=flat-square)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/MukundaKatta/karna?style=flat-square)](https://github.com/MukundaKatta/karna/stargazers)
 [![Tools](https://img.shields.io/badge/tools-97+-green?style=flat-square)]()
@@ -115,7 +115,7 @@ pnpm --filter @karna/web dev
 # Open http://localhost:3000
 ```
 
-Or visit the hosted demo: [karna-web.vercel.app](https://karna-web.vercel.app)
+Or visit the hosted demo: [karna-web-0osh.onrender.com](https://karna-web-0osh.onrender.com/landing.html)
 </details>
 
 For a real public deployment, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the Render full-stack Blueprint and the Vercel-backed alternative.
