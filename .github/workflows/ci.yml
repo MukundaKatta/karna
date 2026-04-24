@@ -10,9 +10,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
-  install:
-    name: Install
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,41 +30,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Cache node_modules
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            node_modules
-            **/node_modules
-          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
-
-  build:
-    name: Build
-    needs: install
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Restore node_modules
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            **/node_modules
-          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
-
       - name: Build
         run: pnpm run build
 
   typecheck:
     name: Typecheck
-    needs: install
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,21 +44,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            **/node_modules
-          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm run typecheck
 
   test:
     name: Test
-    needs: install
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,14 +63,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
 
-      - name: Restore node_modules
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            node_modules
-            **/node_modules
-          key: node-modules-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Run tests
         run: pnpm run test
