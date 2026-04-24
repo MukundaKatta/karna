@@ -337,7 +337,7 @@ export default function SettingsPage() {
     : null;
 
   return (
-    <div className="p-4 sm:p-6 space-y-6 sm:space-y-8 max-w-6xl overflow-y-auto h-full">
+    <div className="h-full w-full overflow-y-auto p-4 sm:p-6 space-y-6 sm:space-y-8">
       {error && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
           {error}
