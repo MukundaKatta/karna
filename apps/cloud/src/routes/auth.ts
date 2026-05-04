@@ -30,6 +30,8 @@ const ForgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
+const DEFAULT_PASSWORD_RESET_REDIRECT_URL = "https://cloud.karna.ai/reset-password";
+
 // ─── Route Registration ─────────────────────────────────────────────────────
 
 export async function authRoutes(server: FastifyInstance): Promise<void> {
@@ -234,7 +236,7 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
 
     logger.info({ email }, "Password reset requested");
 
-    const redirectUrl = process.env["PASSWORD_RESET_REDIRECT_URL"] ?? "https://cloud.karna.ai/reset-password";
+    const redirectUrl = resolvePasswordResetRedirectUrl(process.env["PASSWORD_RESET_REDIRECT_URL"]);
 
     const { error } = await sb.auth.resetPasswordForEmail(email, {
       redirectTo: redirectUrl,
@@ -272,4 +274,33 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
       createdAt: profile?.created_at ?? null,
     });
   });
+}
+
+export function resolvePasswordResetRedirectUrl(value: string | undefined): string {
+  if (!value) {
+    return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const isLocalhost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1";
+    const protocolAllowed = parsed.protocol === "https:" || (isLocalhost && parsed.protocol === "http:");
+
+    if (!protocolAllowed) {
+      return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
+    }
+
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+
+    if (!parsed.pathname || parsed.pathname === "/") {
+      parsed.pathname = "/reset-password";
+    }
+
+    return parsed.toString();
+  } catch {
+    return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
+  }
 }
