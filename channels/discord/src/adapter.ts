@@ -54,6 +54,7 @@ export class DiscordAdapter {
   private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>();
   private isShuttingDown = false;
+  private slashCommandRegistration: Promise<void> | null = null;
 
   constructor(config: DiscordAdapterConfig) {
     this.config = {
@@ -92,6 +93,7 @@ export class DiscordAdapter {
     this.setupEventHandlers();
     await this.sessionMap.load();
     await this.connectToGateway();
+    await this.ensureSlashCommandsRegistered();
 
     this.client.once("ready", async () => {
       this.logger.info(
@@ -99,11 +101,7 @@ export class DiscordAdapter {
         "Discord bot ready",
       );
 
-      await registerSlashCommands(
-        this.config.botToken,
-        this.config.clientId,
-        this.logger,
-      );
+      await this.ensureSlashCommandsRegistered();
     });
 
     await this.client.login(this.config.botToken);
@@ -318,6 +316,18 @@ export class DiscordAdapter {
         }
       });
     });
+  }
+
+  private ensureSlashCommandsRegistered(): Promise<void> {
+    if (!this.slashCommandRegistration) {
+      this.slashCommandRegistration = registerSlashCommands(
+        this.config.botToken,
+        this.config.clientId,
+        this.logger,
+      );
+    }
+
+    return this.slashCommandRegistration;
   }
 
   private handleGatewayMessage(data: WebSocket.RawData): void {
