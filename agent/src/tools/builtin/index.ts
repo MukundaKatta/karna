@@ -17,7 +17,12 @@ import {
 } from "./files.js";
 
 // Web Search
-import { webSearchTool } from "./web-search.js";
+import {
+  webImageSearchTool,
+  webReadTool,
+  webSearchTool,
+  webSummarizeTool,
+} from "./web-search.js";
 
 // Calendar
 import {
@@ -141,6 +146,9 @@ export const allBuiltinTools = [
 
   // Web Search
   webSearchTool,
+  webReadTool,
+  webSummarizeTool,
+  webImageSearchTool,
 
   // Calendar
   calendarListEventsTool,
@@ -260,7 +268,13 @@ export {
   fileWriteTool,
   getFileAuditLog,
 } from "./files.js";
-export { webSearchTool } from "./web-search.js";
+export {
+  clearWebSearchStateForTests,
+  webImageSearchTool,
+  webReadTool,
+  webSearchTool,
+  webSummarizeTool,
+} from "./web-search.js";
 export {
   calendarListEventsTool,
   calendarGetEventTool,
