@@ -7,6 +7,7 @@ import {
   Coins,
   Hash,
   Activity,
+  ExternalLink,
 } from "lucide-react";
 import { StatsCard } from "@/components/StatsCard";
 import { LineChart } from "@/components/Chart";
@@ -208,9 +209,20 @@ export default function DashboardPage() {
           </span>
         </div>
       )}
-      <div className="pl-10 md:pl-0">
-        <h1 className="text-lg sm:text-xl font-semibold text-white">Dashboard</h1>
-        <p className="text-xs sm:text-sm text-dark-400 mt-1">Overview of your Karna instance</p>
+      <div className="pl-10 md:pl-0 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-lg sm:text-xl font-semibold text-white">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-dark-400 mt-1">Overview of your Karna instance</p>
+        </div>
+        <a
+          href="https://api.slack.com/apps?new_app=1"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex w-fit items-center gap-2 rounded-lg border border-dark-600 bg-dark-800 px-3 py-2 text-sm font-medium text-dark-100 transition-colors hover:border-primary-500 hover:text-white"
+        >
+          Add to Slack
+          <ExternalLink size={14} />
+        </a>
       </div>
 
       {/* Stats cards */}

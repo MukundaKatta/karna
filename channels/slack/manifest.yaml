@@ -1,0 +1,51 @@
+display_information:
+  name: Karna
+  description: Loyal AI agent for Slack workspaces
+  background_color: "#111827"
+
+features:
+  bot_user:
+    display_name: Karna
+    always_online: true
+  slash_commands:
+    - command: /ask
+      url: https://example.com/slack/commands
+      description: Ask Karna a question
+      usage_hint: summarize the latest deployment notes
+      should_escape: false
+    - command: /remember
+      url: https://example.com/slack/commands
+      description: Ask Karna to remember something
+      usage_hint: the staging API key rotates monthly
+      should_escape: false
+    - command: /skills
+      url: https://example.com/slack/commands
+      description: Show Karna skills
+      usage_hint: ""
+      should_escape: false
+
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read
+      - channels:history
+      - channels:read
+      - chat:write
+      - commands
+      - files:read
+      - im:history
+      - im:write
+      - users:read
+
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.im
+  interactivity:
+    is_enabled: true
+    request_url: https://example.com/slack/commands
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
