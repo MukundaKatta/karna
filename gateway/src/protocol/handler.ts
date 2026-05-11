@@ -5,6 +5,7 @@ import type {
   ProtocolMessage,
   ConnectMessage,
   ChatMessage,
+  ChatCancelMessage,
   SkillInvokeMessage,
   VoiceStartMessage,
   VoiceAudioChunkMessage,
@@ -550,6 +551,10 @@ export async function handleMessage(
         await handleChatMessage(ws, message, context);
         break;
 
+      case "chat.cancel":
+        await handleChatCancel(ws, message, context);
+        break;
+
       case "tool.approval.response":
         await handleToolApprovalResponse(ws, message, context);
         break;
@@ -616,6 +621,39 @@ export async function handleMessage(
 }
 
 // ─── Individual Handlers ────────────────────────────────────────────────────
+
+async function handleChatCancel(
+  ws: WebSocket,
+  message: ChatCancelMessage,
+  context: ConnectionContext,
+): Promise<void> {
+  const result = await restartGatewayRuntime();
+  logger.info(
+    {
+      sessionId: message.sessionId,
+      reason: message.payload?.reason,
+      hadActiveOrchestrator: result.hadActiveOrchestrator,
+      clearedPendingApprovals: result.clearedPendingApprovals,
+    },
+    "Cancelled active chat turn",
+  );
+
+  sendMessage(ws, {
+    id: nanoid(),
+    type: "status",
+    timestamp: Date.now(),
+    sessionId: message.sessionId,
+    payload: {
+      state: "idle",
+      message: "Cancelled the active agent turn.",
+      progress: 1,
+    },
+  });
+
+  if (message.sessionId) {
+    context.sessionManager.updateSessionStatus(message.sessionId, "idle");
+  }
+}
 
 async function handleConnect(
   ws: WebSocket,

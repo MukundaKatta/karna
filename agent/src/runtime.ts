@@ -446,11 +446,16 @@ export class AgentRuntime {
         agentId: agent.id,
         userId: session.userId,
         workingDirectory: undefined,
+        signal: this.abortController?.signal,
       });
 
       messages.push({
         role: "tool",
-        content: JSON.stringify(result.isError ? { error: result.errorMessage } : result.output),
+        content: JSON.stringify(
+          result.isError
+            ? { error: result.errorMessage, code: result.errorCode }
+            : result.output,
+        ),
         toolCallId: toolUse.id,
         toolName: toolUse.name,
       });

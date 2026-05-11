@@ -7,6 +7,7 @@ export const MessageTypeSchema = z.enum([
   "connect.challenge",
   "connect.ack",
   "chat.message",
+  "chat.cancel",
   "agent.response",
   "agent.response.stream",
   "tool.approval.requested",
@@ -88,6 +89,15 @@ export const ChatMessageSchema = BaseMessageSchema.extend({
       .optional(),
     metadata: z.record(z.unknown()).optional(),
   }),
+});
+
+export const ChatCancelMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("chat.cancel"),
+  payload: z
+    .object({
+      reason: z.string().min(1).optional(),
+    })
+    .optional(),
 });
 
 // ─── Agent Response Messages ─────────────────────────────────────────────────
@@ -339,6 +349,7 @@ export const ProtocolMessageSchema = z.discriminatedUnion("type", [
   ConnectChallengeMessageSchema,
   ConnectAckMessageSchema,
   ChatMessageSchema,
+  ChatCancelMessageSchema,
   AgentResponseMessageSchema,
   AgentResponseStreamMessageSchema,
   ToolApprovalRequestedMessageSchema,
@@ -369,6 +380,7 @@ export type ConnectMessage = z.infer<typeof ConnectMessageSchema>;
 export type ConnectChallengeMessage = z.infer<typeof ConnectChallengeMessageSchema>;
 export type ConnectAckMessage = z.infer<typeof ConnectAckMessageSchema>;
 export type ChatMessage = z.infer<typeof ChatMessageSchema>;
+export type ChatCancelMessage = z.infer<typeof ChatCancelMessageSchema>;
 export type AgentResponseMessage = z.infer<typeof AgentResponseMessageSchema>;
 export type AgentResponseStreamMessage = z.infer<typeof AgentResponseStreamMessageSchema>;
 export type ToolApprovalRequestedMessage = z.infer<typeof ToolApprovalRequestedMessageSchema>;

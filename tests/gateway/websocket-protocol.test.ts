@@ -123,6 +123,77 @@ describe("gateway websocket protocol", () => {
     expect(context.connectedClients.size).toBe(1);
   });
 
+  it("handles chat.cancel by aborting active runtime work", async () => {
+    const ws = createSocket();
+    const sessionManager = new SessionManager({ flushIntervalMs: 300_000 });
+    const session = sessionManager.createSession("agent-1", "webchat", "user-1");
+    const context = createContext({
+      ws: ws as never,
+      sessionManager,
+      auth: createAuthContext("user-1", "operator"),
+    });
+    let shutdownCalls = 0;
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      async shutdown() {
+        shutdownCalls += 1;
+      },
+      setStreamCallback() {},
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "ok",
+          totalTokens: { inputTokens: 0, outputTokens: 0 },
+          agentId: "agent-1",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "chat-1",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          content: "start",
+          role: "user",
+        },
+      },
+      context,
+    );
+    await handleMessage(
+      ws as never,
+      {
+        id: "cancel-1",
+        type: "chat.cancel",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: { reason: "user_cancelled" },
+      },
+      context,
+    );
+
+    expect(shutdownCalls).toBe(1);
+    expect(sessionManager.getSession(session.id)?.status).toBe("idle");
+    expect(ws.sent).toContainEqual(
+      expect.objectContaining({
+        type: "status",
+        sessionId: session.id,
+        payload: expect.objectContaining({
+          state: "idle",
+          message: "Cancelled the active agent turn.",
+        }),
+      }),
+    );
+  });
+
   it("preserves adapter-provided session ids on connect and reuse", async () => {
     const ws = createSocket();
     const context = createContext({ ws: ws as never });

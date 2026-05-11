@@ -5,7 +5,16 @@ import type { ToolDefinitionRuntime, ToolExecutionContext, ToolResult } from "./
 
 const logger = pino({ name: "tool-executor" });
 
-const DEFAULT_TIMEOUT_MS = 30_000;
+export const TOOL_TIMEOUT_ERROR_CODE = "TOOL_TIMEOUT";
+
+const RISK_TIMEOUT_MS = {
+  low: 10_000,
+  medium: 30_000,
+  high: 60_000,
+  critical: 120_000,
+} as const;
+
+const toolTimeoutCounts = new Map<string, number>();
 
 /**
  * Execute a tool with timeout handling, input validation, and error wrapping.
@@ -19,7 +28,7 @@ export async function executeTool(
   context: ToolExecutionContext
 ): Promise<ToolResult> {
   const startTime = Date.now();
-  const timeout = tool.timeout ?? DEFAULT_TIMEOUT_MS;
+  const timeout = resolveToolTimeout(tool);
 
   logger.info(
     { tool: tool.name, sessionId: context.sessionId, timeout },
@@ -45,7 +54,7 @@ export async function executeTool(
 
   try {
     const result = await executeWithTimeout(
-      () => tool.execute(input, context),
+      (signal) => tool.execute(input, { ...context, signal }),
       timeout,
       tool.name
     );
@@ -68,13 +77,30 @@ export async function executeTool(
       "Tool execution failed"
     );
 
+    if (error instanceof ToolTimeoutError) {
+      toolTimeoutCounts.set(tool.name, (toolTimeoutCounts.get(tool.name) ?? 0) + 1);
+    }
+
     return {
       output: null,
       isError: true,
       errorMessage,
+      errorCode: error instanceof ToolTimeoutError ? TOOL_TIMEOUT_ERROR_CODE : undefined,
       durationMs,
     };
   }
+}
+
+export function getToolTimeoutMetrics(): Record<string, number> {
+  return Object.fromEntries(toolTimeoutCounts);
+}
+
+export function resetToolTimeoutMetricsForTests(): void {
+  toolTimeoutCounts.clear();
+}
+
+export function resolveToolTimeout(tool: ToolDefinitionRuntime): number {
+  return tool.timeout > 0 ? tool.timeout : RISK_TIMEOUT_MS[tool.riskLevel];
 }
 
 /**
@@ -82,16 +108,18 @@ export async function executeTool(
  * error if the operation exceeds the allowed duration.
  */
 async function executeWithTimeout<T>(
-  fn: () => Promise<T>,
+  fn: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number,
   toolName: string
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
+    const controller = new AbortController();
     const timer = setTimeout(() => {
+      controller.abort(new ToolTimeoutError(toolName, timeoutMs));
       reject(new ToolTimeoutError(toolName, timeoutMs));
     }, timeoutMs);
 
-    fn()
+    fn(controller.signal)
       .then((result) => {
         clearTimeout(timer);
         resolve(result);
