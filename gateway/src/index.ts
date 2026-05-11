@@ -11,6 +11,7 @@ import {
   type BandwidthTracker,
   type MessageRateBucket,
 } from "./protocol/limits.js";
+import { startWebSocketPingPong } from "./protocol/ping-pong.js";
 import { handleMessage, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
 import { SessionManager } from "./session/manager.js";
 import { HeartbeatScheduler } from "./heartbeat/scheduler.js";
@@ -278,6 +279,11 @@ async function main(): Promise<void> {
     }
 
     logger.info({ connectionId }, "WebSocket connection opened");
+    const pingPong = startWebSocketPingPong(socket, {
+      onPingError: (error) => {
+        logger.warn({ connectionId, error: String(error) }, "WebSocket ping failed");
+      },
+    });
 
     const context: ConnectionContext = {
       ws: socket,
@@ -391,6 +397,7 @@ async function main(): Promise<void> {
     });
 
     socket.on("close", (code: number, reason: Buffer) => {
+      pingPong.stop();
       logger.info(
         { connectionId, code, reason: reason.toString("utf-8") },
         "WebSocket connection closed",
