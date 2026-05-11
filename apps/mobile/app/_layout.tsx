@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { Stack, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
+import * as Network from 'expo-network';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Animated, Image, StyleSheet } from 'react-native';
@@ -36,6 +37,8 @@ function RootLayoutInner() {
   const addReminder = useAppStore((s) => s.addReminder);
   const setMemorySearchQuery = useAppStore((s) => s.setMemorySearchQuery);
   const setAuthCallbackCode = useAppStore((s) => s.setAuthCallbackCode);
+  const setStatus = useAppStore((s) => s.setStatus);
+  const setNetworkType = useAppStore((s) => s.setNetworkType);
   const colors = getColors(darkMode ? 'dark' : 'light');
   const router = useRouter();
   const notificationListenerRef = useRef<ReturnType<typeof addNotificationReceivedListener>>();
@@ -127,15 +130,39 @@ function RootLayoutInner() {
   // Connect to gateway
   useEffect(() => {
     if (!isBootstrapped) return;
+    let cancelled = false;
 
-    if (url) {
+    async function connectIfOnline() {
+      if (!url) {
+        setConnectionAttempted(true);
+        return;
+      }
+
+      try {
+        const networkState = await Network.getNetworkStateAsync();
+        if (cancelled) return;
+
+        if (networkState.isConnected === false) {
+          setNetworkType('offline');
+          setStatus('disconnected');
+          setConnectionAttempted(true);
+          return;
+        }
+      } catch {
+        if (cancelled) return;
+        setNetworkType('unknown');
+      }
+
       gatewayClient.connect(url, token);
+      setConnectionAttempted(true);
     }
-    setConnectionAttempted(true);
+
+    void connectIfOnline();
     return () => {
+      cancelled = true;
       gatewayClient.disconnect();
     };
-  }, [isBootstrapped, url, token]);
+  }, [isBootstrapped, setNetworkType, setStatus, url, token]);
 
   useEffect(() => {
     if (!isBootstrapped || !connectionAttempted || !showLaunchScreen) return;

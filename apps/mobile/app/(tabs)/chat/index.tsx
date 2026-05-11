@@ -47,6 +47,8 @@ export default function ChatScreen() {
   const isTyping = useAppStore((s) => s.isTyping);
   const connectionStatus = useAppStore((s) => s.status);
   const connectionQuality = useAppStore((s) => s.connectionQuality);
+  const gatewayUrl = useAppStore((s) => s.url);
+  const gatewayToken = useAppStore((s) => s.token);
   const setNetworkType = useAppStore((s) => s.setNetworkType);
   const colors = getColors(darkMode ? "dark" : "light");
 
@@ -95,6 +97,19 @@ export default function ChatScreen() {
   const handleRefresh = useCallback(() => {
     void gatewayClient.loadChatHistory(20);
   }, []);
+
+  const handleRetryConnection = useCallback(async () => {
+    try {
+      const state = await Network.getNetworkStateAsync();
+      setNetworkType(mapExpoNetworkType(state.type, Boolean(state.isConnected)));
+      if (state.isConnected === false) return;
+    } catch {
+      setNetworkType("unknown");
+    }
+
+    gatewayClient.disconnect();
+    gatewayClient.connect(gatewayUrl, gatewayToken);
+  }, [gatewayToken, gatewayUrl, setNetworkType]);
 
   const renderMessage = useCallback(
     ({ item }: ListRenderItemInfo<ChatMessage>) => (
@@ -191,14 +206,17 @@ export default function ChatScreen() {
 
       {/* Connection Status Bar */}
       {connectionStatus !== "connected" && (
-        <View
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry gateway connection"
+          onPress={handleRetryConnection}
           style={[styles.statusBar, { backgroundColor: statusColor + "20" }]}
         >
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
           <Text style={[styles.statusText, { color: statusColor }]}>
-            {statusLabel}
+            {statusLabel} · Tap to retry
           </Text>
-        </View>
+        </Pressable>
       )}
 
       {showSlowWarning && (
