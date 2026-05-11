@@ -4,6 +4,11 @@ import {
   isLegacyLocalGatewayUrl,
   resolveDefaultMobileGatewayWsUrl,
 } from "./runtime-config";
+import {
+  buildConnectionQuality,
+  type ConnectionQuality,
+  type MobileNetworkType,
+} from "./connection-quality";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
@@ -151,6 +156,10 @@ interface ConnectionSlice {
   setStatus: (status: ConnectionStatus) => void;
   setUrl: (url: string) => void;
   setToken: (token: string) => void;
+  connectionQuality: ConnectionQuality;
+  setLatency: (latencyMs: number | null) => void;
+  setReconnectAttempts: (attempts: number) => void;
+  setNetworkType: (networkType: MobileNetworkType) => void;
 }
 
 interface ChatSlice {
@@ -215,9 +224,31 @@ export const useAppStore = create<AppState>()((set) => ({
   status: "disconnected",
   url: resolveDefaultMobileGatewayWsUrl(),
   token: "",
+  connectionQuality: buildConnectionQuality({}),
   setStatus: (status) => set({ status }),
   setUrl: (url) => set({ url }),
   setToken: (token) => set({ token }),
+  setLatency: (latencyMs) =>
+    set((state) => ({
+      connectionQuality: buildConnectionQuality({
+        ...state.connectionQuality,
+        latencyMs,
+      }),
+    })),
+  setReconnectAttempts: (reconnectAttempts) =>
+    set((state) => ({
+      connectionQuality: buildConnectionQuality({
+        ...state.connectionQuality,
+        reconnectAttempts,
+      }),
+    })),
+  setNetworkType: (networkType) =>
+    set((state) => ({
+      connectionQuality: buildConnectionQuality({
+        ...state.connectionQuality,
+        networkType,
+      }),
+    })),
 
   // Chat
   messages: [],

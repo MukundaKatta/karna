@@ -46,6 +46,7 @@ class GatewayClient {
     this.token = token;
     this.intentionalClose = false;
     this.reconnectAttempts = 0;
+    useAppStore.getState().setReconnectAttempts(0);
     void this.establishConnection();
   }
 
@@ -61,7 +62,10 @@ class GatewayClient {
     }
     this.sessionId = null;
     this.pendingStreamMessageId = null;
-    useAppStore.getState().setStatus("disconnected");
+    const store = useAppStore.getState();
+    store.setStatus("disconnected");
+    store.setReconnectAttempts(0);
+    store.setLatency(null);
   }
 
   send(message: ProtocolMessage): void {
@@ -103,7 +107,13 @@ class GatewayClient {
       type: "chat.message",
       timestamp: Date.now(),
       sessionId: this.sessionId ?? undefined,
-      payload: { content, role: "user" },
+      payload: {
+        content,
+        role: "user",
+        metadata: store.connectionQuality.compactMode
+          ? { compactMode: true, stream: false }
+          : undefined,
+      },
     });
   }
 
@@ -215,7 +225,9 @@ class GatewayClient {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
-        useAppStore.getState().setStatus("connecting");
+        const currentStore = useAppStore.getState();
+        currentStore.setStatus("connecting");
+        currentStore.setReconnectAttempts(0);
         console.log("[GatewayClient] WebSocket opened");
 
         this.send({
@@ -246,6 +258,12 @@ class GatewayClient {
             useAppStore.getState().setStatus("connected");
           }
           if (message.type === "heartbeat.check") {
+            const serverTime = message.payload?.serverTime;
+            if (typeof serverTime === "number") {
+              useAppStore
+                .getState()
+                .setLatency(Math.max(0, Date.now() - serverTime));
+            }
             this.send({
               id: generateId(),
               type: "heartbeat.ack",
@@ -295,6 +313,7 @@ class GatewayClient {
 
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
     this.reconnectAttempts++;
+    useAppStore.getState().setReconnectAttempts(this.reconnectAttempts);
     console.log(
       `[GatewayClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
     );
