@@ -346,6 +346,7 @@
     <button id="sendButton" disabled>Send</button>
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
   <script>
     const chatContainer = document.getElementById('chatContainer');
     const messageInput = document.getElementById('messageInput');
@@ -535,7 +536,18 @@
       // Line breaks
       html = html.replace(/\n/g, '<br>');
 
-      return html;
+      return sanitizeHtml(html);
+    }
+
+    function sanitizeHtml(html) {
+      if (!window.DOMPurify) {
+        return escapeHtml(html);
+      }
+
+      return window.DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['br', 'code', 'em', 'pre', 'strong'],
+        ALLOWED_ATTR: [],
+      });
     }
 
     function escapeHtml(text) {
