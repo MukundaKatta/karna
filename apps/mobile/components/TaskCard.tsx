@@ -5,6 +5,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAppStore, type Reminder } from '@/lib/store';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
+import { formatReminderDueDate } from '@/lib/date-format';
 
 interface TaskCardProps {
   reminder: Reminder;
@@ -36,12 +37,7 @@ export function TaskCard({
   }[reminder.status];
 
   const dueDateStr = reminder.dueDate
-    ? new Date(reminder.dueDate).toLocaleDateString(undefined, {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })
+    ? formatReminderDueDate(reminder.dueDate)
     : null;
 
   const isOverdue =
