@@ -135,6 +135,27 @@ export interface ToolPlugin {
 
 /**
  * Create a ToolPlugin with type inference and defaults.
+ *
+ * @example
+ * ```ts
+ * import { defineTool } from "@karna/plugin-sdk";
+ *
+ * export const echoTool = defineTool({
+ *   name: "echo",
+ *   description: "Echo text back to the user",
+ *   riskLevel: "low",
+ *   parameters: {
+ *     type: "object",
+ *     properties: {
+ *       text: { type: "string", description: "Text to echo" },
+ *     },
+ *     required: ["text"],
+ *   },
+ *   async execute(input) {
+ *     return { output: String(input.text), isError: false };
+ *   },
+ * });
+ * ```
  */
 export function defineTool(tool: ToolPlugin): ToolPlugin {
   return {

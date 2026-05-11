@@ -103,6 +103,18 @@ const DEFAULT_MAX_HISTORY = 50;
  * 6. Handle tool_use blocks (approval -> execute -> feed back)
  * 7. Extract and store new memories
  * 8. Return the final response
+ *
+ * @example
+ * ```ts
+ * const runtime = new AgentRuntime(toolRegistry, memoryStore);
+ * await runtime.init();
+ * const result = await runtime.run({
+ *   message: "Summarize my latest notes",
+ *   session,
+ *   agent,
+ *   conversationHistory: [],
+ * });
+ * ```
  */
 export class AgentRuntime {
   private readonly toolRegistry: ToolRegistry;
