@@ -3,6 +3,8 @@ export interface WebSocketLimitConfig {
   maxMediaPayloadBytes: number;
   bandwidthWindowMs: number;
   maxBandwidthBytesPerWindow: number;
+  chatMessagesPerMinute: number;
+  otherMessagesPerMinute: number;
 }
 
 export interface BandwidthTracker {
@@ -17,6 +19,18 @@ export interface MessageLimitResult {
   sizeBytes: number;
 }
 
+export interface MessageRateBucket {
+  windowStartedAt: number;
+  count: number;
+}
+
+export interface MessageRateResult {
+  ok: boolean;
+  limit: number;
+  remaining: number;
+  resetAt: number;
+}
+
 const MEDIA_MESSAGE_TYPES = new Set([
   "voice.audio.chunk",
   "voice.audio.response",
@@ -27,6 +41,8 @@ export function resolveWebSocketLimitConfig(config: {
   maxMediaPayloadBytes?: number;
   bandwidthWindowMs?: number;
   maxBandwidthBytesPerWindow?: number;
+  chatMessagesPerMinute?: number;
+  otherMessagesPerMinute?: number;
 }): WebSocketLimitConfig {
   const maxPayloadBytes = config.maxPayloadBytes ?? 1_048_576;
   const maxMediaPayloadBytes = config.maxMediaPayloadBytes ?? 10_485_760;
@@ -35,6 +51,8 @@ export function resolveWebSocketLimitConfig(config: {
     maxMediaPayloadBytes,
     bandwidthWindowMs: config.bandwidthWindowMs ?? 60_000,
     maxBandwidthBytesPerWindow: config.maxBandwidthBytesPerWindow ?? maxMediaPayloadBytes * 6,
+    chatMessagesPerMinute: config.chatMessagesPerMinute ?? 10,
+    otherMessagesPerMinute: config.otherMessagesPerMinute ?? 30,
   };
 }
 
@@ -76,6 +94,33 @@ export function validateWebSocketMessageSize(
   }
 
   return { ok: true, sizeBytes };
+}
+
+export function checkWebSocketMessageRate(
+  messageType: string,
+  bucket: MessageRateBucket,
+  limits: WebSocketLimitConfig,
+  now = Date.now(),
+): MessageRateResult {
+  const windowMs = 60_000;
+  if (now - bucket.windowStartedAt >= windowMs) {
+    bucket.windowStartedAt = now;
+    bucket.count = 0;
+  }
+
+  const limit = messageType === "chat.message"
+    ? limits.chatMessagesPerMinute
+    : limits.otherMessagesPerMinute;
+
+  bucket.count++;
+  const remaining = Math.max(0, limit - bucket.count);
+
+  return {
+    ok: bucket.count <= limit,
+    limit,
+    remaining,
+    resetAt: bucket.windowStartedAt + windowMs,
+  };
 }
 
 function sniffProtocolType(rawData: Buffer | string): string | undefined {

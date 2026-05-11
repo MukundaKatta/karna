@@ -15,6 +15,8 @@ export const GatewayConfigSchema = z.object({
       maxMediaPayloadBytes: z.number().int().positive().default(10_485_760),
       bandwidthWindowMs: z.number().int().positive().default(60_000),
       maxBandwidthBytesPerWindow: z.number().int().positive().default(62_914_560),
+      chatMessagesPerMinute: z.number().int().positive().default(10),
+      otherMessagesPerMinute: z.number().int().positive().default(30),
     })
     .default({}),
   cors: z

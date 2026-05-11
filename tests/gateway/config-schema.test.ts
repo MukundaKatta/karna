@@ -18,6 +18,8 @@ describe("Config Schema", () => {
       expect(config.sessionTimeoutMs).toBe(3_600_000);
       expect(config.websocket.maxPayloadBytes).toBe(1_048_576);
       expect(config.websocket.maxMediaPayloadBytes).toBe(10_485_760);
+      expect(config.websocket.chatMessagesPerMinute).toBe(10);
+      expect(config.websocket.otherMessagesPerMinute).toBe(30);
       expect(config.cors.origins).toEqual([]);
     });
 

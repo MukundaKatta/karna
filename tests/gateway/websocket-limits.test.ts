@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkWebSocketMessageRate,
   resolveWebSocketLimitConfig,
   validateWebSocketMessageSize,
+  type MessageRateBucket,
   type BandwidthTracker,
 } from "../../gateway/src/protocol/limits.js";
 
@@ -11,6 +13,8 @@ describe("websocket message limits", () => {
     maxMediaPayloadBytes: 1_000,
     bandwidthWindowMs: 60_000,
     maxBandwidthBytesPerWindow: 10_000,
+    chatMessagesPerMinute: 2,
+    otherMessagesPerMinute: 3,
   });
 
   it("rejects regular messages over the default payload limit", () => {
@@ -60,5 +64,21 @@ describe("websocket message limits", () => {
     const result = validateWebSocketMessageSize(message, tightLimits, tracker, 3);
     expect(result.ok).toBe(false);
     expect(result.code).toBe("BANDWIDTH_LIMIT_EXCEEDED");
+  });
+
+  it("rate limits chat messages separately from other protocol messages", () => {
+    const chatBucket: MessageRateBucket = { windowStartedAt: 0, count: 0 };
+    const otherBucket: MessageRateBucket = { windowStartedAt: 0, count: 0 };
+
+    expect(checkWebSocketMessageRate("chat.message", chatBucket, limits, 1).ok).toBe(true);
+    expect(checkWebSocketMessageRate("chat.message", chatBucket, limits, 2).ok).toBe(true);
+    expect(checkWebSocketMessageRate("chat.message", chatBucket, limits, 3)).toMatchObject({
+      ok: false,
+      limit: 2,
+    });
+
+    expect(checkWebSocketMessageRate("heartbeat.ack", otherBucket, limits, 4).ok).toBe(true);
+    expect(checkWebSocketMessageRate("heartbeat.ack", otherBucket, limits, 5).ok).toBe(true);
+    expect(checkWebSocketMessageRate("heartbeat.ack", otherBucket, limits, 6).ok).toBe(true);
   });
 });

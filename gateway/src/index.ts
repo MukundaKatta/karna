@@ -5,9 +5,11 @@ import pino from "pino";
 import { nanoid } from "nanoid";
 import { parseMessageDetailed } from "./protocol/schema.js";
 import {
+  checkWebSocketMessageRate,
   resolveWebSocketLimitConfig,
   validateWebSocketMessageSize,
   type BandwidthTracker,
+  type MessageRateBucket,
 } from "./protocol/limits.js";
 import { handleMessage, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
 import { SessionManager } from "./session/manager.js";
@@ -246,6 +248,7 @@ async function main(): Promise<void> {
       windowStartedAt: Date.now(),
       bytes: 0,
     };
+    const rateBuckets = new Map<string, MessageRateBucket>();
     if (!isGatewayOriginAllowed(requestOrigin, corsOrigins)) {
       logger.warn({ connectionId, requestOrigin }, "Rejected WebSocket connection from untrusted origin");
       socket.close(1008, "Origin not allowed");
@@ -323,6 +326,35 @@ async function main(): Promise<void> {
         if (invalidMessageCount >= 5) {
           socket.close(1008, "Too many invalid protocol messages");
         }
+        return;
+      }
+
+      const rateKey = `${parsed.message.sessionId ?? connectionId}:${parsed.message.type}`;
+      const rateBucket = rateBuckets.get(rateKey) ?? {
+        windowStartedAt: Date.now(),
+        count: 0,
+      };
+      rateBuckets.set(rateKey, rateBucket);
+      const rateResult = checkWebSocketMessageRate(
+        parsed.message.type,
+        rateBucket,
+        websocketLimits,
+      );
+      if (!rateResult.ok) {
+        socket.send(
+          JSON.stringify({
+            id: nanoid(),
+            type: "error",
+            timestamp: Date.now(),
+            payload: {
+              code: "rate_limit_exceeded",
+              message: "Too many WebSocket messages. Please wait before retrying.",
+              retryable: true,
+              limit: rateResult.limit,
+              resetAt: rateResult.resetAt,
+            },
+          }),
+        );
         return;
       }
 
