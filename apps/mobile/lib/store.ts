@@ -137,6 +137,16 @@ export interface ToolCall {
   duration?: number;
 }
 
+export interface ToolApprovalRequest {
+  toolCallId: string;
+  toolName: string;
+  riskLevel: "low" | "medium" | "high" | "critical";
+  arguments?: Record<string, unknown>;
+  description?: string;
+  requestedAt: number;
+  expiresAt: number;
+}
+
 export interface Reminder {
   id: string;
   title: string;
@@ -182,10 +192,12 @@ interface ChatSlice {
   messages: ChatMessage[];
   chatDraft: string;
   isTyping: boolean;
+  pendingToolApproval: ToolApprovalRequest | null;
   setChatDraft: (draft: string) => void;
   addMessage: (message: ChatMessage) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   setTyping: (typing: boolean) => void;
+  setPendingToolApproval: (request: ToolApprovalRequest | null) => void;
   clearChat: () => void;
   loadOlderMessages: (messages: ChatMessage[]) => void;
 }
@@ -272,6 +284,7 @@ export const useAppStore = create<AppState>()((set) => ({
   messages: [],
   chatDraft: "",
   isTyping: false,
+  pendingToolApproval: null,
   setChatDraft: (chatDraft) => set({ chatDraft }),
   addMessage: (message) =>
     set((state) => {
@@ -294,6 +307,7 @@ export const useAppStore = create<AppState>()((set) => ({
       return { messages };
     }),
   setTyping: (isTyping) => set({ isTyping }),
+  setPendingToolApproval: (pendingToolApproval) => set({ pendingToolApproval }),
   clearChat: () =>
     set((state) => {
       persistStateImmediately({

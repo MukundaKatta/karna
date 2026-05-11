@@ -23,6 +23,7 @@ import { getColors, Typography, Spacing, BorderRadius } from "@/lib/theme";
 import { ChatBubble } from "@/components/ChatBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { VoiceInput } from "@/components/VoiceInput";
+import { ToolApprovalModal } from "@/components/ToolApprovalModal";
 import { playHaptic } from "@/lib/haptics";
 
 function mapExpoNetworkType(
@@ -335,6 +336,7 @@ export default function ChatScreen() {
           )}
         </View>
       </View>
+      <ToolApprovalModal />
     </KeyboardAvoidingView>
   );
 }
