@@ -13,6 +13,7 @@ import { getWSClient } from "@/lib/ws";
 import { ChatMessage } from "@/components/ChatMessage";
 import { Badge } from "@/components/Badge";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
+import { WEB_SHORTCUT_EVENTS } from "@/lib/keyboard-shortcuts";
 
 export default function ChatPage() {
   const {
@@ -259,7 +260,7 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const content = input.trim();
     if (!content || agentState === "thinking" || agentState === "streaming") return;
     // Guard: if the gateway isn't connected we'd otherwise leave the user
@@ -287,7 +288,17 @@ export default function ChatPage() {
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
-  };
+  }, [activeSessionId, addMessage, agentState, input, setAgentState, wsState]);
+
+  const handleNewChat = useCallback(() => {
+    setInput("");
+    setMessages([]);
+    setActiveSession(null);
+    resetStream();
+    streamMessageIdRef.current = null;
+    setAgentState("idle");
+    inputRef.current?.focus();
+  }, [resetStream, setActiveSession, setAgentState, setMessages]);
 
   const handleToolApproval = (toolCallId: string, approved: boolean) => {
     const ws = getWSClient();
@@ -308,6 +319,24 @@ export default function ChatPage() {
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
+
+  useEffect(() => {
+    const sendChat = () => handleSend();
+    const newChat = () => handleNewChat();
+    const toggleVoice = () => setVoiceMode((open) => !open);
+    const closeOverlays = () => setVoiceMode(false);
+
+    window.addEventListener(WEB_SHORTCUT_EVENTS.sendChat, sendChat);
+    window.addEventListener(WEB_SHORTCUT_EVENTS.newChat, newChat);
+    window.addEventListener(WEB_SHORTCUT_EVENTS.toggleVoice, toggleVoice);
+    window.addEventListener(WEB_SHORTCUT_EVENTS.closeOverlays, closeOverlays);
+    return () => {
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.sendChat, sendChat);
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.newChat, newChat);
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.toggleVoice, toggleVoice);
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.closeOverlays, closeOverlays);
+    };
+  }, [handleNewChat, handleSend]);
 
   return (
     <div className="flex flex-col h-full">
@@ -432,7 +461,7 @@ export default function ChatPage() {
           <button
             onClick={() => setVoiceMode(true)}
             className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
-            title="Voice input"
+            title="Voice input (Cmd/Ctrl Shift V)"
           >
             <Mic size={18} />
           </button>
@@ -453,7 +482,7 @@ export default function ChatPage() {
                 ? "bg-accent-600 text-white hover:bg-accent-500 active:scale-95"
                 : "bg-dark-700 text-dark-500 cursor-not-allowed",
             )}
-            title={wsState === "connected" ? "Send message" : "Gateway not connected"}
+            title={wsState === "connected" ? "Send message (Cmd/Ctrl Enter)" : "Gateway not connected"}
           >
             {agentState === "thinking" || agentState === "streaming" ? (
               <Loader2 size={18} className="animate-spin" />

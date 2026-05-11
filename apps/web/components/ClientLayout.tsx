@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { Sidebar } from "./Sidebar";
+import { KeyboardShortcuts } from "./KeyboardShortcuts";
 
 export function ClientLayout({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
@@ -29,6 +30,7 @@ export function ClientLayout({ children }: { children: React.ReactNode }) {
       <main key={pathname} className="flex-1 overflow-hidden min-w-0">
         {children}
       </main>
+      <KeyboardShortcuts />
     </div>
   );
 }

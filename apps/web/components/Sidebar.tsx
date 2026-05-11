@@ -261,6 +261,7 @@ export function Sidebar() {
         <button
           onClick={toggleSidebar}
           className="flex items-center justify-center w-full p-2 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700/50 transition-colors"
+          title="Toggle sidebar (Cmd/Ctrl /)"
         >
           {sidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
         </button>
