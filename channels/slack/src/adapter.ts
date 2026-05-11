@@ -133,15 +133,20 @@ export class SlackAdapter {
       // Ignore bot messages and subtypes (edits, deletes, etc.)
       if (msg.subtype) return;
       if (!("text" in msg) || !msg.text) return;
-      if (msg.channel_type !== "im" && msg.channel_type !== "mpim") return;
 
       const channel = msg.channel;
       const threadTs = msg.thread_ts ?? msg.ts;
       const text = msg.text;
+      const isDirectMessage =
+        msg.channel_type === "im" || msg.channel_type === "mpim";
+
+      if (!isDirectMessage && !this.hasActiveThreadSession(channel, msg.thread_ts)) {
+        return;
+      }
 
       this.logger.debug(
-        { channel, threadTs, textLength: text.length },
-        "Received direct message",
+        { channel, threadTs, isDirectMessage, textLength: text.length },
+        isDirectMessage ? "Received direct message" : "Received Slack thread reply",
       );
 
       // Handle file attachments
@@ -170,8 +175,8 @@ export class SlackAdapter {
         threadTs,
         {
           userId: msg.user,
-          isDirectMessage: true,
-          agentMentioned: false,
+          isDirectMessage,
+          agentMentioned: !isDirectMessage,
         },
         attachments.length > 0 ? attachments : undefined,
       );
@@ -702,6 +707,14 @@ export class SlackAdapter {
     }
 
     return null;
+  }
+
+  private hasActiveThreadSession(
+    channel: string | undefined,
+    threadTs: string | undefined,
+  ): boolean {
+    if (!channel || !threadTs) return false;
+    return this.sessionMap.has(`${channel}:${threadTs}`);
   }
 
   resetSession(channel: string, threadTs?: string): void {
