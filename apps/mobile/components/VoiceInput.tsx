@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Pressable, Text, Alert } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Alert, Linking } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -11,7 +11,12 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
-import { startRecording, stopRecording, getRecordingStatus } from '@/lib/voice';
+import {
+  startRecording,
+  stopRecording,
+  getRecordingStatus,
+  getMicrophonePermissionState,
+} from '@/lib/voice';
 import { gatewayClient } from '@/lib/gateway-client';
 import { getMobileWebRTCSession, type MobileWebRTCState } from '@/lib/webrtc';
 import {
@@ -133,6 +138,12 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
   }, [recording, stopPulse]);
 
   const startVoiceRecording = useCallback(async () => {
+    const permissionState = await getMicrophonePermissionState();
+    if (permissionState === 'denied') {
+      showMicrophoneSettingsAlert();
+      return;
+    }
+
     await playHaptic('voiceRecordingStart');
     const started = await startRecording();
     if (started) {
@@ -159,6 +170,8 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
           }
         }
       }, 100);
+    } else if ((await getMicrophonePermissionState()) === 'denied') {
+      showMicrophoneSettingsAlert();
     }
   }, [finishRecording, startPulse, voiceMode]);
 
@@ -362,6 +375,22 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
         </Text>
       )}
     </View>
+  );
+}
+
+function showMicrophoneSettingsAlert(): void {
+  Alert.alert(
+    'Microphone Access Required',
+    'Karna needs microphone access to record voice messages. Enable microphone access in Settings to use voice input.',
+    [
+      { text: 'Not Now', style: 'cancel' },
+      {
+        text: 'Open Settings',
+        onPress: () => {
+          void Linking.openSettings();
+        },
+      },
+    ],
   );
 }
 
