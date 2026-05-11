@@ -1,9 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { memo, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Pressable,
+  ScrollView,
+  useWindowDimensions,
   type ViewStyle,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -16,11 +18,24 @@ interface ChatBubbleProps {
   message: ChatMessage;
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+const COLLAPSE_THRESHOLD = 500;
+const LONG_MESSAGE_LINE_THRESHOLD = 18;
+
+export const ChatBubble = memo(function ChatBubble({ message }: ChatBubbleProps) {
   const darkMode = useAppStore((s) => s.darkMode);
   const colors = getColors(darkMode ? 'dark' : 'light');
   const isUser = message.role === 'user';
   const [showCopy, setShowCopy] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const { height } = useWindowDimensions();
+  const isLongMessage =
+    message.content.length > COLLAPSE_THRESHOLD ||
+    message.content.split('\n').length > LONG_MESSAGE_LINE_THRESHOLD;
+  const renderedContent =
+    isLongMessage && !expanded
+      ? `${message.content.slice(0, COLLAPSE_THRESHOLD).trimEnd()}…`
+      : message.content;
+  const maxScrollableHeight = Math.max(220, Math.round(height * 0.45));
 
   const handleLongPress = useCallback(async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -58,7 +73,35 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   return (
     <View>
       <Pressable onLongPress={handleLongPress} style={bubbleStyle}>
-        <MarkdownText text={message.content} color={textColor} isUser={isUser} />
+        <ScrollView
+          nestedScrollEnabled
+          scrollEnabled={isLongMessage && expanded}
+          showsVerticalScrollIndicator={isLongMessage && expanded}
+          style={isLongMessage && expanded ? { maxHeight: maxScrollableHeight } : undefined}
+        >
+          <MarkdownText
+            text={renderedContent}
+            color={textColor}
+            isUser={isUser}
+          />
+        </ScrollView>
+        {isLongMessage && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={expanded ? 'Show less message text' : 'Show more message text'}
+            onPress={() => setExpanded((value) => !value)}
+            style={styles.expandButton}
+          >
+            <Text
+              style={[
+                styles.expandText,
+                { color: isUser ? colors.userBubbleText : colors.primary },
+              ]}
+            >
+              {expanded ? 'Show less' : 'Show more'}
+            </Text>
+          </Pressable>
+        )}
         <Text
           style={[
             styles.timestamp,
@@ -102,7 +145,7 @@ export function ChatBubble({ message }: ChatBubbleProps) {
       )}
     </View>
   );
-}
+});
 
 // ── Minimal Markdown Renderer ────────────────────────────────────────────────
 
@@ -117,13 +160,23 @@ function MarkdownText({ text, color, isUser }: MarkdownTextProps) {
   const colors = getColors(darkMode ? 'dark' : 'light');
 
   const lines = text.split('\n');
+  const blocks = toMarkdownBlocks(lines);
 
   return (
     <View>
-      {lines.map((line, i) => {
-        if (line.startsWith('```')) {
-          return null; // Code blocks handled by multi-line logic below
+      {blocks.map((block, i) => {
+        if (block.type === 'code') {
+          return (
+            <CodeBlock
+              key={`code-${i}`}
+              code={block.content}
+              colors={colors}
+              isUser={isUser}
+            />
+          );
         }
+
+        const line = block.content;
 
         if (line.startsWith('- ') || line.startsWith('* ')) {
           return (
@@ -157,6 +210,69 @@ function MarkdownText({ text, color, isUser }: MarkdownTextProps) {
         );
       })}
     </View>
+  );
+}
+
+type MarkdownBlock =
+  | { type: 'text'; content: string }
+  | { type: 'code'; content: string };
+
+function toMarkdownBlocks(lines: string[]): MarkdownBlock[] {
+  const blocks: MarkdownBlock[] = [];
+  let codeLines: string[] = [];
+  let inCodeBlock = false;
+
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCodeBlock) {
+        blocks.push({ type: 'code', content: codeLines.join('\n') });
+        codeLines = [];
+      }
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+    } else {
+      blocks.push({ type: 'text', content: line });
+    }
+  }
+
+  if (codeLines.length > 0) {
+    blocks.push({ type: 'code', content: codeLines.join('\n') });
+  }
+
+  return blocks;
+}
+
+function CodeBlock({
+  code,
+  colors,
+  isUser,
+}: {
+  code: string;
+  colors: ReturnType<typeof getColors>;
+  isUser: boolean;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      showsHorizontalScrollIndicator
+      style={[
+        styles.codeBlock,
+        {
+          backgroundColor: isUser
+            ? 'rgba(255,255,255,0.15)'
+            : colors.surfaceAlt,
+        },
+      ]}
+    >
+      <Text style={[styles.codeBlockText, { color: isUser ? colors.userBubbleText : colors.text }]}>
+        {code}
+      </Text>
+    </ScrollView>
   );
 }
 
@@ -246,6 +362,8 @@ function renderInlineMarkdown(
 const styles = StyleSheet.create({
   bodyText: {
     ...Typography.body,
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   timestamp: {
     ...Typography.small,
@@ -268,6 +386,26 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     borderRadius: 4,
     overflow: 'hidden',
+  },
+  codeBlock: {
+    borderRadius: BorderRadius.md,
+    marginVertical: Spacing.xs,
+    maxWidth: '100%',
+  },
+  codeBlockText: {
+    fontFamily: 'monospace',
+    fontSize: 13,
+    lineHeight: 20,
+    padding: Spacing.sm,
+  },
+  expandButton: {
+    alignSelf: 'flex-start',
+    marginTop: Spacing.sm,
+    paddingVertical: Spacing.xs,
+  },
+  expandText: {
+    ...Typography.caption,
+    fontWeight: '700',
   },
   copyButton: {
     paddingHorizontal: Spacing.md,
