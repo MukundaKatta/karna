@@ -50,7 +50,14 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { WorkflowEngine } from "@karna/agent/workflows/engine.js";
 import { createDefaultWorkflows } from "./catalog/default-workflows.js";
-import { createRedisSessionCoordinatorFromEnv } from "./session/redis-coordinator.js";
+import {
+  DEFAULT_SHUTDOWN_TIMEOUT_MS,
+  buildShutdownNotice,
+  closeClientsForShutdown,
+  notifyClientsOfShutdown,
+  trackInFlight,
+  waitForInFlight,
+} from "./shutdown/graceful.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -73,17 +80,11 @@ async function main(): Promise<void> {
   const configPath = getConfigPath();
   const port = resolveGatewayPort(config);
   const host = resolveGatewayHost(config);
-  const gatewayInstanceId = process.env["KARNA_GATEWAY_INSTANCE_ID"] ?? nanoid();
-  const redisSessionCoordinator = await createRedisSessionCoordinatorFromEnv({
-    instanceId: gatewayInstanceId,
-  });
 
   // Initialize core services
   const sessionManager = new SessionManager({
     maxSessions: 1000,
     sessionTimeoutMs: config.gateway.sessionTimeoutMs,
-    sessionStateStore: redisSessionCoordinator ?? undefined,
-    sessionEventPublisher: redisSessionCoordinator ?? undefined,
   });
   sessionManager.start();
 
@@ -119,6 +120,8 @@ async function main(): Promise<void> {
 
   // Connected clients registry
   const connectedClients = new Map<string, ConnectedClient>();
+  const inFlightMessages = new Set<Promise<unknown>>();
+  let isDraining = false;
   const websocketLimits = resolveWebSocketLimitConfig(config.gateway.websocket);
 
   // Wire up health counters
@@ -131,6 +134,17 @@ async function main(): Promise<void> {
       level: process.env["LOG_LEVEL"] ?? "info",
     },
     genReqId: () => nanoid(),
+  });
+
+  server.addHook("onRequest", async (request, reply) => {
+    if (!isDraining || request.url === "/health") return;
+
+    reply.header("Connection", "close");
+    return reply.status(503).send({
+      error: "server_shutdown",
+      message: "Gateway is draining connections for shutdown",
+      retryable: true,
+    });
   });
 
   // Register WebSocket plugin
@@ -257,6 +271,12 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (isDraining) {
+      socket.send(JSON.stringify(buildShutdownNotice("draining")));
+      socket.close(1001, "Server shutting down");
+      return;
+    }
+
     logger.info({ connectionId }, "WebSocket connection opened");
 
     const context: ConnectionContext = {
@@ -361,12 +381,13 @@ async function main(): Promise<void> {
       }
 
       invalidMessageCount = 0;
-      handleMessage(socket, parsed.message, context).catch((error) => {
+      const operation = handleMessage(socket, parsed.message, context).catch((error) => {
         logger.error(
           { connectionId, error: String(error) },
           "Unhandled error in message handler",
         );
       });
+      trackInFlight(inFlightMessages, operation);
     });
 
     socket.on("close", (code: number, reason: Buffer) => {
@@ -396,24 +417,43 @@ async function main(): Promise<void> {
   // ─── Graceful Shutdown ──────────────────────────────────────────────────
 
   const shutdown = async (signal: string): Promise<void> => {
-    logger.info({ signal }, "Received shutdown signal");
+    if (isDraining) {
+      logger.info({ signal }, "Shutdown already in progress");
+      return;
+    }
+
+    isDraining = true;
+    logger.info(
+      { signal, connections: connectedClients.size, inFlightMessages: inFlightMessages.size },
+      "Received shutdown signal",
+    );
+
+    const notified = notifyClientsOfShutdown(
+      connectedClients.values(),
+      signal,
+      DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    );
+    logger.info({ notified }, "Sent shutdown notice to WebSocket clients");
+
+    const drainStatus = await waitForInFlight(
+      inFlightMessages,
+      DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    );
+    if (drainStatus === "timeout") {
+      logger.warn(
+        { remaining: inFlightMessages.size },
+        "Timed out waiting for in-flight messages to complete",
+      );
+    }
 
     // Stop heartbeat scheduler
     heartbeatScheduler.stopAll();
 
     // Stop session manager (flushes to storage)
     await sessionManager.stop();
-    await redisSessionCoordinator?.close();
 
-    // Close all WebSocket connections
-    for (const [clientId, client] of connectedClients) {
-      try {
-        client.ws.close(1001, "Server shutting down");
-      } catch {
-        // Ignore errors closing connections during shutdown
-      }
-      connectedClients.delete(clientId);
-    }
+    const closed = closeClientsForShutdown(connectedClients);
+    logger.info({ closed }, "Closed WebSocket clients for shutdown");
 
     // Close the server
     await server.close();
