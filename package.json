@@ -18,6 +18,7 @@
     "gateway:dev": "pnpm --filter @karna/gateway dev",
     "gateway:start": "pnpm --filter @karna/gateway start",
     "cli": "pnpm --filter @karna/cli start",
+    "check:workspace-protocol": "node scripts/check-workspace-protocol.js",
     "test": "vitest run",
     "test:watch": "vitest"
   },
