@@ -30,6 +30,34 @@ html {
   color-scheme: dark;
 }
 
+html,
+body,
+button,
+a {
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    color 180ms ease;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+  --color-dark-50: #020617;
+  --color-dark-100: #0f172a;
+  --color-dark-200: #1e293b;
+  --color-dark-300: #334155;
+  --color-dark-400: #475569;
+  --color-dark-500: #64748b;
+  --color-dark-600: #cbd5e1;
+  --color-dark-700: #e2e8f0;
+  --color-dark-800: #f1f5f9;
+  --color-dark-900: #f8fafc;
+
+  --color-accent-400: #4338ca;
+  --color-accent-500: #4f46e5;
+  --color-accent-600: #6366f1;
+}
+
 body {
   background-color: var(--color-dark-900);
   color: var(--color-dark-100);

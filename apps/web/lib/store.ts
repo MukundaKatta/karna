@@ -125,7 +125,30 @@ const WEB_DASHBOARD_STORAGE_KEY = "karna:web:dashboard";
 
 type StoredDashboardSettings = {
   sidebarCollapsed?: boolean;
+  theme?: DashboardThemePreference;
 };
+
+export type DashboardThemePreference = "light" | "dark";
+
+export function getSystemDashboardTheme(): DashboardThemePreference {
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: light)").matches
+  ) {
+    return "light";
+  }
+
+  return "dark";
+}
+
+export function applyDashboardTheme(theme: DashboardThemePreference): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+}
 
 export function readStoredDashboardSettings(): StoredDashboardSettings {
   if (typeof window === "undefined") {
@@ -152,31 +175,55 @@ function writeStoredDashboardSettings(settings: StoredDashboardSettings): void {
 interface DashboardState {
   hydrated: boolean;
   sidebarCollapsed: boolean;
+  theme: DashboardThemePreference;
   hydrateDashboardSettings: () => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleTheme: () => void;
+  setTheme: (theme: DashboardThemePreference) => void;
 }
 
 export const useDashboardStore = create<DashboardState>((set, get) => ({
   hydrated: false,
   sidebarCollapsed: false,
+  theme: "dark",
   hydrateDashboardSettings: () => {
     if (get().hydrated) return;
     const stored = readStoredDashboardSettings();
+    const theme = stored.theme ?? getSystemDashboardTheme();
+    applyDashboardTheme(theme);
     set({
       hydrated: true,
       sidebarCollapsed: stored.sidebarCollapsed ?? false,
+      theme,
     });
   },
   toggleSidebar: () =>
     set((state) => {
       const sidebarCollapsed = !state.sidebarCollapsed;
-      writeStoredDashboardSettings({ sidebarCollapsed });
+      writeStoredDashboardSettings({ sidebarCollapsed, theme: state.theme });
       return { sidebarCollapsed };
     }),
   setSidebarCollapsed: (sidebarCollapsed) => {
-    writeStoredDashboardSettings({ sidebarCollapsed });
+    writeStoredDashboardSettings({ sidebarCollapsed, theme: get().theme });
     set({ sidebarCollapsed });
+  },
+  toggleTheme: () => {
+    const theme = get().theme === "dark" ? "light" : "dark";
+    applyDashboardTheme(theme);
+    writeStoredDashboardSettings({
+      sidebarCollapsed: get().sidebarCollapsed,
+      theme,
+    });
+    set({ theme });
+  },
+  setTheme: (theme) => {
+    applyDashboardTheme(theme);
+    writeStoredDashboardSettings({
+      sidebarCollapsed: get().sidebarCollapsed,
+      theme,
+    });
+    set({ theme });
   },
 }));
 
