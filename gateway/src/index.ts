@@ -3,7 +3,7 @@ import websocket from "@fastify/websocket";
 import cors from "@fastify/cors";
 import pino from "pino";
 import { nanoid } from "nanoid";
-import { parseMessage } from "./protocol/schema.js";
+import { parseMessageDetailed } from "./protocol/schema.js";
 import {
   resolveWebSocketLimitConfig,
   validateWebSocketMessageSize,
@@ -238,6 +238,7 @@ async function main(): Promise<void> {
 
   server.get("/ws", { websocket: true }, (socket, request) => {
     const connectionId = nanoid();
+    let invalidMessageCount = 0;
     const bandwidthTracker: BandwidthTracker = {
       windowStartedAt: Date.now(),
       bytes: 0,
@@ -288,9 +289,10 @@ async function main(): Promise<void> {
         return;
       }
 
-      const message = parseMessage(rawData as string | Buffer);
+      const parsed = parseMessageDetailed(rawData as string | Buffer);
 
-      if (!message) {
+      if (!parsed.ok) {
+        invalidMessageCount++;
         socket.send(
           JSON.stringify({
             id: nanoid(),
@@ -298,15 +300,25 @@ async function main(): Promise<void> {
             timestamp: Date.now(),
             payload: {
               code: "INVALID_MESSAGE",
-              message: "Failed to parse message. Ensure it conforms to the protocol schema.",
-              retryable: false,
+              message: parsed.error,
+              details: {
+                fieldErrors: parsed.fieldErrors,
+                formErrors: parsed.formErrors,
+                rawType: parsed.rawType,
+                invalidMessageCount,
+              },
+              retryable: invalidMessageCount < 5,
             },
           }),
         );
+        if (invalidMessageCount >= 5) {
+          socket.close(1008, "Too many invalid protocol messages");
+        }
         return;
       }
 
-      handleMessage(socket, message, context).catch((error) => {
+      invalidMessageCount = 0;
+      handleMessage(socket, parsed.message, context).catch((error) => {
         logger.error(
           { connectionId, error: String(error) },
           "Unhandled error in message handler",
