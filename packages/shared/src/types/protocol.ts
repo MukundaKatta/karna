@@ -16,6 +16,13 @@ export const MessageTypeSchema = z.enum([
   "heartbeat.check",
   "heartbeat.ack",
   "status",
+  "memory.search",
+  "memory.search.result",
+  "memory.list",
+  "reminder.list",
+  "reminder.created",
+  "skill.list",
+  "skill.toggle.result",
   "skill.invoke",
   "skill.result",
   "voice.start",
@@ -186,6 +193,92 @@ export const StatusMessageSchema = BaseMessageSchema.extend({
     state: z.enum(["idle", "thinking", "tool_calling", "streaming", "error"]),
     message: z.string().optional(),
     progress: z.number().min(0).max(1).optional(),
+  }),
+});
+
+// ─── Mobile List And Search Messages ────────────────────────────────────────
+
+const MobileMemoryEntrySchema = z.object({
+  id: z.string().min(1),
+  content: z.string().optional(),
+  summary: z.string().optional(),
+  category: z.string().optional(),
+  importance: z.number().min(0).max(1).optional(),
+  priority: z.number().min(0).max(1).optional(),
+  createdAt: z.union([z.number().int().positive(), z.string()]).optional(),
+}).passthrough();
+
+const MobileReminderSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  description: z.string().optional(),
+  dueDate: z.number().int().positive().optional(),
+  status: z.enum(["pending", "in-progress", "done"]),
+  createdAt: z.number().int().positive(),
+}).passthrough();
+
+const MobileSkillSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  icon: z.string().optional(),
+  active: z.boolean().optional(),
+  enabled: z.boolean().optional(),
+  version: z.string().optional(),
+}).passthrough();
+
+export const MemorySearchMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("memory.search"),
+  payload: z.object({
+    query: z.string(),
+    category: z.string().optional(),
+  }),
+});
+
+export const MemorySearchResultMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("memory.search.result"),
+  payload: z.object({
+    results: z.array(MobileMemoryEntrySchema),
+  }),
+});
+
+export const MemoryListMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("memory.list"),
+  payload: z.object({
+    memories: z.array(MobileMemoryEntrySchema).optional(),
+    entries: z.array(MobileMemoryEntrySchema).optional(),
+    query: z.string().optional(),
+    category: z.string().optional(),
+    limit: z.number().int().positive().optional(),
+  }).optional(),
+});
+
+export const ReminderListMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("reminder.list"),
+  payload: z.object({
+    reminders: z.array(MobileReminderSchema).optional(),
+  }).optional(),
+});
+
+export const ReminderCreatedMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("reminder.created"),
+  payload: z.object({
+    reminder: MobileReminderSchema,
+  }),
+});
+
+export const SkillListMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("skill.list"),
+  payload: z.object({
+    skills: z.array(MobileSkillSchema).optional(),
+  }).optional(),
+});
+
+export const SkillToggleResultMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("skill.toggle.result"),
+  payload: z.object({
+    skillId: z.string().min(1),
+    active: z.boolean(),
   }),
 });
 
@@ -378,6 +471,13 @@ export const ProtocolMessageSchema = z.discriminatedUnion("type", [
   HeartbeatCheckMessageSchema,
   HeartbeatAckMessageSchema,
   StatusMessageSchema,
+  MemorySearchMessageSchema,
+  MemorySearchResultMessageSchema,
+  MemoryListMessageSchema,
+  ReminderListMessageSchema,
+  ReminderCreatedMessageSchema,
+  SkillListMessageSchema,
+  SkillToggleResultMessageSchema,
   SkillInvokeMessageSchema,
   SkillResultMessageSchema,
   VoiceStartMessageSchema,
@@ -410,6 +510,13 @@ export type ToolResultMessage = z.infer<typeof ToolResultMessageSchema>;
 export type HeartbeatCheckMessage = z.infer<typeof HeartbeatCheckMessageSchema>;
 export type HeartbeatAckMessage = z.infer<typeof HeartbeatAckMessageSchema>;
 export type StatusMessage = z.infer<typeof StatusMessageSchema>;
+export type MemorySearchMessage = z.infer<typeof MemorySearchMessageSchema>;
+export type MemorySearchResultMessage = z.infer<typeof MemorySearchResultMessageSchema>;
+export type MemoryListMessage = z.infer<typeof MemoryListMessageSchema>;
+export type ReminderListMessage = z.infer<typeof ReminderListMessageSchema>;
+export type ReminderCreatedMessage = z.infer<typeof ReminderCreatedMessageSchema>;
+export type SkillListMessage = z.infer<typeof SkillListMessageSchema>;
+export type SkillToggleResultMessage = z.infer<typeof SkillToggleResultMessageSchema>;
 export type SkillInvokeMessage = z.infer<typeof SkillInvokeMessageSchema>;
 export type SkillResultMessage = z.infer<typeof SkillResultMessageSchema>;
 export type ErrorMessage = z.infer<typeof ErrorMessageSchema>;

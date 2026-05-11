@@ -76,6 +76,63 @@ class GatewayClient {
     this.ws.send(JSON.stringify(message));
   }
 
+  async refreshTasks(): Promise<void> {
+    this.send({
+      id: generateId(),
+      type: "reminder.list",
+      timestamp: Date.now(),
+      sessionId: this.sessionId ?? undefined,
+      payload: {},
+    });
+  }
+
+  async refreshMemories(
+    options: { query?: string; category?: MemoryEntry["category"] } = {},
+  ): Promise<void> {
+    const memoryUrl = deriveMobileGatewayHttpUrl(
+      this.url || useAppStore.getState().url,
+    );
+    memoryUrl.pathname = "/api/memory";
+    memoryUrl.searchParams.set("limit", "100");
+    if (options.query) {
+      memoryUrl.searchParams.set("query", options.query);
+    }
+    if (options.category) {
+      memoryUrl.searchParams.set("category", options.category);
+    }
+
+    const response = await fetch(memoryUrl.toString());
+    if (!response.ok) {
+      throw new Error(`Memory refresh failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      entries?: Array<Record<string, unknown>>;
+      memories?: Array<Record<string, unknown>>;
+    };
+    const memories = (payload.entries ?? payload.memories ?? []).map(
+      mapMemoryEntry,
+    );
+    useAppStore.getState().setMemories(memories);
+  }
+
+  async refreshSkills(): Promise<void> {
+    const skillsUrl = deriveMobileGatewayHttpUrl(
+      this.url || useAppStore.getState().url,
+    );
+    skillsUrl.pathname = "/api/skills";
+
+    const response = await fetch(skillsUrl.toString());
+    if (!response.ok) {
+      throw new Error(`Skills refresh failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      skills?: Array<Record<string, unknown>>;
+    };
+    useAppStore.getState().setSkills((payload.skills ?? []).map(mapSkill));
+  }
+
   sendChatMessage(content: string): void {
     const store = useAppStore.getState();
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN || !this.sessionId) {
@@ -781,6 +838,49 @@ function mapHistoryMessage(entry: Record<string, unknown>): ChatMessage | null {
   }
 
   return { id, role, content, timestamp };
+}
+
+function mapMemoryEntry(entry: Record<string, unknown>): MemoryEntry {
+  const category = entry.category;
+  const importance =
+    typeof entry.importance === "number"
+      ? entry.importance
+      : typeof entry.priority === "number"
+        ? entry.priority
+        : 0.5;
+
+  return {
+    id: String(entry.id ?? generateId()),
+    content: String(entry.content ?? entry.summary ?? ""),
+    category:
+      category === "fact" ||
+      category === "preference" ||
+      category === "event" ||
+      category === "task"
+        ? category
+        : "fact",
+    importance: Math.max(0, Math.min(1, importance)),
+    createdAt:
+      typeof entry.createdAt === "number"
+        ? entry.createdAt
+        : Date.parse(String(entry.createdAt ?? "")) || Date.now(),
+  };
+}
+
+function mapSkill(entry: Record<string, unknown>): Skill {
+  return {
+    id: String(entry.id ?? entry.name ?? generateId()),
+    name: String(entry.name ?? entry.id ?? "Untitled skill"),
+    description: String(entry.description ?? ""),
+    icon: String(entry.icon ?? "zap"),
+    active:
+      typeof entry.active === "boolean"
+        ? entry.active
+        : typeof entry.enabled === "boolean"
+          ? entry.enabled
+          : true,
+    version: String(entry.version ?? "1.0.0"),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

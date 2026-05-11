@@ -6,11 +6,13 @@ import {
   TextInput,
   StyleSheet,
   Pressable,
+  RefreshControl,
   type ListRenderItemInfo,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore, type MemoryEntry } from '@/lib/store';
 import { gatewayClient } from '@/lib/gateway-client';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 
 type MemoryCategory = 'all' | MemoryEntry['category'];
@@ -32,6 +34,7 @@ export default function MemoryScreen() {
 
   const [selectedCategory, setSelectedCategory] = React.useState<MemoryCategory>('all');
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [refreshing, setRefreshing] = React.useState(false);
 
   const filteredMemories = memories.filter((m) => {
     const matchesCategory =
@@ -46,14 +49,27 @@ export default function MemoryScreen() {
     (query: string) => {
       setSearchQuery(query);
       if (query.length >= 2) {
-        gatewayClient.send({
-          type: 'memory.search',
-          payload: { query, category: selectedCategory === 'all' ? undefined : selectedCategory },
+        void gatewayClient.refreshMemories({
+          query,
+          category: selectedCategory === 'all' ? undefined : selectedCategory,
         });
       }
     },
     [selectedCategory],
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    void playHaptic('pullToRefresh');
+    try {
+      await gatewayClient.refreshMemories({
+        query: searchQuery || undefined,
+        category: selectedCategory === 'all' ? undefined : selectedCategory,
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [searchQuery, selectedCategory]);
 
   const importanceColor = (importance: number) => {
     if (importance >= 0.8) return colors.error;
@@ -229,6 +245,14 @@ export default function MemoryScreen() {
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Feather

@@ -7,11 +7,13 @@ import {
   Pressable,
   TextInput,
   Modal,
+  RefreshControl,
   type ListRenderItemInfo,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore, type Reminder } from '@/lib/store';
 import { playHaptic } from '@/lib/haptics';
+import { gatewayClient } from '@/lib/gateway-client';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { TaskCard } from '@/components/TaskCard';
 
@@ -27,6 +29,7 @@ export default function TasksScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
   const pendingReminders = reminders.filter((r) => r.status !== 'done');
   const completedReminders = reminders.filter((r) => r.status === 'done');
@@ -78,6 +81,16 @@ export default function TasksScreen() {
     [deleteReminder],
   );
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    void playHaptic('pullToRefresh');
+    try {
+      await gatewayClient.refreshTasks();
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   const renderItem = useCallback(
     ({ item }: ListRenderItemInfo<Reminder>) => (
       <TaskCard
@@ -102,6 +115,14 @@ export default function TasksScreen() {
           keyExtractor={keyExtractor}
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.primary}
+              colors={[colors.primary]}
+            />
+          }
           ListHeaderComponent={
             pendingReminders.length > 0 ? (
               <Text

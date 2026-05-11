@@ -31,4 +31,24 @@ describe("protocol schema parsing", () => {
       expect(result.message.type).toBe("heartbeat.ack");
     }
   });
+
+  it.each([
+    ["memory.list", { query: "shipping", category: "task", limit: 25 }],
+    ["memory.search", { query: "shipping", category: "task" }],
+    ["reminder.list", {}],
+    ["skill.list", {}],
+  ])("accepts mobile refresh message %s", (type, payload) => {
+    const result = parseMessageDetailed(JSON.stringify({
+      id: `refresh-${type}`,
+      type,
+      timestamp: Date.now(),
+      sessionId: "mobile-session-1",
+      payload,
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.message.type).toBe(type);
+    }
+  });
 });

@@ -571,6 +571,13 @@ export async function handleMessage(
         handleHeartbeatAck(ws, message, context);
         break;
 
+      case "memory.search":
+      case "memory.list":
+      case "reminder.list":
+      case "skill.list":
+        handleMobileListRequest(ws, message);
+        break;
+
       case "skill.invoke":
         await handleSkillInvoke(ws, message, context);
         break;
@@ -1120,6 +1127,50 @@ function handleHeartbeatAck(
       client.lastSeen = Date.now();
       break;
     }
+  }
+}
+
+function handleMobileListRequest(
+  ws: WebSocket,
+  message: ProtocolMessage,
+): void {
+  switch (message.type) {
+    case "memory.search":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "memory.search.result",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: { results: [] },
+      });
+      break;
+    case "memory.list":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "memory.list",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: {},
+      });
+      break;
+    case "reminder.list":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "reminder.list",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: {},
+      });
+      break;
+    case "skill.list":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "skill.list",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: {},
+      });
+      break;
   }
 }
 
