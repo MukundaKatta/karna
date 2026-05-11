@@ -36,6 +36,7 @@ interface PendingResponse {
 
 const SMS_SEGMENT_LENGTH = 160;
 const SMS_MAX_CONCAT_LENGTH = 1600; // ~10 segments
+const SMS_CONTINUED_SUFFIX = "\n\n... [continued in Karna]";
 
 // ─── SMSAdapter ─────────────────────────────────────────────────────────────
 
@@ -432,7 +433,14 @@ export class SMSAdapter {
         body,
       });
 
-      this.logger.debug({ to, bodyLength: body.length }, "SMS sent");
+      this.logger.debug(
+        {
+          to,
+          bodyLength: body.length,
+          estimatedSegments: estimateSmsSegments(body),
+        },
+        "SMS sent",
+      );
     } catch (error) {
       this.logger.error({ error, to }, "Failed to send SMS");
     }
@@ -447,19 +455,24 @@ export class SMSAdapter {
     to: string,
     content: string,
   ): Promise<void> {
-    if (content.length <= SMS_MAX_CONCAT_LENGTH) {
-      // Send as single (possibly concatenated) SMS
-      await this.sendSMS(to, content);
-      return;
-    }
-
-    // Split into multiple separate SMS messages
-    const chunks = splitForSMS(content, SMS_MAX_CONCAT_LENGTH);
+    const chunks = buildSmsMessages(content);
 
     for (let i = 0; i < chunks.length; i++) {
-      const prefix = chunks.length > 1 ? `(${i + 1}/${chunks.length}) ` : "";
-      await this.sendSMS(to, prefix + chunks[i]);
+      await this.sendSMS(to, chunks[i]!);
     }
+
+    this.logger.info(
+      {
+        to,
+        messageCount: chunks.length,
+        estimatedSegments: chunks.reduce(
+          (total, chunk) => total + estimateSmsSegments(chunk),
+          0,
+        ),
+        truncated: content.length > SMS_MAX_CONCAT_LENGTH,
+      },
+      "Sent SMS response",
+    );
   }
 
   // ─── Reconnection ─────────────────────────────────────────────────────
@@ -559,7 +572,19 @@ export class SMSAdapter {
 
 // ─── Utility ────────────────────────────────────────────────────────────────
 
-function splitForSMS(text: string, maxLen: number): string[] {
+export function buildSmsMessages(text: string): string[] {
+  if (text.length <= SMS_MAX_CONCAT_LENGTH) return [text];
+
+  const maxContentLength = SMS_MAX_CONCAT_LENGTH - SMS_CONTINUED_SUFFIX.length;
+  const truncated = `${text.slice(0, maxContentLength).trimEnd()}${SMS_CONTINUED_SUFFIX}`;
+  return splitForSMS(truncated, SMS_MAX_CONCAT_LENGTH);
+}
+
+export function estimateSmsSegments(text: string): number {
+  return Math.max(1, Math.ceil(text.length / SMS_SEGMENT_LENGTH));
+}
+
+export function splitForSMS(text: string, maxLen: number): string[] {
   if (text.length <= maxLen) return [text];
 
   const chunks: string[] = [];
