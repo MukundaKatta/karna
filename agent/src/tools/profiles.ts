@@ -24,6 +24,9 @@ export const TOOL_PROFILES: Record<Exclude<ToolProfileName, "custom">, ToolPolic
       "file_write",
       "file_list",
       "file_search",
+      "file_move",
+      "file_delete",
+      "file_info",
       "apply_patch",
       "code_exec",
       "web_search",
@@ -76,7 +79,16 @@ export const TOOL_PROFILES: Record<Exclude<ToolProfileName, "custom">, ToolPolic
 // ─── Tool Groups ────────────────────────────────────────────────────────────
 
 export const TOOL_GROUPS: Record<string, string[]> = {
-  "group:fs": ["file_read", "file_write", "file_list", "file_search", "apply_patch"],
+  "group:fs": [
+    "file_read",
+    "file_write",
+    "file_list",
+    "file_search",
+    "file_move",
+    "file_delete",
+    "file_info",
+    "apply_patch",
+  ],
   "group:web": ["web_search", "browser_navigate", "browser_screenshot", "browser_extract_text", "browser_click", "browser_fill_form", "browser_evaluate"],
   "group:runtime": ["shell_exec", "code_exec"],
   "group:sessions": ["sessions_list", "sessions_history", "sessions_send", "sessions_spawn", "session_status"],

@@ -7,10 +7,13 @@ import { shellTool } from "./shell.js";
 
 // Files
 import {
+  fileDeleteTool,
+  fileInfoTool,
   fileReadTool,
-  fileWriteTool,
   fileListTool,
+  fileMoveTool,
   fileSearchTool,
+  fileWriteTool,
 } from "./files.js";
 
 // Web Search
@@ -132,6 +135,9 @@ export const allBuiltinTools = [
   fileWriteTool,
   fileListTool,
   fileSearchTool,
+  fileMoveTool,
+  fileDeleteTool,
+  fileInfoTool,
 
   // Web Search
   webSearchTool,
@@ -244,10 +250,15 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 
 export { shellTool } from "./shell.js";
 export {
+  clearFileAuditLog,
+  fileDeleteTool,
+  fileInfoTool,
   fileReadTool,
-  fileWriteTool,
   fileListTool,
+  fileMoveTool,
   fileSearchTool,
+  fileWriteTool,
+  getFileAuditLog,
 } from "./files.js";
 export { webSearchTool } from "./web-search.js";
 export {
