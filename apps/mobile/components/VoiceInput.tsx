@@ -10,7 +10,6 @@ import Animated, {
   cancelAnimation,
   Easing,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
 import { startRecording, stopRecording, getRecordingStatus } from '@/lib/voice';
 import { gatewayClient } from '@/lib/gateway-client';
@@ -20,6 +19,7 @@ import {
   shouldAutoStopRecording,
 } from '@/lib/vad';
 import { useAppStore } from '@/lib/store';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Spacing, BorderRadius } from '@/lib/theme';
 
 type MobileVoiceMode = 'push-to-talk' | 'continuous';
@@ -123,7 +123,7 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
     setRecording(false);
     setAudioLevel(0);
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await playHaptic('voiceRecordingStop');
     const uri = await stopRecording();
     if (uri) {
       gatewayClient.sendVoiceMessage(uri).catch((err) => {
@@ -133,7 +133,7 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
   }, [recording, stopPulse]);
 
   const startVoiceRecording = useCallback(async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    await playHaptic('voiceRecordingStart');
     const started = await startRecording();
     if (started) {
       setRecording(true);
@@ -193,7 +193,7 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
       return;
     }
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await playHaptic('voiceLiveToggle');
     const rtc = rtcSessionRef.current;
 
     if (

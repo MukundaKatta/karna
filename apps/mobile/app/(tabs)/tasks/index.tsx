@@ -10,8 +10,8 @@ import {
   type ListRenderItemInfo,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useAppStore, type Reminder } from '@/lib/store';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { TaskCard } from '@/components/TaskCard';
 
@@ -46,7 +46,7 @@ export default function TasksScreen() {
     setNewTitle('');
     setNewDescription('');
     setShowAddModal(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void playHaptic('success');
   }, [newTitle, newDescription, addReminder]);
 
   const handleComplete = useCallback(
@@ -65,7 +65,7 @@ export default function TasksScreen() {
           dueDate: Date.now() + 3600000,
         });
       }
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      void playHaptic('taskSnoozed');
     },
     [reminders, updateReminder],
   );
@@ -73,7 +73,7 @@ export default function TasksScreen() {
   const handleDelete = useCallback(
     (id: string) => {
       deleteReminder(id);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      void playHaptic('taskDeleted');
     },
     [deleteReminder],
   );

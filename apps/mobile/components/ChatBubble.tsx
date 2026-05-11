@@ -9,8 +9,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import * as Haptics from 'expo-haptics';
 import { useAppStore, type ChatMessage } from '@/lib/store';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { ToolCallDisplay } from './ToolCallDisplay';
 
@@ -38,14 +38,14 @@ export const ChatBubble = memo(function ChatBubble({ message }: ChatBubbleProps)
   const maxScrollableHeight = Math.max(220, Math.round(height * 0.45));
 
   const handleLongPress = useCallback(async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await playHaptic('selection');
     setShowCopy(true);
     setTimeout(() => setShowCopy(false), 3000);
   }, []);
 
   const handleCopy = useCallback(async () => {
     await Clipboard.setStringAsync(message.content);
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await playHaptic('success');
     setShowCopy(false);
   }, [message.content]);
 

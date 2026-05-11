@@ -259,6 +259,7 @@ describe("mobile store", () => {
     useAppStore.getState().setToken("token-123");
     useAppStore.getState().setDarkMode(false);
     useAppStore.getState().setNotifications(false);
+    useAppStore.getState().setHapticsEnabled(false);
     useAppStore.getState().setAgentName("BriefBench");
     useAppStore.getState().setLiveVoiceEnabled(true);
     useAppStore.getState().setLiveVoicePeerChannelId("voice-channel");
@@ -270,6 +271,7 @@ describe("mobile store", () => {
       token: "token-123",
       darkMode: false,
       notifications: false,
+      hapticsEnabled: false,
       agentName: "BriefBench",
       liveVoiceEnabled: true,
       liveVoicePeerChannelId: "voice-channel",
@@ -284,6 +286,7 @@ describe("mobile store", () => {
     writeAsStringAsync.mockClear();
 
     useAppStore.getState().setAgentName("Ada");
+    useAppStore.getState().setHapticsEnabled(false);
     useAppStore.getState().setChatDraft("draft reply");
     useAppStore.getState().addMessage({
       id: "message-1",
@@ -302,6 +305,7 @@ describe("mobile store", () => {
 
     expect(persisted).toMatchObject({
       agentName: "Ada",
+      hapticsEnabled: false,
       chatDraft: "draft reply",
       messages: [
         {

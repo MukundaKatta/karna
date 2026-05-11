@@ -17,6 +17,7 @@ const STORE_FILE = `${FileSystem.documentDirectory}karna-store.json`;
 interface PersistedState {
   darkMode: boolean;
   notifications: boolean;
+  hapticsEnabled: boolean;
   agentName: string;
   url: string;
   token: string;
@@ -33,6 +34,7 @@ interface PersistedState {
 const PERSIST_KEYS: (keyof PersistedState)[] = [
   "darkMode",
   "notifications",
+  "hapticsEnabled",
   "agentName",
   "url",
   "token",
@@ -212,12 +214,14 @@ interface SkillSlice {
 interface SettingsSlice {
   darkMode: boolean;
   notifications: boolean;
+  hapticsEnabled: boolean;
   agentName: string;
   liveVoiceEnabled: boolean;
   liveVoicePeerChannelId: string;
   authCallbackCode: string;
   setDarkMode: (enabled: boolean) => void;
   setNotifications: (enabled: boolean) => void;
+  setHapticsEnabled: (enabled: boolean) => void;
   setAgentName: (name: string) => void;
   setLiveVoiceEnabled: (enabled: boolean) => void;
   setLiveVoicePeerChannelId: (channelId: string) => void;
@@ -365,12 +369,14 @@ export const useAppStore = create<AppState>()((set) => ({
   // Settings
   darkMode: true,
   notifications: true,
+  hapticsEnabled: true,
   agentName: "Karna",
   liveVoiceEnabled: false,
   liveVoicePeerChannelId: "",
   authCallbackCode: "",
   setDarkMode: (darkMode) => set({ darkMode }),
   setNotifications: (notifications) => set({ notifications }),
+  setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
   setAgentName: (agentName) => set({ agentName }),
   setLiveVoiceEnabled: (liveVoiceEnabled) => set({ liveVoiceEnabled }),
   setLiveVoicePeerChannelId: (liveVoicePeerChannelId) =>

@@ -11,7 +11,6 @@ import {
   type ListRenderItemInfo,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import * as Network from "expo-network";
 import { useAppStore, type ChatMessage } from "@/lib/store";
 import { gatewayClient } from "@/lib/gateway-client";
@@ -24,6 +23,7 @@ import { getColors, Typography, Spacing, BorderRadius } from "@/lib/theme";
 import { ChatBubble } from "@/components/ChatBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { VoiceInput } from "@/components/VoiceInput";
+import { playHaptic } from "@/lib/haptics";
 
 function mapExpoNetworkType(
   type: unknown,
@@ -86,7 +86,7 @@ export default function ChatScreen() {
     const text = inputText.trim();
     if (!text) return;
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await playHaptic("messageSent");
     setInputText("");
     gatewayClient.sendChatMessage(text);
   }, [inputText]);

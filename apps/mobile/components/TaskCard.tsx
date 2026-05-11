@@ -2,8 +2,8 @@ import React, { useRef } from 'react';
 import { Animated, Alert, View, Text, StyleSheet, Pressable } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useAppStore, type Reminder } from '@/lib/store';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { formatReminderDueDate } from '@/lib/date-format';
 
@@ -47,19 +47,19 @@ export function TaskCard({
 
   const handleComplete = async () => {
     swipeableRef.current?.close();
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await playHaptic('taskCompleted');
     onComplete(reminder.id);
   };
 
   const handleSwipeOpen = () => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void playHaptic('selection');
   };
 
   const animateAndDelete = async () => {
     if (isRemoving.current) return;
     isRemoving.current = true;
     swipeableRef.current?.close();
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    await playHaptic('taskDeleted');
 
     Animated.timing(removeProgress, {
       toValue: 0,
