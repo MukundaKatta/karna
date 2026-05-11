@@ -95,6 +95,9 @@ import {
 // Memory Tools
 import { memorySearchTool, memoryGetTool } from "./memory-tools.js";
 
+// Utility Tools
+import { calculateTool, convertUnitTool, convertCurrencyTool } from "./utility-tools.js";
+
 // Cross-Channel Message
 import { messageTool } from "./message.js";
 
@@ -188,6 +191,11 @@ export const allBuiltinTools = [
   // Memory Tools
   memorySearchTool,
   memoryGetTool,
+
+  // Utility Tools
+  calculateTool,
+  convertUnitTool,
+  convertCurrencyTool,
 
   // Cross-Channel Message
   messageTool,
@@ -284,6 +292,7 @@ export {
 } from "./sessions.js";
 export { setElevatedMode } from "./shell.js";
 export { memorySearchTool, memoryGetTool } from "./memory-tools.js";
+export { calculateTool, convertUnitTool, convertCurrencyTool } from "./utility-tools.js";
 export { messageTool } from "./message.js";
 export { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gateway-control.js";
 export { delegateToAgentTool, DELEGATE_TOOL_NAME } from "./delegate.js";
