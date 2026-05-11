@@ -14,6 +14,12 @@ import { parseStripeWebhook, type StripeEvent } from "./stripe.js";
 
 const logger = pino({ name: "webhook-router" });
 
+declare module "fastify" {
+  interface FastifyContextConfig {
+    rawBody?: boolean;
+  }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface WebhookRouterConfig {

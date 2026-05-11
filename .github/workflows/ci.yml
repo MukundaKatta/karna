@@ -30,6 +30,9 @@ jobs:
       - name: Check workspace protocol
         run: pnpm run check:workspace-protocol
 
+      - name: Check generated OpenAPI spec
+        run: pnpm run openapi:check
+
       - name: Validate workspace dependency graph
         run: pnpm run check:workspace-graph -- artifacts/workspace-graph.dot
 

@@ -6,11 +6,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
+    "openapi:export": "tsx scripts/export-openapi.ts",
+    "openapi:check": "pnpm run openapi:export && git diff --exit-code ../docs/openapi.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
+    "@fastify/swagger": "^9.7.0",
+    "@fastify/swagger-ui": "^5.2.6",
     "@fastify/websocket": "^11.0.0",
     "@karna/agent": "workspace:*",
     "@karna/shared": "workspace:*",
@@ -19,7 +23,8 @@
     "fastify": "^5.0.0",
     "nanoid": "^5.0.0",
     "pino": "^9.0.0",
-    "zod": "^3.23.0"
+    "zod": "^3.23.0",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
