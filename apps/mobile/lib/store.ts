@@ -47,6 +47,7 @@ const PERSIST_KEYS: (keyof PersistedState)[] = [
 ];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let skipNextDebouncedPersist = false;
 const HISTORY_DUPLICATE_WINDOW_MS = 120_000;
 const MAX_STORED_MESSAGES = 100;
 
@@ -54,18 +55,31 @@ function persistState(state: Record<string, unknown>): void {
   // Debounce writes to avoid thrashing disk
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const toPersist: Record<string, unknown> = {};
-    for (const key of PERSIST_KEYS) {
-      toPersist[key] = state[key];
-    }
-    // Keep only the last 100 messages
-    if (Array.isArray(toPersist.messages)) {
-      toPersist.messages = limitMessages(toPersist.messages as ChatMessage[]);
-    }
-    FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
-      (err) => console.warn("[Store] Failed to persist state:", err),
-    );
+    writePersistedState(state);
   }, 500);
+}
+
+function persistStateImmediately(state: Record<string, unknown>): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  skipNextDebouncedPersist = true;
+  writePersistedState(state);
+}
+
+function writePersistedState(state: Record<string, unknown>): void {
+  const toPersist: Record<string, unknown> = {};
+  for (const key of PERSIST_KEYS) {
+    toPersist[key] = state[key];
+  }
+  // Keep only the last 100 messages
+  if (Array.isArray(toPersist.messages)) {
+    toPersist.messages = limitMessages(toPersist.messages as ChatMessage[]);
+  }
+  FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
+    (err) => console.warn("[Store] Failed to persist state:", err),
+  );
 }
 
 export async function loadPersistedState(): Promise<void> {
@@ -256,15 +270,35 @@ export const useAppStore = create<AppState>()((set) => ({
   isTyping: false,
   setChatDraft: (chatDraft) => set({ chatDraft }),
   addMessage: (message) =>
-    set((state) => ({ messages: limitMessages([message, ...state.messages]) })),
+    set((state) => {
+      const messages = limitMessages([message, ...state.messages]);
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages,
+      });
+      return { messages };
+    }),
   updateMessage: (id, updates) =>
-    set((state) => ({
-      messages: state.messages.map((m) =>
+    set((state) => {
+      const messages = state.messages.map((m) =>
         m.id === id ? { ...m, ...updates } : m,
-      ),
-    })),
+      );
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages,
+      });
+      return { messages };
+    }),
   setTyping: (isTyping) => set({ isTyping }),
-  clearChat: () => set({ messages: [], isTyping: false }),
+  clearChat: () =>
+    set((state) => {
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages: [],
+        isTyping: false,
+      });
+      return { messages: [], isTyping: false };
+    }),
   loadOlderMessages: (older) =>
     set((state) => {
       const merged = [...state.messages];
@@ -283,7 +317,12 @@ export const useAppStore = create<AppState>()((set) => ({
         return state;
       }
 
-      return { messages: limitMessages(merged) };
+      const messages = limitMessages(merged);
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages,
+      });
+      return { messages };
     }),
 
   // Tasks
@@ -373,5 +412,9 @@ function limitMessages(messages: ChatMessage[]): ChatMessage[] {
 
 // Persist on every state change (debounced)
 useAppStore.subscribe((state) => {
+  if (skipNextDebouncedPersist) {
+    skipNextDebouncedPersist = false;
+    return;
+  }
   persistState(state as unknown as Record<string, unknown>);
 });

@@ -277,10 +277,11 @@ describe("mobile store", () => {
     });
   });
 
-  it("serializes persisted store keys after debounced changes", async () => {
+  it("flushes messages immediately while keeping other store keys persisted", async () => {
     const { useAppStore } = await import("../../apps/mobile/lib/store.js");
     const fileSystem = await import("expo-file-system");
     const writeAsStringAsync = fileSystem.writeAsStringAsync as Mock;
+    writeAsStringAsync.mockClear();
 
     useAppStore.getState().setAgentName("Ada");
     useAppStore.getState().setChatDraft("draft reply");
@@ -290,6 +291,8 @@ describe("mobile store", () => {
       content: "hello",
       timestamp: 1,
     });
+
+    expect(writeAsStringAsync).toHaveBeenCalledTimes(1);
 
     await vi.advanceTimersByTimeAsync(500);
 
@@ -310,6 +313,37 @@ describe("mobile store", () => {
       ],
     });
     expect(persisted).not.toHaveProperty("isTyping");
+  });
+
+  it("persists message updates and chat clears without waiting for debounce", async () => {
+    const { useAppStore } = await import("../../apps/mobile/lib/store.js");
+    const fileSystem = await import("expo-file-system");
+    const writeAsStringAsync = fileSystem.writeAsStringAsync as Mock;
+    writeAsStringAsync.mockClear();
+
+    useAppStore.getState().addMessage({
+      id: "streaming-message",
+      role: "assistant",
+      content: "hel",
+      timestamp: 1,
+    });
+    useAppStore
+      .getState()
+      .updateMessage("streaming-message", { content: "hello" });
+    useAppStore.getState().clearChat();
+
+    expect(writeAsStringAsync).toHaveBeenCalledTimes(3);
+    const [, updatedRaw] = writeAsStringAsync.mock.calls[1] as [string, string];
+    expect(JSON.parse(updatedRaw).messages[0]).toMatchObject({
+      id: "streaming-message",
+      content: "hello",
+    });
+
+    const [, clearedRaw] = writeAsStringAsync.mock.calls[2] as [string, string];
+    expect(JSON.parse(clearedRaw).messages).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(writeAsStringAsync).toHaveBeenCalledTimes(3);
   });
 
   it("hydrates persisted state and rewrites legacy local gateway urls", async () => {
