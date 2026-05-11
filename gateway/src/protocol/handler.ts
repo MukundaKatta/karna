@@ -204,7 +204,7 @@ export interface SessionTurnExecutionOptions {
 
 // ─── Send Helper ────────────────────────────────────────────────────────────
 
-function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
+function sendMessage(ws: WebSocket, message: Record<string, unknown>): boolean {
   try {
     if (ws.readyState === ws.OPEN) {
       logger.info(
@@ -216,10 +216,12 @@ function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
         "WebSocket message sent",
       );
       ws.send(JSON.stringify(message));
+      return true;
     }
   } catch (error) {
     logger.error({ error: String(error) }, "Failed to send WebSocket message");
   }
+  return false;
 }
 
 function sendError(
@@ -922,6 +924,26 @@ async function handleChatMessage(
   try {
     // Set up streaming callback to forward deltas to the client
     let streamIndex = 0;
+    let disconnectedStreamCleanupStarted = false;
+    const cleanupDisconnectedStream = (): void => {
+      if (disconnectedStreamCleanupStarted) return;
+      disconnectedStreamCleanupStarted = true;
+      logger.warn(
+        { sessionId },
+        "Client disconnected during active stream; cancelling runtime",
+      );
+      void restartGatewayRuntime().then((result) => {
+        logger.info(
+          {
+            sessionId,
+            hadActiveOrchestrator: result.hadActiveOrchestrator,
+            clearedPendingApprovals: result.clearedPendingApprovals,
+          },
+          "Cleaned up runtime after stream client disconnect",
+        );
+      });
+      context.sessionManager.updateSessionStatus(sessionId, "idle");
+    };
     const streamCallback: StreamCallback = (event) => {
       switch (event.type) {
         case "text":
@@ -929,7 +951,7 @@ async function handleChatMessage(
             logger.warn({ sessionId }, "Suppressed unsafe streamed response chunk");
             break;
           }
-          sendMessage(ws, {
+          if (!sendMessage(ws, {
             id: nanoid(),
             type: "agent.response.stream",
             timestamp: Date.now(),
@@ -939,10 +961,12 @@ async function handleChatMessage(
               index: streamIndex++,
               finishReason: null,
             },
-          });
+          })) {
+            cleanupDisconnectedStream();
+          }
           break;
         case "tool_use":
-          sendMessage(ws, {
+          if (!sendMessage(ws, {
             id: nanoid(),
             type: "tool.approval.requested",
             timestamp: Date.now(),
@@ -953,7 +977,9 @@ async function handleChatMessage(
               arguments: event.input,
               riskLevel: "medium",
             },
-          });
+          })) {
+            cleanupDisconnectedStream();
+          }
           break;
       }
     };

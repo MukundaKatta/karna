@@ -493,6 +493,62 @@ describe("gateway websocket protocol", () => {
     );
   });
 
+  it("cancels runtime cleanup when a client disconnects mid-stream", async () => {
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+    const session = context.sessionManager.createSession(
+      "agent-1",
+      "webchat",
+      "user-1",
+    );
+    context.auth = createAuthContext("device-1", "operator", "token");
+    let shutdownCalls = 0;
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      async shutdown() {
+        shutdownCalls++;
+      },
+      setStreamCallback(callback) {
+        (ws as { readyState: number }).readyState = 3;
+        callback({ type: "text", text: "late chunk" });
+      },
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "Final reply after disconnect",
+          totalTokens: { inputTokens: 1, outputTokens: 1 },
+          agentId: "karna-general",
+          model: "gemini-3-flash-preview",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-chat-disconnect",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "stream and disconnect",
+        },
+      },
+      context,
+    );
+
+    await vi.waitFor(() => {
+      expect(shutdownCalls).toBe(1);
+    });
+    expect(context.sessionManager.getSession(session.id)?.status).toBe("idle");
+  });
+
   it("filters unsafe generated responses before transcript persistence and delivery", async () => {
     moderationLogDir = await mkdtemp(join(tmpdir(), "karna-moderation-"));
     process.env["KARNA_MODERATION_LEVEL"] = "strict";
