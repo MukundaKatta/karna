@@ -18,6 +18,7 @@ import { routeModel, type AgentConfig } from "./models/router.js";
 import { ToolRegistry, type ToolDefinitionRuntime, type ToolPolicy, type ToolResult } from "./tools/registry.js";
 import { executeTool } from "./tools/executor.js";
 import { requiresApproval, requestApproval, type ApprovalCallback } from "./tools/approval.js";
+import { selectRelevantChatTools } from "./tools/selection.js";
 import { MemoryStore, type SaveMemoryInput } from "./memory/store.js";
 import type { Embedder } from "./memory/embedder.js";
 
@@ -234,7 +235,20 @@ export class AgentRuntime {
 
       // 4. Get available tools
       const toolPolicy = this.buildToolPolicy(input.agent, input.session);
-      const chatTools = this.toolRegistry.getChatTools(toolPolicy);
+      const allChatTools = this.toolRegistry.getChatTools(toolPolicy);
+      const toolSelection = selectRelevantChatTools(input.message, allChatTools);
+      const chatTools = toolSelection.tools;
+
+      if (toolSelection.pruned) {
+        logger.info(
+          {
+            sessionId: input.session.id,
+            selectedTools: toolSelection.selectedToolNames,
+            droppedToolCount: toolSelection.droppedToolCount,
+          },
+          "Pruned chat tools for context budget"
+        );
+      }
 
       // 5. Enter the agent loop (LLM call -> tool use -> repeat)
       let messages: ChatMessage[] = [
