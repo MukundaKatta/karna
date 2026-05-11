@@ -68,6 +68,7 @@ import {
 import {
   screenshotCaptureTool,
   screenshotCaptureWindowTool,
+  screenshotCaptureIosTool,
 } from "./screenshot.js";
 
 // MCP Client
@@ -169,6 +170,7 @@ export const allBuiltinTools = [
   // Screenshot
   screenshotCaptureTool,
   screenshotCaptureWindowTool,
+  screenshotCaptureIosTool,
 
   // MCP Client
   mcpListServersTool,
@@ -275,6 +277,7 @@ export {
 export {
   screenshotCaptureTool,
   screenshotCaptureWindowTool,
+  screenshotCaptureIosTool,
 } from "./screenshot.js";
 export {
   mcpListServersTool,

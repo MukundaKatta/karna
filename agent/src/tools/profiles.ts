@@ -83,7 +83,7 @@ export const TOOL_GROUPS: Record<string, string[]> = {
   "group:memory": ["memory_search", "memory_get"],
   "group:messaging": ["message", "email_list", "email_read", "email_send", "email_create_draft", "email_search"],
   "group:calendar": ["calendar_list_events", "calendar_get_event", "calendar_create_event", "calendar_update_event", "calendar_delete_event"],
-  "group:media": ["image_generate", "screenshot_capture", "screenshot_capture_window"],
+  "group:media": ["image_generate", "screenshot_capture", "screenshot_capture_window", "screenshot_capture_ios"],
   "group:automation": ["cron", "gateway_restart"],
   "group:notes": ["note_create", "note_read", "note_update", "note_delete", "note_list", "note_search"],
   "group:mcp": ["mcp_list_servers", "mcp_connect_server", "mcp_list_tools", "mcp_call_tool", "mcp_disconnect_server"],
