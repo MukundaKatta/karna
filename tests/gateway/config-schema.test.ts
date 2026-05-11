@@ -16,6 +16,8 @@ describe("Config Schema", () => {
       expect(config.maxConnections).toBe(100);
       expect(config.heartbeatIntervalMs).toBe(30_000);
       expect(config.sessionTimeoutMs).toBe(3_600_000);
+      expect(config.websocket.maxPayloadBytes).toBe(1_048_576);
+      expect(config.websocket.maxMediaPayloadBytes).toBe(10_485_760);
       expect(config.cors.origins).toEqual([]);
     });
 

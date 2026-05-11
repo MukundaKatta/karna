@@ -4,6 +4,11 @@ import cors from "@fastify/cors";
 import pino from "pino";
 import { nanoid } from "nanoid";
 import { parseMessage } from "./protocol/schema.js";
+import {
+  resolveWebSocketLimitConfig,
+  validateWebSocketMessageSize,
+  type BandwidthTracker,
+} from "./protocol/limits.js";
 import { handleMessage, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
 import { SessionManager } from "./session/manager.js";
 import { HeartbeatScheduler } from "./heartbeat/scheduler.js";
@@ -41,6 +46,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { WorkflowEngine } from "@karna/agent/workflows/engine.js";
 import { createDefaultWorkflows } from "./catalog/default-workflows.js";
+import { createRedisSessionCoordinatorFromEnv } from "./session/redis-coordinator.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -63,11 +69,17 @@ async function main(): Promise<void> {
   const configPath = getConfigPath();
   const port = resolveGatewayPort(config);
   const host = resolveGatewayHost(config);
+  const gatewayInstanceId = process.env["KARNA_GATEWAY_INSTANCE_ID"] ?? nanoid();
+  const redisSessionCoordinator = await createRedisSessionCoordinatorFromEnv({
+    instanceId: gatewayInstanceId,
+  });
 
   // Initialize core services
   const sessionManager = new SessionManager({
     maxSessions: 1000,
     sessionTimeoutMs: config.gateway.sessionTimeoutMs,
+    sessionStateStore: redisSessionCoordinator ?? undefined,
+    sessionEventPublisher: redisSessionCoordinator ?? undefined,
   });
   sessionManager.start();
 
@@ -103,6 +115,7 @@ async function main(): Promise<void> {
 
   // Connected clients registry
   const connectedClients = new Map<string, ConnectedClient>();
+  const websocketLimits = resolveWebSocketLimitConfig(config.gateway.websocket);
 
   // Wire up health counters
   setConnectionCounter(() => connectedClients.size);
@@ -119,7 +132,7 @@ async function main(): Promise<void> {
   // Register WebSocket plugin
   await server.register(websocket, {
     options: {
-      maxPayload: 1_048_576, // 1 MB
+      maxPayload: websocketLimits.maxMediaPayloadBytes,
     },
   });
 
@@ -225,6 +238,10 @@ async function main(): Promise<void> {
 
   server.get("/ws", { websocket: true }, (socket, request) => {
     const connectionId = nanoid();
+    const bandwidthTracker: BandwidthTracker = {
+      windowStartedAt: Date.now(),
+      bytes: 0,
+    };
     logger.info({ connectionId }, "WebSocket connection opened");
 
     const context: ConnectionContext = {
@@ -241,6 +258,36 @@ async function main(): Promise<void> {
     };
 
     socket.on("message", (rawData: Buffer | string) => {
+      const limitResult = validateWebSocketMessageSize(
+        rawData,
+        websocketLimits,
+        bandwidthTracker,
+      );
+      if (!limitResult.ok) {
+        logger.warn(
+          {
+            connectionId,
+            code: limitResult.code,
+            sizeBytes: limitResult.sizeBytes,
+            bandwidthBytes: bandwidthTracker.bytes,
+          },
+          "Rejected oversized or excessive WebSocket message",
+        );
+        socket.send(
+          JSON.stringify({
+            id: nanoid(),
+            type: "error",
+            timestamp: Date.now(),
+            payload: {
+              code: limitResult.code,
+              message: limitResult.message,
+              retryable: limitResult.code === "BANDWIDTH_LIMIT_EXCEEDED",
+            },
+          }),
+        );
+        return;
+      }
+
       const message = parseMessage(rawData as string | Buffer);
 
       if (!message) {
@@ -301,6 +348,7 @@ async function main(): Promise<void> {
 
     // Stop session manager (flushes to storage)
     await sessionManager.stop();
+    await redisSessionCoordinator?.close();
 
     // Close all WebSocket connections
     for (const [clientId, client] of connectedClients) {
