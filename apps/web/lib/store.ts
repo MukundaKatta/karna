@@ -121,16 +121,63 @@ export const useChatStore = create<ChatState>((set) => ({
 
 // ─── Dashboard Store ────────────────────────────────────────────────────────
 
+const WEB_DASHBOARD_STORAGE_KEY = "karna:web:dashboard";
+
+type StoredDashboardSettings = {
+  sidebarCollapsed?: boolean;
+};
+
+export function readStoredDashboardSettings(): StoredDashboardSettings {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WEB_DASHBOARD_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as StoredDashboardSettings;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredDashboardSettings(settings: StoredDashboardSettings): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(WEB_DASHBOARD_STORAGE_KEY, JSON.stringify(settings));
+}
+
 interface DashboardState {
+  hydrated: boolean;
   sidebarCollapsed: boolean;
+  hydrateDashboardSettings: () => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
 }
 
-export const useDashboardStore = create<DashboardState>((set) => ({
+export const useDashboardStore = create<DashboardState>((set, get) => ({
+  hydrated: false,
   sidebarCollapsed: false,
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  hydrateDashboardSettings: () => {
+    if (get().hydrated) return;
+    const stored = readStoredDashboardSettings();
+    set({
+      hydrated: true,
+      sidebarCollapsed: stored.sidebarCollapsed ?? false,
+    });
+  },
+  toggleSidebar: () =>
+    set((state) => {
+      const sidebarCollapsed = !state.sidebarCollapsed;
+      writeStoredDashboardSettings({ sidebarCollapsed });
+      return { sidebarCollapsed };
+    }),
+  setSidebarCollapsed: (sidebarCollapsed) => {
+    writeStoredDashboardSettings({ sidebarCollapsed });
+    set({ sidebarCollapsed });
+  },
 }));
 
 // ─── Voice Settings Store ───────────────────────────────────────────────────

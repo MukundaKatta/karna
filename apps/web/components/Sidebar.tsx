@@ -25,6 +25,9 @@ import {
   GitBranch,
   LifeBuoy,
   LogOut,
+  CreditCard,
+  KeyRound,
+  UserCircle,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -37,61 +40,69 @@ interface NavItem {
   children?: NavItem[];
 }
 
-const navItems: NavItem[] = [
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+export const navGroups: NavGroup[] = [
   {
-    label: "Chat",
-    href: "/chat",
-    icon: <MessageSquare size={18} />,
-  },
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: <LayoutDashboard size={18} />,
-    children: [
-      { label: "Overview", href: "/dashboard", icon: <BarChart3 size={16} /> },
-      { label: "Agents", href: "/dashboard/agents", icon: <Users size={16} /> },
-      { label: "Sessions", href: "/dashboard/sessions", icon: <History size={16} /> },
-      { label: "Skills", href: "/dashboard/skills", icon: <Puzzle size={16} /> },
-      { label: "Tools", href: "/dashboard/tools", icon: <Wrench size={16} /> },
-      { label: "Memory", href: "/dashboard/memory", icon: <Brain size={16} /> },
-      { label: "Moderation", href: "/dashboard/moderation", icon: <ShieldAlert size={16} /> },
-      { label: "Analytics", href: "/dashboard/analytics", icon: <BarChart3 size={16} /> },
+    label: "Core",
+    items: [
+      { label: "Chat", href: "/chat", icon: <MessageSquare size={18} /> },
+      {
+        label: "Dashboard",
+        href: "/dashboard",
+        icon: <LayoutDashboard size={18} />,
+        children: [
+          { label: "Overview", href: "/dashboard", icon: <BarChart3 size={16} /> },
+          { label: "Sessions", href: "/dashboard/sessions", icon: <History size={16} /> },
+          { label: "Analytics", href: "/dashboard/analytics", icon: <BarChart3 size={16} /> },
+        ],
+      },
+      { label: "Workflows", href: "/workflows", icon: <GitBranch size={18} /> },
     ],
   },
   {
-    label: "Marketplace",
-    href: "/marketplace",
-    icon: <Store size={18} />,
-  },
-  {
-    label: "Observability",
-    href: "/observability",
-    icon: <Activity size={18} />,
-  },
-  {
-    label: "Workflows",
-    href: "/workflows",
-    icon: <GitBranch size={18} />,
+    label: "Management",
+    items: [
+      { label: "Agents", href: "/dashboard/agents", icon: <Users size={18} /> },
+      { label: "Tools", href: "/dashboard/tools", icon: <Wrench size={18} /> },
+      { label: "Skills", href: "/dashboard/skills", icon: <Puzzle size={18} /> },
+      { label: "Marketplace", href: "/marketplace", icon: <Store size={18} /> },
+      { label: "Memory", href: "/dashboard/memory", icon: <Brain size={18} /> },
+      { label: "Moderation", href: "/dashboard/moderation", icon: <ShieldAlert size={18} /> },
+      { label: "Observability", href: "/observability", icon: <Activity size={18} /> },
+    ],
   },
   {
     label: "Settings",
-    href: "/dashboard/settings",
-    icon: <Settings size={18} />,
+    items: [
+      { label: "Settings", href: "/dashboard/settings", icon: <Settings size={18} /> },
+      { label: "API Keys", href: "/dashboard/settings#api-keys", icon: <KeyRound size={18} /> },
+      { label: "Billing", href: "/dashboard/settings#billing", icon: <CreditCard size={18} /> },
+    ],
   },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const { sidebarCollapsed, toggleSidebar } = useDashboardStore();
+  const { sidebarCollapsed, toggleSidebar, hydrateDashboardSettings } = useDashboardStore();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(
     new Set(["Dashboard"]),
   );
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  useEffect(() => {
+    hydrateDashboardSettings();
+  }, [hydrateDashboardSettings]);
 
   // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
+    setAccountOpen(false);
   }, [pathname]);
 
   // Close on escape key
@@ -162,65 +173,75 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-3 px-2">
-        {navItems.map((item) => (
-          <div key={item.label} className="mb-1">
-            {item.children ? (
-              <>
-                <button
-                  onClick={() => toggleSection(item.label)}
-                  className={cn(
-                    "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                    pathname.startsWith("/dashboard") && item.label === "Dashboard"
-                      ? "text-white bg-dark-700/50"
-                      : "text-dark-300 hover:text-white hover:bg-dark-700/50",
-                  )}
-                >
-                  {item.icon}
-                  {!sidebarCollapsed && (
-                    <>
-                      <span className="flex-1 text-left">{item.label}</span>
-                      {expandedSections.has(item.label) ? (
-                        <ChevronDown size={14} />
-                      ) : (
-                        <ChevronRight size={14} />
-                      )}
-                    </>
-                  )}
-                </button>
-                {!sidebarCollapsed && expandedSections.has(item.label) && (
-                  <div className="ml-4 mt-1 space-y-0.5">
-                    {item.children.map((child) => (
-                      <Link
-                        key={child.href}
-                        href={child.href}
-                        className={cn(
-                          "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
-                          isActive(child.href)
-                            ? "text-accent-400 bg-accent-600/10"
-                            : "text-dark-400 hover:text-white hover:bg-dark-700/40",
-                        )}
-                      >
-                        {child.icon}
-                        <span>{child.label}</span>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-              </>
-            ) : (
-              <Link
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
-                  isActive(item.href)
-                    ? "text-accent-400 bg-accent-600/10"
-                    : "text-dark-300 hover:text-white hover:bg-dark-700/50",
-                )}
-              >
-                {item.icon}
-                {!sidebarCollapsed && <span>{item.label}</span>}
-              </Link>
+        {navGroups.map((group) => (
+          <div key={group.label} className="mb-4">
+            {!sidebarCollapsed && (
+              <div className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-dark-500">
+                {group.label}
+              </div>
             )}
+            {group.items.map((item) => (
+              <div key={item.href} className="mb-1">
+                {item.children ? (
+                  <>
+                    <button
+                      onClick={() => toggleSection(item.label)}
+                      className={cn(
+                        "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                        pathname.startsWith("/dashboard") && item.label === "Dashboard"
+                          ? "text-white bg-dark-700/50"
+                          : "text-dark-300 hover:text-white hover:bg-dark-700/50",
+                      )}
+                      aria-expanded={expandedSections.has(item.label)}
+                    >
+                      {item.icon}
+                      {!sidebarCollapsed && (
+                        <>
+                          <span className="flex-1 text-left">{item.label}</span>
+                          {expandedSections.has(item.label) ? (
+                            <ChevronDown size={14} />
+                          ) : (
+                            <ChevronRight size={14} />
+                          )}
+                        </>
+                      )}
+                    </button>
+                    {!sidebarCollapsed && expandedSections.has(item.label) && (
+                      <div className="ml-4 mt-1 space-y-0.5">
+                        {item.children.map((child) => (
+                          <Link
+                            key={child.href}
+                            href={child.href}
+                            className={cn(
+                              "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
+                              isActive(child.href)
+                                ? "text-accent-400 bg-accent-600/10"
+                                : "text-dark-400 hover:text-white hover:bg-dark-700/40",
+                            )}
+                          >
+                            {child.icon}
+                            <span>{child.label}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                      isActive(item.href)
+                        ? "text-accent-400 bg-accent-600/10"
+                        : "text-dark-300 hover:text-white hover:bg-dark-700/50",
+                    )}
+                  >
+                    {item.icon}
+                    {!sidebarCollapsed && <span>{item.label}</span>}
+                  </Link>
+                )}
+              </div>
+            ))}
           </div>
         ))}
       </nav>
@@ -247,12 +268,36 @@ export function Sidebar() {
             {!sidebarCollapsed && <span>Support</span>}
           </Link>
           <button
-            onClick={handleSignOut}
+            onClick={() => setAccountOpen((open) => !open)}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 transition-colors"
+            aria-expanded={accountOpen}
           >
-            <LogOut size={18} />
-            {!sidebarCollapsed && <span>Leave beta</span>}
+            <UserCircle size={18} />
+            {!sidebarCollapsed && (
+              <>
+                <span className="flex-1 text-left">Beta account</span>
+                {accountOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+              </>
+            )}
           </button>
+          {!sidebarCollapsed && accountOpen && (
+            <div className="ml-3 rounded-lg border border-dark-700 bg-dark-900/70 p-1">
+              <Link
+                href="/dashboard/settings"
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-dark-300 hover:bg-dark-700/60 hover:text-white"
+              >
+                <Settings size={15} />
+                Account settings
+              </Link>
+              <button
+                onClick={handleSignOut}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-dark-300 hover:bg-dark-700/60 hover:text-white"
+              >
+                <LogOut size={15} />
+                Leave beta
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
