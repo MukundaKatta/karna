@@ -1,5 +1,6 @@
-import React, { memo, useState, useCallback } from 'react';
+import React, { memo, useEffect, useRef, useState, useCallback } from 'react';
 import {
+  Animated,
   View,
   Text,
   StyleSheet,
@@ -116,6 +117,9 @@ export const ChatBubble = memo(function ChatBubble({ message }: ChatBubbleProps)
           {timeStr}
         </Text>
       </Pressable>
+      {!isUser && message.isStreaming && (
+        <StreamingCursor color={colors.primary} />
+      )}
 
       {showCopy && (
         <Pressable
@@ -146,6 +150,41 @@ export const ChatBubble = memo(function ChatBubble({ message }: ChatBubbleProps)
     </View>
   );
 });
+
+function StreamingCursor({ color }: { color: string }) {
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, {
+          toValue: 0.25,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 450,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+
+    animation.start();
+    return () => {
+      animation.stop();
+    };
+  }, [opacity]);
+
+  return (
+    <Animated.Text
+      accessibilityLabel="Streaming response"
+      style={[styles.streamingCursor, { color, opacity }]}
+    >
+      |
+    </Animated.Text>
+  );
+}
 
 // ── Minimal Markdown Renderer ────────────────────────────────────────────────
 
@@ -417,6 +456,12 @@ const styles = StyleSheet.create({
   copyText: {
     ...Typography.caption,
     fontWeight: '600',
+  },
+  streamingCursor: {
+    ...Typography.bodyBold,
+    alignSelf: 'flex-start',
+    marginHorizontal: Spacing.xl,
+    marginTop: -Spacing.xs,
   },
   toolCallsContainer: {
     marginHorizontal: Spacing.lg,

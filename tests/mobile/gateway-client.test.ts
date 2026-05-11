@@ -163,4 +163,50 @@ describe("mobile gateway client", () => {
       input: { command: "ls -R" },
     });
   });
+
+  it("batches streaming deltas and clears streaming state on finish", async () => {
+    const { gatewayClient } =
+      await import("../../apps/mobile/lib/gateway-client.js");
+    const { useAppStore } = await import("../../apps/mobile/lib/store.js");
+    const client = gatewayClient as unknown as TestGatewayClient;
+
+    useAppStore.setState({ messages: [] });
+
+    client.handleProtocolMessage({
+      id: "stream-1",
+      type: "agent.response.stream",
+      timestamp: Date.now(),
+      payload: { delta: "Hel", index: 0, finishReason: null },
+    });
+    client.handleProtocolMessage({
+      id: "stream-1",
+      type: "agent.response.stream",
+      timestamp: Date.now(),
+      payload: { delta: "lo", index: 1, finishReason: null },
+    });
+
+    expect(useAppStore.getState().messages[0]).toMatchObject({
+      id: "stream-1",
+      content: "",
+      isStreaming: true,
+    });
+
+    await vi.advanceTimersByTimeAsync(50);
+    expect(useAppStore.getState().messages[0]).toMatchObject({
+      content: "Hello",
+      isStreaming: true,
+    });
+
+    client.handleProtocolMessage({
+      id: "stream-1",
+      type: "agent.response.stream",
+      timestamp: Date.now(),
+      payload: { delta: "!", index: 2, finishReason: "stop" },
+    });
+
+    expect(useAppStore.getState().messages[0]).toMatchObject({
+      content: "Hello!",
+      isStreaming: false,
+    });
+  });
 });

@@ -43,6 +43,8 @@ class GatewayClient {
   private channelId = `mobile-${generateId()}`;
   private approvalAllForSession = false;
   private approvalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  private streamDeltaBuffers = new Map<string, string>();
+  private streamFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   connect(url: string, token: string): void {
     this.url = normalizeMobileGatewayWsUrl(url);
@@ -67,6 +69,7 @@ class GatewayClient {
     this.pendingStreamMessageId = null;
     this.approvalAllForSession = false;
     this.clearApprovalTimeouts();
+    this.clearStreamFlushTimers();
     const store = useAppStore.getState();
     store.setStatus("disconnected");
     store.setPendingToolApproval(null);
@@ -495,9 +498,11 @@ class GatewayClient {
         store.setTyping(false);
         const content = (payload.content as string) ?? "";
         if (this.pendingStreamMessageId) {
+          this.flushStreamingDelta(this.pendingStreamMessageId);
           store.updateMessage(this.pendingStreamMessageId, {
             content,
             toolCalls: payload.toolCalls as ToolCall[] | undefined,
+            isStreaming: false,
           });
         } else {
           const assistantMessage: ChatMessage = {
@@ -506,6 +511,7 @@ class GatewayClient {
             content,
             timestamp: Date.now(),
             toolCalls: payload.toolCalls as ToolCall[] | undefined,
+            isStreaming: false,
           };
           store.addMessage(assistantMessage);
         }
@@ -533,18 +539,18 @@ class GatewayClient {
           store.addMessage({
             id: this.pendingStreamMessageId,
             role: "assistant",
-            content: delta,
+            content: "",
             timestamp: Date.now(),
+            isStreaming: true,
           });
-        } else {
-          const existing = store.messages.find(
-            (m) => m.id === this.pendingStreamMessageId,
-          );
-          if (existing) {
-            store.updateMessage(this.pendingStreamMessageId, {
-              content: existing.content + delta,
-            });
-          }
+        }
+        this.appendStreamingDelta(this.pendingStreamMessageId, delta);
+        if (payload.finishReason) {
+          this.flushStreamingDelta(this.pendingStreamMessageId);
+          store.updateMessage(this.pendingStreamMessageId, {
+            isStreaming: false,
+          });
+          this.pendingStreamMessageId = null;
         }
         break;
       }
@@ -555,30 +561,30 @@ class GatewayClient {
           role: "assistant",
           content: "",
           timestamp: Date.now(),
+          isStreaming: true,
         };
         store.addMessage(streamMessage);
+        this.pendingStreamMessageId = streamMessage.id;
         break;
       }
 
       case "chat.stream.delta": {
         if (message.id) {
-          const existing = store.messages.find((m) => m.id === message.id);
-          if (existing) {
-            store.updateMessage(message.id, {
-              content: existing.content + ((payload.delta as string) ?? ""),
-            });
-          }
+          this.appendStreamingDelta(message.id, (payload.delta as string) ?? "");
         }
         break;
       }
 
       case "chat.stream.end": {
         store.setTyping(false);
-        if (message.id && payload.toolCalls) {
+        if (message.id) {
+          this.flushStreamingDelta(message.id);
           store.updateMessage(message.id, {
+            isStreaming: false,
             toolCalls: payload.toolCalls as ToolCall[],
           });
         }
+        this.pendingStreamMessageId = null;
         break;
       }
 
@@ -894,6 +900,52 @@ class GatewayClient {
       clearTimeout(timer);
     }
     this.approvalTimeouts.clear();
+  }
+
+  private appendStreamingDelta(messageId: string, delta: string): void {
+    if (!delta) return;
+    const pending = this.streamDeltaBuffers.get(messageId) ?? "";
+    this.streamDeltaBuffers.set(messageId, pending + delta);
+
+    if (this.streamFlushTimers.has(messageId)) {
+      return;
+    }
+
+    this.streamFlushTimers.set(
+      messageId,
+      setTimeout(() => {
+        this.flushStreamingDelta(messageId);
+      }, 50),
+    );
+  }
+
+  private flushStreamingDelta(messageId: string): void {
+    const timer = this.streamFlushTimers.get(messageId);
+    if (timer) {
+      clearTimeout(timer);
+      this.streamFlushTimers.delete(messageId);
+    }
+
+    const delta = this.streamDeltaBuffers.get(messageId);
+    if (!delta) return;
+
+    this.streamDeltaBuffers.delete(messageId);
+    const store = useAppStore.getState();
+    const existing = store.messages.find((message) => message.id === messageId);
+    if (!existing) return;
+
+    store.updateMessage(messageId, {
+      content: existing.content + delta,
+      isStreaming: true,
+    });
+  }
+
+  private clearStreamFlushTimers(): void {
+    for (const timer of this.streamFlushTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.streamFlushTimers.clear();
+    this.streamDeltaBuffers.clear();
   }
 }
 

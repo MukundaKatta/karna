@@ -126,6 +126,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   toolCalls?: ToolCall[];
+  isStreaming?: boolean;
 }
 
 export interface ToolCall {
