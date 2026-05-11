@@ -191,7 +191,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
   }, [activeSessionId, setActiveSession, setSessions]);
 
   return (
-    <div className="flex h-full relative">
+    <div className="relative flex h-full min-h-0">
       {/* Mobile sessions toggle button */}
       <button
         onClick={() => setSessionSidebarOpen(true)}
@@ -205,7 +205,7 @@ export default function ChatLayout({ children }: { children: React.ReactNode }) 
         open={sessionSidebarOpen}
         onClose={() => setSessionSidebarOpen(false)}
       />
-      <div className="flex-1 overflow-hidden min-w-0">{children}</div>
+      <div className="min-w-0 min-h-0 flex-1 overflow-hidden">{children}</div>
     </div>
   );
 }
