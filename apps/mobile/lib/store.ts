@@ -17,9 +17,11 @@ interface PersistedState {
   token: string;
   liveVoiceEnabled: boolean;
   liveVoicePeerChannelId: string;
+  authCallbackCode: string;
   chatDraft: string;
   messages: ChatMessage[];
   reminders: Reminder[];
+  memorySearchQuery: string;
   skills: Skill[];
 }
 
@@ -31,9 +33,11 @@ const PERSIST_KEYS: (keyof PersistedState)[] = [
   "token",
   "liveVoiceEnabled",
   "liveVoicePeerChannelId",
+  "authCallbackCode",
   "chatDraft",
   "messages",
   "reminders",
+  "memorySearchQuery",
   "skills",
 ];
 
@@ -170,7 +174,9 @@ interface TaskSlice {
 
 interface MemorySlice {
   memories: MemoryEntry[];
+  memorySearchQuery: string;
   setMemories: (memories: MemoryEntry[]) => void;
+  setMemorySearchQuery: (query: string) => void;
 }
 
 interface SkillSlice {
@@ -185,11 +191,13 @@ interface SettingsSlice {
   agentName: string;
   liveVoiceEnabled: boolean;
   liveVoicePeerChannelId: string;
+  authCallbackCode: string;
   setDarkMode: (enabled: boolean) => void;
   setNotifications: (enabled: boolean) => void;
   setAgentName: (name: string) => void;
   setLiveVoiceEnabled: (enabled: boolean) => void;
   setLiveVoicePeerChannelId: (channelId: string) => void;
+  setAuthCallbackCode: (code: string) => void;
 }
 
 type AppState = ConnectionSlice &
@@ -269,7 +277,9 @@ export const useAppStore = create<AppState>()((set) => ({
 
   // Memory
   memories: [],
+  memorySearchQuery: "",
   setMemories: (memories) => set({ memories }),
+  setMemorySearchQuery: (memorySearchQuery) => set({ memorySearchQuery }),
 
   // Skills
   skills: [],
@@ -287,12 +297,14 @@ export const useAppStore = create<AppState>()((set) => ({
   agentName: "Karna",
   liveVoiceEnabled: false,
   liveVoicePeerChannelId: "",
+  authCallbackCode: "",
   setDarkMode: (darkMode) => set({ darkMode }),
   setNotifications: (notifications) => set({ notifications }),
   setAgentName: (agentName) => set({ agentName }),
   setLiveVoiceEnabled: (liveVoiceEnabled) => set({ liveVoiceEnabled }),
   setLiveVoicePeerChannelId: (liveVoicePeerChannelId) =>
     set({ liveVoicePeerChannelId }),
+  setAuthCallbackCode: (authCallbackCode) => set({ authCallbackCode }),
 }));
 
 function hasEquivalentMessage(

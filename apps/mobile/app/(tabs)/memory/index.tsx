@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
   Text,
@@ -26,11 +26,12 @@ const CATEGORIES: { key: MemoryCategory; label: string; icon: keyof typeof Feath
 export default function MemoryScreen() {
   const darkMode = useAppStore((s) => s.darkMode);
   const memories = useAppStore((s) => s.memories);
+  const searchQuery = useAppStore((s) => s.memorySearchQuery);
+  const setSearchQuery = useAppStore((s) => s.setMemorySearchQuery);
   const colors = getColors(darkMode ? 'dark' : 'light');
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<MemoryCategory>('all');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedCategory, setSelectedCategory] = React.useState<MemoryCategory>('all');
+  const [expandedId, setExpandedId] = React.useState<string | null>(null);
 
   const filteredMemories = memories.filter((m) => {
     const matchesCategory =
