@@ -46,4 +46,7 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "const h=require('http');const port=process.env.PORT||3000;h.get(`http://127.0.0.1:${port}/api/health`,(r)=>{process.exit(r.statusCode>=200&&r.statusCode<300?0:1)}).on('error',()=>process.exit(1))"
+
 CMD ["node", "apps/web/server.js"]
