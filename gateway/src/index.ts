@@ -27,6 +27,7 @@ import { registerAccessRoutes } from "./routes/access.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerActivityRoutes } from "./routes/activity.js";
 import { registerOpenApiRoutes } from "./routes/openapi.js";
+import { registerModerationRoutes } from "./routes/moderation.js";
 import { registerTraceRoutes } from "./routes/traces.js";
 import { registerApiRoutes } from "./routes/api.js";
 import { registerControlRoutes } from "./routes/control.js";
@@ -221,6 +222,7 @@ async function main(): Promise<void> {
   });
 
   registerMemoryRoutes(server, memoryStore);
+  registerModerationRoutes(server);
   registerAccessRoutes(server, accessPolicies);
   registerSessionRoutes(server, sessionManager, auditLogger, traceCollector);
   registerActivityRoutes(server, auditLogger);

@@ -34,6 +34,9 @@ export const ConversationMessageSchema = z.object({
       toolName: z.string().optional(),
       finishReason: z.string().optional(),
       latencyMs: z.number().int().nonnegative().optional(),
+      moderationLevel: z.enum(["off", "moderate", "strict"]).optional(),
+      moderationReasons: z.array(z.string()).optional(),
+      moderated: z.boolean().optional(),
     })
     .optional(),
   parentId: z.string().nullable().optional(),

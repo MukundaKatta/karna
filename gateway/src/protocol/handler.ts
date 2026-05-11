@@ -37,6 +37,11 @@ import type { AccessPolicyManager } from "../access/policies.js";
 import type { AuditLogger } from "../audit/logger.js";
 import type { TraceCollector } from "../observability/trace-collector.js";
 import { DEFAULT_AGENTS } from "../catalog/default-agents.js";
+import {
+  logModerationEvent,
+  moderateGeneratedContent,
+  shouldLogModerationContent,
+} from "../security/moderation.js";
 
 const logger = pino({ name: "message-handler" });
 const ACCESS_CONTROLLED_CHANNELS = new Set([
@@ -439,6 +444,27 @@ export async function runSessionTurn(
   const resolvedModel = result.model ?? "";
 
   if (result.success) {
+    const moderation = moderateGeneratedContent(result.response);
+    if (!moderation.allowed) {
+      await logModerationEvent({
+        sessionId: session.id,
+        agentId: result.agentId,
+        model: resolvedModel || undefined,
+        level: moderation.level,
+        reasons: moderation.reasons,
+        originalContentHash: moderation.originalContentHash ?? "",
+        originalContent: shouldLogModerationContent() ? result.response : undefined,
+        replacementContent: moderation.content,
+        timestamp: Date.now(),
+      }).catch((error) => {
+        logger.error({ error: String(error), sessionId: session.id }, "Failed to log moderation event");
+      });
+      result = {
+        ...result,
+        response: moderation.content,
+      };
+    }
+
     await appendToTranscript(session.id, {
       id: nanoid(),
       sessionId: session.id,
@@ -449,6 +475,9 @@ export async function runSessionTurn(
         inputTokens: result.totalTokens.inputTokens,
         outputTokens: result.totalTokens.outputTokens,
         model: resolvedModel || undefined,
+        moderated: !moderation.allowed,
+        moderationLevel: moderation.level,
+        moderationReasons: moderation.reasons.length > 0 ? moderation.reasons : undefined,
       },
     });
 
@@ -843,6 +872,10 @@ async function handleChatMessage(
     const streamCallback: StreamCallback = (event) => {
       switch (event.type) {
         case "text":
+          if (!moderateGeneratedContent(event.text).allowed) {
+            logger.warn({ sessionId }, "Suppressed unsafe streamed response chunk");
+            break;
+          }
           sendMessage(ws, {
             id: nanoid(),
             type: "agent.response.stream",
