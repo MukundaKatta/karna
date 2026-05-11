@@ -43,6 +43,7 @@ const PERSIST_KEYS: (keyof PersistedState)[] = [
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 const HISTORY_DUPLICATE_WINDOW_MS = 120_000;
+const MAX_STORED_MESSAGES = 100;
 
 function persistState(state: Record<string, unknown>): void {
   // Debounce writes to avoid thrashing disk
@@ -54,7 +55,7 @@ function persistState(state: Record<string, unknown>): void {
     }
     // Keep only the last 100 messages
     if (Array.isArray(toPersist.messages)) {
-      toPersist.messages = (toPersist.messages as ChatMessage[]).slice(0, 100);
+      toPersist.messages = limitMessages(toPersist.messages as ChatMessage[]);
     }
     FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
       (err) => console.warn("[Store] Failed to persist state:", err),
@@ -224,7 +225,7 @@ export const useAppStore = create<AppState>()((set) => ({
   isTyping: false,
   setChatDraft: (chatDraft) => set({ chatDraft }),
   addMessage: (message) =>
-    set((state) => ({ messages: [message, ...state.messages] })),
+    set((state) => ({ messages: limitMessages([message, ...state.messages]) })),
   updateMessage: (id, updates) =>
     set((state) => ({
       messages: state.messages.map((m) =>
@@ -251,7 +252,7 @@ export const useAppStore = create<AppState>()((set) => ({
         return state;
       }
 
-      return { messages: merged };
+      return { messages: limitMessages(merged) };
     }),
 
   // Tasks
@@ -333,6 +334,10 @@ function hasEquivalentMessage(
 
 function normalizeMessageContent(content: string): string {
   return content.trim();
+}
+
+function limitMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.slice(0, MAX_STORED_MESSAGES);
 }
 
 // Persist on every state change (debounced)
