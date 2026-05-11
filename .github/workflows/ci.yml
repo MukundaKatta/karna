@@ -30,6 +30,26 @@ jobs:
       - name: Check workspace protocol
         run: pnpm run check:workspace-protocol
 
+      - name: Validate workspace dependency graph
+        run: pnpm run check:workspace-graph -- artifacts/workspace-graph.dot
+
+      - name: Generate Turbo build graph
+        run: |
+          mkdir -p artifacts
+          pnpm exec turbo run build --graph=artifacts/turbo-build-graph.html --dry=json
+
+      - name: Generate workspace graph SVG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+          dot -Tsvg artifacts/workspace-graph.dot -o artifacts/workspace-graph.svg
+
+      - name: Upload dependency graph artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-dependency-graphs
+          path: artifacts/
+
       - name: Build
         run: pnpm run build
 
