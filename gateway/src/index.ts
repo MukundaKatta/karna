@@ -41,6 +41,7 @@ import {
   resolveGatewayCorsOrigins,
   resolveGatewayHost,
   resolveGatewayPort,
+  isGatewayOriginAllowed,
 } from "./config/runtime-env.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -145,6 +146,7 @@ async function main(): Promise<void> {
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
     credentials: true,
+    maxAge: 86_400,
   });
 
   // ─── Security Headers ─────────────────────────────────────────────────
@@ -238,11 +240,18 @@ async function main(): Promise<void> {
 
   server.get("/ws", { websocket: true }, (socket, request) => {
     const connectionId = nanoid();
+    const requestOrigin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
     let invalidMessageCount = 0;
     const bandwidthTracker: BandwidthTracker = {
       windowStartedAt: Date.now(),
       bytes: 0,
     };
+    if (!isGatewayOriginAllowed(requestOrigin, corsOrigins)) {
+      logger.warn({ connectionId, requestOrigin }, "Rejected WebSocket connection from untrusted origin");
+      socket.close(1008, "Origin not allowed");
+      return;
+    }
+
     logger.info({ connectionId }, "WebSocket connection opened");
 
     const context: ConnectionContext = {
@@ -254,7 +263,7 @@ async function main(): Promise<void> {
       connectedClients,
       auditLogger,
       traceCollector,
-      requestOrigin: typeof request.headers.origin === "string" ? request.headers.origin : null,
+      requestOrigin: requestOrigin ?? null,
       allowedOrigins: corsOrigins,
     };
 
