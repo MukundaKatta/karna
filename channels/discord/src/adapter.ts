@@ -1,4 +1,7 @@
 import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   Client,
   GatewayIntentBits,
   Partials,
@@ -7,6 +10,7 @@ import {
   type TextChannel,
   type DMChannel,
   type Interaction,
+  type ButtonInteraction,
   ChannelType,
 } from "discord.js";
 import WebSocket from "ws";
@@ -19,8 +23,14 @@ import type {
   AgentResponseStreamMessage,
   StatusMessage,
   ErrorMessage,
+  ToolApprovalRequestedMessage,
+  ToolResultMessage,
 } from "@karna/shared";
-import { registerSlashCommands, handleSlashCommand } from "./slash-commands.js";
+import {
+  registerSlashCommands,
+  handleSlashCommand,
+  handleSkillSelectInteraction,
+} from "./slash-commands.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -40,6 +50,16 @@ interface PendingResponse {
 }
 
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
+const DISCORD_MAX_EMBED_DESCRIPTION_LENGTH = 3900;
+const DISCORD_COLOR_INFO = 0x5865f2;
+const DISCORD_COLOR_SUCCESS = 0x2ecc71;
+const DISCORD_COLOR_ERROR = 0xe74c3c;
+const TOOL_APPROVAL_CUSTOM_ID_PREFIX = "karna:tool-approval";
+
+interface PendingToolApproval {
+  sessionId: string;
+  toolCallId: string;
+}
 
 // ─── DiscordAdapter ─────────────────────────────────────────────────────────
 
@@ -53,6 +73,7 @@ export class DiscordAdapter {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>();
+  private pendingToolApprovals = new Map<string, PendingToolApproval>();
   private isShuttingDown = false;
   private slashCommandRegistration: Promise<void> | null = null;
 
@@ -139,8 +160,19 @@ export class DiscordAdapter {
     });
 
     this.client.on("interactionCreate", async (interaction: Interaction) => {
-      if (!interaction.isChatInputCommand()) return;
-      await handleSlashCommand(interaction, this, this.logger);
+      if (interaction.isChatInputCommand()) {
+        await handleSlashCommand(interaction, this, this.logger);
+        return;
+      }
+
+      if (interaction.isButton()) {
+        await this.handleToolApprovalButton(interaction);
+        return;
+      }
+
+      if (interaction.isStringSelectMenu()) {
+        await handleSkillSelectInteraction(interaction);
+      }
     });
   }
 
@@ -349,6 +381,12 @@ export class DiscordAdapter {
       case "agent.response.stream":
         void this.handleAgentStreamResponse(message as AgentResponseStreamMessage);
         break;
+      case "tool.result":
+        void this.handleToolResult(message as ToolResultMessage);
+        break;
+      case "tool.approval.requested":
+        void this.handleToolApprovalRequest(message as ToolApprovalRequestedMessage);
+        break;
       case "status":
         void this.handleStatusUpdate(message as StatusMessage);
         break;
@@ -379,7 +417,9 @@ export class DiscordAdapter {
     const content = message.payload.content;
     if (!content) return;
 
-    await this.sendDiscordMessage(channelId, content);
+    await this.sendDiscordMessage(channelId, content, {
+      finishReason: message.payload.finishReason,
+    });
   }
 
   private async handleAgentStreamResponse(
@@ -404,8 +444,104 @@ export class DiscordAdapter {
       const fullContent = pending.chunks.join("");
       this.pendingResponses.delete(sessionId);
 
-      await this.sendDiscordMessage(channelId, fullContent);
+      await this.sendDiscordMessage(channelId, fullContent, {
+        finishReason: message.payload.finishReason,
+      });
     }
+  }
+
+  private async handleToolResult(message: ToolResultMessage): Promise<void> {
+    const channelId = this.findChannelIdBySession(message.sessionId);
+    if (!channelId) return;
+
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel?.isTextBased() || !("send" in channel)) return;
+
+      const embed = buildDiscordToolResultEmbed(message);
+      await (channel as TextChannel | DMChannel).send({ embeds: [embed] });
+    } catch (error) {
+      this.logger.error({ error, channelId }, "Failed to send Discord tool result");
+    }
+  }
+
+  private async handleToolApprovalRequest(
+    message: ToolApprovalRequestedMessage,
+  ): Promise<void> {
+    const channelId = this.findChannelIdBySession(message.sessionId);
+    if (!channelId || !message.sessionId) return;
+
+    const requestId = randomUUID();
+    this.pendingToolApprovals.set(requestId, {
+      sessionId: message.sessionId,
+      toolCallId: message.payload.toolCallId,
+    });
+
+    try {
+      const channel = await this.client.channels.fetch(channelId);
+      if (!channel?.isTextBased() || !("send" in channel)) return;
+
+      const embed = buildDiscordToolApprovalEmbed(message);
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`${TOOL_APPROVAL_CUSTOM_ID_PREFIX}:approve:${requestId}`)
+          .setLabel("Approve")
+          .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`${TOOL_APPROVAL_CUSTOM_ID_PREFIX}:deny:${requestId}`)
+          .setLabel("Deny")
+          .setStyle(ButtonStyle.Danger),
+      );
+
+      await (channel as TextChannel | DMChannel).send({
+        embeds: [embed],
+        components: [row],
+      });
+    } catch (error) {
+      this.pendingToolApprovals.delete(requestId);
+      this.logger.error({ error, channelId }, "Failed to send Discord approval request");
+    }
+  }
+
+  private async handleToolApprovalButton(
+    interaction: ButtonInteraction,
+  ): Promise<void> {
+    if (!interaction.customId.startsWith(TOOL_APPROVAL_CUSTOM_ID_PREFIX)) {
+      return;
+    }
+
+    const [, , decision, requestId] = interaction.customId.split(":");
+    const approval = requestId ? this.pendingToolApprovals.get(requestId) : undefined;
+
+    if (!approval || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      await interaction.reply({
+        content: "This approval request is no longer active.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    this.pendingToolApprovals.delete(requestId);
+
+    const approved = decision === "approve";
+    const approvalResponse: ProtocolMessage = {
+      id: randomUUID(),
+      type: "tool.approval.response",
+      timestamp: Date.now(),
+      sessionId: approval.sessionId,
+      payload: {
+        toolCallId: approval.toolCallId,
+        approved,
+        reason: approved ? "Approved from Discord" : "Denied from Discord",
+      },
+    };
+
+    this.ws.send(JSON.stringify(approvalResponse));
+
+    await interaction.update({
+      content: approved ? "Tool approved." : "Tool denied.",
+      components: [],
+    });
   }
 
   private async handleStatusUpdate(message: StatusMessage): Promise<void> {
@@ -465,7 +601,11 @@ export class DiscordAdapter {
 
   // ─── Discord Messaging ───────────────────────────────────────────────
 
-  async sendDiscordMessage(channelId: string, content: string): Promise<void> {
+  async sendDiscordMessage(
+    channelId: string,
+    content: string,
+    options: { finishReason?: AgentResponseMessage["payload"]["finishReason"] } = {},
+  ): Promise<void> {
     try {
       const channel = await this.client.channels.fetch(channelId);
       if (!channel?.isTextBased() || !("send" in channel)) {
@@ -474,16 +614,12 @@ export class DiscordAdapter {
       }
 
       const sendableChannel = channel as TextChannel | DMChannel;
-      const chunks = splitMessage(content, DISCORD_MAX_MESSAGE_LENGTH);
+      const normalizedContent = normalizeDiscordCodeBlocks(content);
+      const chunks = splitMessage(normalizedContent, DISCORD_MAX_MESSAGE_LENGTH);
 
       for (const chunk of chunks) {
-        // If the message contains code blocks or is short, send as plain text
-        // For longer structured responses, use an embed
-        if (chunk.length > 1000 && !chunk.includes("```")) {
-          const embed = new EmbedBuilder()
-            .setColor(0x5865f2)
-            .setDescription(chunk);
-
+        if (shouldSendAsEmbed(chunk, options.finishReason)) {
+          const embed = buildDiscordResponseEmbed(chunk, options.finishReason);
           await sendableChannel.send({ embeds: [embed] });
         } else {
           await sendableChannel.send(chunk);
@@ -617,6 +753,119 @@ function splitMessage(text: string, maxLen: number): string[] {
   }
 
   return chunks.filter((chunk) => chunk.length > 0);
+}
+
+function shouldSendAsEmbed(
+  content: string,
+  finishReason?: AgentResponseMessage["payload"]["finishReason"],
+): boolean {
+  return finishReason === "error" || (!content.includes("```") && content.length > 600);
+}
+
+export function buildDiscordResponseEmbed(
+  content: string,
+  finishReason: AgentResponseMessage["payload"]["finishReason"] = "stop",
+): EmbedBuilder {
+  const isError = finishReason === "error";
+  const isToolUse = finishReason === "tool_use";
+  const hasMemoryRecall = hasMemoryRecallSignal(content);
+
+  const embed = new EmbedBuilder()
+    .setColor(
+      isError
+        ? DISCORD_COLOR_ERROR
+        : isToolUse
+          ? DISCORD_COLOR_INFO
+          : DISCORD_COLOR_SUCCESS,
+    )
+    .setDescription(content.slice(0, DISCORD_MAX_EMBED_DESCRIPTION_LENGTH))
+    .setTimestamp();
+
+  if (isError) {
+    embed.setTitle("Agent Error");
+  } else if (isToolUse) {
+    embed.setTitle("Tool Request");
+  }
+
+  if (hasMemoryRecall) {
+    embed.setFooter({ text: "Memory context included" });
+  }
+
+  return embed;
+}
+
+export function buildDiscordToolResultEmbed(
+  message: ToolResultMessage,
+): EmbedBuilder {
+  const result = formatToolResult(message.payload.result);
+  const embed = new EmbedBuilder()
+    .setColor(message.payload.isError ? DISCORD_COLOR_ERROR : DISCORD_COLOR_SUCCESS)
+    .setTitle(message.payload.isError ? "Tool Error" : "Tool Result")
+    .addFields(
+      { name: "Tool", value: `\`${message.payload.toolName}\``, inline: true },
+      {
+        name: "Status",
+        value: message.payload.isError ? "Error" : "Success",
+        inline: true,
+      },
+    )
+    .setTimestamp();
+
+  if (message.payload.durationMs !== undefined) {
+    embed.addFields({
+      name: "Duration",
+      value: `${message.payload.durationMs}ms`,
+      inline: true,
+    });
+  }
+
+  embed.addFields({
+    name: "Result",
+    value: result.slice(0, 1024) || "(empty)",
+  });
+
+  return embed;
+}
+
+export function buildDiscordToolApprovalEmbed(
+  message: ToolApprovalRequestedMessage,
+): EmbedBuilder {
+  const { toolName, description, riskLevel } = message.payload;
+
+  return new EmbedBuilder()
+    .setColor(
+      riskLevel === "critical" || riskLevel === "high"
+        ? DISCORD_COLOR_ERROR
+        : DISCORD_COLOR_INFO,
+    )
+    .setTitle("Tool Approval Required")
+    .addFields(
+      { name: "Tool", value: `\`${toolName}\``, inline: true },
+      { name: "Risk", value: riskLevel, inline: true },
+      {
+        name: "Description",
+        value: description ?? "No description provided.",
+      },
+    )
+    .setTimestamp();
+}
+
+function normalizeDiscordCodeBlocks(content: string): string {
+  return content.replace(/```\n/g, "```text\n");
+}
+
+function hasMemoryRecallSignal(content: string): boolean {
+  return /\b(memory|remember|remembered|recall|recalled)\b/i.test(content);
+}
+
+function formatToolResult(result: unknown): string {
+  if (typeof result === "string") return result;
+
+  try {
+    return `\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``;
+  } catch {
+    return String(result);
+  }
 }
 
 // ─── Standalone Entry Point ─────────────────────────────────────────────────
