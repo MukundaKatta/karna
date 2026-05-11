@@ -604,7 +604,21 @@ async function main(): Promise<void> {
   const gatewayUrl = process.env["KARNA_GATEWAY_URL"] ?? "ws://localhost:3000/ws";
 
   if (platform() !== "darwin") {
-    process.stderr.write("iMessage adapter is only supported on macOS" + "\n");
+    process.stderr.write(
+      "iMessage adapter is only supported on macOS because it uses the local Messages database and AppleScript." +
+        "\n",
+    );
+    if (process.env["KARNA_SKIP_UNSUPPORTED_CHANNELS"] === "1") {
+      process.stderr.write(
+        "Skipping iMessage adapter startup because KARNA_SKIP_UNSUPPORTED_CHANNELS=1." +
+          "\n",
+      );
+      process.exit(0);
+    }
+    process.stderr.write(
+      "Disable the iMessage channel for Linux/Docker/Kubernetes deployments or set KARNA_SKIP_UNSUPPORTED_CHANNELS=1." +
+        "\n",
+    );
     process.exit(1);
   }
 

@@ -70,7 +70,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   cli: "CLI",
   discord: "Discord",
   google_chat: "Google Chat",
-  imessage: "iMessage",
+  imessage: "iMessage (macOS only)",
   irc: "IRC",
   line: "LINE",
   matrix: "Matrix",
