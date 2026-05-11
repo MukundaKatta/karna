@@ -27,6 +27,7 @@ export const MessageTypeSchema = z.enum([
   "rtc.answer",
   "rtc.ice-candidate",
   "rtc.hangup",
+  "clipboard.sync",
   "agent.handoff",
   "orchestration.status",
   "error",
@@ -300,6 +301,25 @@ export const RTCHangupMessageSchema = BaseMessageSchema.extend({
   }),
 });
 
+// ─── Clipboard Sync Messages ────────────────────────────────────────────────
+
+export const ClipboardSyncMessageSchema = BaseMessageSchema.extend({
+  type: z.literal("clipboard.sync"),
+  payload: z.object({
+    itemId: z.string().min(1),
+    sourceDeviceId: z.string().min(1),
+    targetDeviceId: z.string().min(1).optional(),
+    encryptedContent: z.string().min(1),
+    encryption: z.object({
+      algorithm: z.literal("aes-256-gcm"),
+      iv: z.string().min(1),
+      authTag: z.string().min(1),
+    }),
+    contentType: z.enum(["text/plain"]).default("text/plain"),
+    createdAt: z.number().int().positive(),
+  }),
+});
+
 // ─── Agent Handoff Messages ──────────────────────────────────────────────────
 
 export const AgentHandoffMessageSchema = BaseMessageSchema.extend({
@@ -369,6 +389,7 @@ export const ProtocolMessageSchema = z.discriminatedUnion("type", [
   RTCAnswerMessageSchema,
   RTCIceCandidateMessageSchema,
   RTCHangupMessageSchema,
+  ClipboardSyncMessageSchema,
   AgentHandoffMessageSchema,
   OrchestrationStatusMessageSchema,
   ErrorMessageSchema,
@@ -401,6 +422,7 @@ export type RTCOfferMessage = z.infer<typeof RTCOfferMessageSchema>;
 export type RTCAnswerMessage = z.infer<typeof RTCAnswerMessageSchema>;
 export type RTCIceCandidateMessage = z.infer<typeof RTCIceCandidateMessageSchema>;
 export type RTCHangupMessage = z.infer<typeof RTCHangupMessageSchema>;
+export type ClipboardSyncMessage = z.infer<typeof ClipboardSyncMessageSchema>;
 export type AgentHandoffMessage = z.infer<typeof AgentHandoffMessageSchema>;
 export type OrchestrationStatusMessage = z.infer<typeof OrchestrationStatusMessageSchema>;
 export type ProtocolMessage = z.infer<typeof ProtocolMessageSchema>;

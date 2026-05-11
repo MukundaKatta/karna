@@ -99,6 +99,13 @@ import { memorySearchTool, memoryGetTool } from "./memory-tools.js";
 // Utility Tools
 import { calculateTool, convertUnitTool, convertCurrencyTool } from "./utility-tools.js";
 
+// Clipboard Sync
+import {
+  clipboardSyncApplyTool,
+  clipboardSyncHistoryTool,
+  clipboardSyncSendTool,
+} from "./clipboard-sync.js";
+
 // Cross-Channel Message
 import { messageTool } from "./message.js";
 
@@ -199,6 +206,11 @@ export const allBuiltinTools = [
   convertUnitTool,
   convertCurrencyTool,
 
+  // Clipboard Sync
+  clipboardSyncSendTool,
+  clipboardSyncApplyTool,
+  clipboardSyncHistoryTool,
+
   // Cross-Channel Message
   messageTool,
 
@@ -296,6 +308,11 @@ export {
 export { setElevatedMode } from "./shell.js";
 export { memorySearchTool, memoryGetTool } from "./memory-tools.js";
 export { calculateTool, convertUnitTool, convertCurrencyTool } from "./utility-tools.js";
+export {
+  clipboardSyncApplyTool,
+  clipboardSyncHistoryTool,
+  clipboardSyncSendTool,
+} from "./clipboard-sync.js";
 export { messageTool } from "./message.js";
 export { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gateway-control.js";
 export { delegateToAgentTool, DELEGATE_TOOL_NAME } from "./delegate.js";
