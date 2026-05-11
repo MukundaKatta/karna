@@ -19,6 +19,10 @@ import { getConfigPath, loadConfig } from "./config/loader.js";
 import { getSystemHealth, setConnectionCounter, setSessionCounter } from "./health/status.js";
 import { MetricsCollector } from "./health/metrics.js";
 import { validateGatewayEnv } from "./config/validate-env.js";
+import {
+  parseRouteLogLevels,
+  registerRequestLogging,
+} from "./middleware/request-logging.js";
 import { MemoryStore, InMemoryBackend } from "@karna/agent/memory/store.js";
 import { SupabaseMemoryBackend } from "@karna/agent/memory/supabase-backend.js";
 import { createSupabaseClient } from "@karna/supabase";
@@ -135,6 +139,14 @@ async function main(): Promise<void> {
       level: process.env["LOG_LEVEL"] ?? "info",
     },
     genReqId: () => nanoid(),
+  });
+
+  registerRequestLogging(server, {
+    filePath: process.env["GATEWAY_REQUEST_LOG_FILE"],
+    maxFileBytes: process.env["GATEWAY_REQUEST_LOG_MAX_BYTES"]
+      ? Number(process.env["GATEWAY_REQUEST_LOG_MAX_BYTES"])
+      : undefined,
+    routeLogLevels: parseRouteLogLevels(process.env["GATEWAY_REQUEST_LOG_LEVELS"]),
   });
 
   server.addHook("onRequest", async (request, reply) => {
@@ -358,6 +370,15 @@ async function main(): Promise<void> {
       }
 
       const rateKey = `${parsed.message.sessionId ?? connectionId}:${parsed.message.type}`;
+      logger.info(
+        {
+          direction: "inbound",
+          connectionId,
+          messageType: parsed.message.type,
+          sessionId: parsed.message.sessionId,
+        },
+        "WebSocket message received",
+      );
       const rateBucket = rateBuckets.get(rateKey) ?? {
         windowStartedAt: Date.now(),
         count: 0,

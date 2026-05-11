@@ -207,6 +207,14 @@ export interface SessionTurnExecutionOptions {
 function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
   try {
     if (ws.readyState === ws.OPEN) {
+      logger.info(
+        {
+          direction: "outbound",
+          messageType: message["type"],
+          sessionId: message["sessionId"],
+        },
+        "WebSocket message sent",
+      );
       ws.send(JSON.stringify(message));
     }
   } catch (error) {
