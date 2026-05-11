@@ -17,6 +17,7 @@ interface PersistedState {
   token: string;
   liveVoiceEnabled: boolean;
   liveVoicePeerChannelId: string;
+  chatDraft: string;
   messages: ChatMessage[];
   reminders: Reminder[];
   skills: Skill[];
@@ -30,6 +31,7 @@ const PERSIST_KEYS: (keyof PersistedState)[] = [
   "token",
   "liveVoiceEnabled",
   "liveVoicePeerChannelId",
+  "chatDraft",
   "messages",
   "reminders",
   "skills",
@@ -148,7 +150,9 @@ interface ConnectionSlice {
 
 interface ChatSlice {
   messages: ChatMessage[];
+  chatDraft: string;
   isTyping: boolean;
+  setChatDraft: (draft: string) => void;
   addMessage: (message: ChatMessage) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   setTyping: (typing: boolean) => void;
@@ -208,7 +212,9 @@ export const useAppStore = create<AppState>()((set) => ({
 
   // Chat
   messages: [],
+  chatDraft: "",
   isTyping: false,
+  setChatDraft: (chatDraft) => set({ chatDraft }),
   addMessage: (message) =>
     set((state) => ({ messages: [message, ...state.messages] })),
   updateMessage: (id, updates) =>

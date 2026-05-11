@@ -23,11 +23,12 @@ import { VoiceInput } from "@/components/VoiceInput";
 export default function ChatScreen() {
   const darkMode = useAppStore((s) => s.darkMode);
   const messages = useAppStore((s) => s.messages);
+  const inputText = useAppStore((s) => s.chatDraft);
+  const setInputText = useAppStore((s) => s.setChatDraft);
   const isTyping = useAppStore((s) => s.isTyping);
   const connectionStatus = useAppStore((s) => s.status);
   const colors = getColors(darkMode ? "dark" : "light");
 
-  const [inputText, setInputText] = useState("");
   const [liveVoiceState, setLiveVoiceState] =
     useState<MobileWebRTCState>("idle");
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
