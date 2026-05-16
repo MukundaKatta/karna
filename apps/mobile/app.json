@@ -34,7 +34,10 @@
         ],
         "ITSAppUsesNonExemptEncryption": false,
         "LSApplicationCategoryType": "public.app-category.productivity"
-      }
+      },
+      "associatedDomains": [
+        "applinks:app.karna.ai"
+      ]
     },
     "android": {
       "adaptiveIcon": {
@@ -44,6 +47,22 @@
       "package": "com.karna.mobile",
       "permissions": [
         "RECORD_AUDIO"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.karna.ai"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "web": {

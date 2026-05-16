@@ -4,6 +4,11 @@ import {
   isLegacyLocalGatewayUrl,
   resolveDefaultMobileGatewayWsUrl,
 } from "./runtime-config";
+import {
+  buildConnectionQuality,
+  type ConnectionQuality,
+  type MobileNetworkType,
+} from "./connection-quality";
 
 // ── Persistence ─────────────────────────────────────────────────────────────
 
@@ -12,48 +17,71 @@ const STORE_FILE = `${FileSystem.documentDirectory}karna-store.json`;
 interface PersistedState {
   darkMode: boolean;
   notifications: boolean;
+  hapticsEnabled: boolean;
   agentName: string;
   url: string;
   token: string;
   liveVoiceEnabled: boolean;
   liveVoicePeerChannelId: string;
+  authCallbackCode: string;
+  chatDraft: string;
   messages: ChatMessage[];
   reminders: Reminder[];
+  memorySearchQuery: string;
   skills: Skill[];
 }
 
 const PERSIST_KEYS: (keyof PersistedState)[] = [
   "darkMode",
   "notifications",
+  "hapticsEnabled",
   "agentName",
   "url",
   "token",
   "liveVoiceEnabled",
   "liveVoicePeerChannelId",
+  "authCallbackCode",
+  "chatDraft",
   "messages",
   "reminders",
+  "memorySearchQuery",
   "skills",
 ];
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let skipNextDebouncedPersist = false;
 const HISTORY_DUPLICATE_WINDOW_MS = 120_000;
+const MAX_STORED_MESSAGES = 100;
 
 function persistState(state: Record<string, unknown>): void {
   // Debounce writes to avoid thrashing disk
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
-    const toPersist: Record<string, unknown> = {};
-    for (const key of PERSIST_KEYS) {
-      toPersist[key] = state[key];
-    }
-    // Keep only the last 100 messages
-    if (Array.isArray(toPersist.messages)) {
-      toPersist.messages = (toPersist.messages as ChatMessage[]).slice(0, 100);
-    }
-    FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
-      (err) => console.warn("[Store] Failed to persist state:", err),
-    );
+    writePersistedState(state);
   }, 500);
+}
+
+function persistStateImmediately(state: Record<string, unknown>): void {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = null;
+  }
+  skipNextDebouncedPersist = true;
+  writePersistedState(state);
+}
+
+function writePersistedState(state: Record<string, unknown>): void {
+  const toPersist: Record<string, unknown> = {};
+  for (const key of PERSIST_KEYS) {
+    toPersist[key] = state[key];
+  }
+  // Keep only the last 100 messages
+  if (Array.isArray(toPersist.messages)) {
+    toPersist.messages = limitMessages(toPersist.messages as ChatMessage[]);
+  }
+  FileSystem.writeAsStringAsync(STORE_FILE, JSON.stringify(toPersist)).catch(
+    (err) => console.warn("[Store] Failed to persist state:", err),
+  );
 }
 
 export async function loadPersistedState(): Promise<void> {
@@ -98,6 +126,7 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   toolCalls?: ToolCall[];
+  isStreaming?: boolean;
 }
 
 export interface ToolCall {
@@ -107,6 +136,16 @@ export interface ToolCall {
   input?: Record<string, unknown>;
   output?: string;
   duration?: number;
+}
+
+export interface ToolApprovalRequest {
+  toolCallId: string;
+  toolName: string;
+  riskLevel: "low" | "medium" | "high" | "critical";
+  arguments?: Record<string, unknown>;
+  description?: string;
+  requestedAt: number;
+  expiresAt: number;
 }
 
 export interface Reminder {
@@ -144,14 +183,22 @@ interface ConnectionSlice {
   setStatus: (status: ConnectionStatus) => void;
   setUrl: (url: string) => void;
   setToken: (token: string) => void;
+  connectionQuality: ConnectionQuality;
+  setLatency: (latencyMs: number | null) => void;
+  setReconnectAttempts: (attempts: number) => void;
+  setNetworkType: (networkType: MobileNetworkType) => void;
 }
 
 interface ChatSlice {
   messages: ChatMessage[];
+  chatDraft: string;
   isTyping: boolean;
+  pendingToolApproval: ToolApprovalRequest | null;
+  setChatDraft: (draft: string) => void;
   addMessage: (message: ChatMessage) => void;
   updateMessage: (id: string, updates: Partial<ChatMessage>) => void;
   setTyping: (typing: boolean) => void;
+  setPendingToolApproval: (request: ToolApprovalRequest | null) => void;
   clearChat: () => void;
   loadOlderMessages: (messages: ChatMessage[]) => void;
 }
@@ -166,7 +213,9 @@ interface TaskSlice {
 
 interface MemorySlice {
   memories: MemoryEntry[];
+  memorySearchQuery: string;
   setMemories: (memories: MemoryEntry[]) => void;
+  setMemorySearchQuery: (query: string) => void;
 }
 
 interface SkillSlice {
@@ -178,14 +227,18 @@ interface SkillSlice {
 interface SettingsSlice {
   darkMode: boolean;
   notifications: boolean;
+  hapticsEnabled: boolean;
   agentName: string;
   liveVoiceEnabled: boolean;
   liveVoicePeerChannelId: string;
+  authCallbackCode: string;
   setDarkMode: (enabled: boolean) => void;
   setNotifications: (enabled: boolean) => void;
+  setHapticsEnabled: (enabled: boolean) => void;
   setAgentName: (name: string) => void;
   setLiveVoiceEnabled: (enabled: boolean) => void;
   setLiveVoicePeerChannelId: (channelId: string) => void;
+  setAuthCallbackCode: (code: string) => void;
 }
 
 type AppState = ConnectionSlice &
@@ -202,23 +255,69 @@ export const useAppStore = create<AppState>()((set) => ({
   status: "disconnected",
   url: resolveDefaultMobileGatewayWsUrl(),
   token: "",
+  connectionQuality: buildConnectionQuality({}),
   setStatus: (status) => set({ status }),
   setUrl: (url) => set({ url }),
   setToken: (token) => set({ token }),
+  setLatency: (latencyMs) =>
+    set((state) => ({
+      connectionQuality: buildConnectionQuality({
+        ...state.connectionQuality,
+        latencyMs,
+      }),
+    })),
+  setReconnectAttempts: (reconnectAttempts) =>
+    set((state) => ({
+      connectionQuality: buildConnectionQuality({
+        ...state.connectionQuality,
+        reconnectAttempts,
+      }),
+    })),
+  setNetworkType: (networkType) =>
+    set((state) => ({
+      connectionQuality: buildConnectionQuality({
+        ...state.connectionQuality,
+        networkType,
+      }),
+    })),
 
   // Chat
   messages: [],
+  chatDraft: "",
   isTyping: false,
+  pendingToolApproval: null,
+  setChatDraft: (chatDraft) => set({ chatDraft }),
   addMessage: (message) =>
-    set((state) => ({ messages: [message, ...state.messages] })),
+    set((state) => {
+      const messages = limitMessages([message, ...state.messages]);
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages,
+      });
+      return { messages };
+    }),
   updateMessage: (id, updates) =>
-    set((state) => ({
-      messages: state.messages.map((m) =>
+    set((state) => {
+      const messages = state.messages.map((m) =>
         m.id === id ? { ...m, ...updates } : m,
-      ),
-    })),
+      );
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages,
+      });
+      return { messages };
+    }),
   setTyping: (isTyping) => set({ isTyping }),
-  clearChat: () => set({ messages: [], isTyping: false }),
+  setPendingToolApproval: (pendingToolApproval) => set({ pendingToolApproval }),
+  clearChat: () =>
+    set((state) => {
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages: [],
+        isTyping: false,
+      });
+      return { messages: [], isTyping: false };
+    }),
   loadOlderMessages: (older) =>
     set((state) => {
       const merged = [...state.messages];
@@ -237,7 +336,12 @@ export const useAppStore = create<AppState>()((set) => ({
         return state;
       }
 
-      return { messages: merged };
+      const messages = limitMessages(merged);
+      persistStateImmediately({
+        ...(state as unknown as Record<string, unknown>),
+        messages,
+      });
+      return { messages };
     }),
 
   // Tasks
@@ -263,7 +367,9 @@ export const useAppStore = create<AppState>()((set) => ({
 
   // Memory
   memories: [],
+  memorySearchQuery: "",
   setMemories: (memories) => set({ memories }),
+  setMemorySearchQuery: (memorySearchQuery) => set({ memorySearchQuery }),
 
   // Skills
   skills: [],
@@ -278,15 +384,19 @@ export const useAppStore = create<AppState>()((set) => ({
   // Settings
   darkMode: true,
   notifications: true,
+  hapticsEnabled: true,
   agentName: "Karna",
   liveVoiceEnabled: false,
   liveVoicePeerChannelId: "",
+  authCallbackCode: "",
   setDarkMode: (darkMode) => set({ darkMode }),
   setNotifications: (notifications) => set({ notifications }),
+  setHapticsEnabled: (hapticsEnabled) => set({ hapticsEnabled }),
   setAgentName: (agentName) => set({ agentName }),
   setLiveVoiceEnabled: (liveVoiceEnabled) => set({ liveVoiceEnabled }),
   setLiveVoicePeerChannelId: (liveVoicePeerChannelId) =>
     set({ liveVoicePeerChannelId }),
+  setAuthCallbackCode: (authCallbackCode) => set({ authCallbackCode }),
 }));
 
 function hasEquivalentMessage(
@@ -317,7 +427,15 @@ function normalizeMessageContent(content: string): string {
   return content.trim();
 }
 
+function limitMessages(messages: ChatMessage[]): ChatMessage[] {
+  return messages.slice(0, MAX_STORED_MESSAGES);
+}
+
 // Persist on every state change (debounced)
 useAppStore.subscribe((state) => {
+  if (skipNextDebouncedPersist) {
+    skipNextDebouncedPersist = false;
+    return;
+  }
   persistState(state as unknown as Record<string, unknown>);
 });

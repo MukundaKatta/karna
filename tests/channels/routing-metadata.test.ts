@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { LineAdapter } from "../../channels/line/src/adapter.js";
 import { MatrixAdapter } from "../../channels/matrix/src/adapter.js";
 import { GoogleChatAdapter } from "../../channels/google-chat/src/adapter.js";
@@ -275,6 +277,47 @@ describe("channel routing metadata", () => {
         },
       },
     });
+  });
+
+  it("routes Slack channel thread replies only when the thread has an active session", async () => {
+    const adapter = new SlackAdapter({
+      botToken: "xoxb-test",
+      appToken: "xapp-test",
+      signingSecret: "secret",
+      gatewayUrl: "ws://localhost:3000/ws",
+    });
+    const ws = createGatewaySocket();
+    (adapter as any).ws = ws;
+
+    await (adapter as any).forwardToGateway("C123", "initial mention", "thread-1", {
+      userId: "U1",
+      isDirectMessage: false,
+      agentMentioned: true,
+    });
+    await (adapter as any).forwardToGateway("C123", "thread reply", "thread-1", {
+      userId: "U2",
+      isDirectMessage: false,
+      agentMentioned: true,
+    });
+
+    const connectMessages = ws.sent.filter((message) => message.type === "connect");
+    const chatMessages = ws.sent.filter((message) => message.type === "chat.message");
+
+    expect(connectMessages).toHaveLength(1);
+    expect(chatMessages).toHaveLength(2);
+    expect(new Set(chatMessages.map((message) => message.sessionId)).size).toBe(1);
+    expect((adapter as any).hasActiveThreadSession("C123", "thread-1")).toBe(true);
+    expect((adapter as any).hasActiveThreadSession("C123", "thread-2")).toBe(false);
+  });
+
+  it("keeps Slack channel chatter from creating sessions outside active threads", () => {
+    const source = readFileSync(
+      join(process.cwd(), "channels/slack/src/adapter.ts"),
+      "utf-8",
+    );
+
+    expect(source).toContain("hasActiveThreadSession(channel, msg.thread_ts)");
+    expect(source).toContain("Received Slack thread reply");
   });
 
   it("re-registers active Discord sessions when the gateway reconnects", () => {

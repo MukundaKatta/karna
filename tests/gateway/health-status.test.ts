@@ -86,5 +86,6 @@ describe("Health Status", () => {
     await new Promise((r) => setTimeout(r, 10));
     const health = getSystemHealth();
     expect(health.database).toBe("disconnected");
+    expect(health.status).toBe("unhealthy");
   });
 });

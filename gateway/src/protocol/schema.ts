@@ -3,8 +3,24 @@ import {
   ProtocolMessageSchema,
   type ProtocolMessage,
 } from "@karna/shared/types/protocol.js";
+import type { z } from "zod";
 
 const logger = pino({ name: "protocol-schema" });
+
+export interface ParseMessageSuccess {
+  ok: true;
+  message: ProtocolMessage;
+}
+
+export interface ParseMessageFailure {
+  ok: false;
+  error: string;
+  fieldErrors?: Record<string, string[]>;
+  formErrors?: string[];
+  rawType?: unknown;
+}
+
+export type ParseMessageResult = ParseMessageSuccess | ParseMessageFailure;
 
 // Re-export all protocol schemas and types from the shared package
 // for convenient access within the gateway codebase.
@@ -14,6 +30,7 @@ export {
   ConnectChallengeMessageSchema,
   ConnectAckMessageSchema,
   ChatMessageSchema,
+  ChatCancelMessageSchema,
   AgentResponseMessageSchema,
   AgentResponseStreamMessageSchema,
   ToolApprovalRequestedMessageSchema,
@@ -22,6 +39,13 @@ export {
   HeartbeatCheckMessageSchema,
   HeartbeatAckMessageSchema,
   StatusMessageSchema,
+  MemorySearchMessageSchema,
+  MemorySearchResultMessageSchema,
+  MemoryListMessageSchema,
+  ReminderListMessageSchema,
+  ReminderCreatedMessageSchema,
+  SkillListMessageSchema,
+  SkillToggleResultMessageSchema,
   SkillInvokeMessageSchema,
   SkillResultMessageSchema,
   VoiceStartMessageSchema,
@@ -47,6 +71,7 @@ export type {
   ConnectChallengeMessage,
   ConnectAckMessage,
   ChatMessage,
+  ChatCancelMessage,
   AgentResponseMessage,
   AgentResponseStreamMessage,
   ToolApprovalRequestedMessage,
@@ -55,6 +80,13 @@ export type {
   HeartbeatCheckMessage,
   HeartbeatAckMessage,
   StatusMessage,
+  MemorySearchMessage,
+  MemorySearchResultMessage,
+  MemoryListMessage,
+  ReminderListMessage,
+  ReminderCreatedMessage,
+  SkillListMessage,
+  SkillToggleResultMessage,
   SkillInvokeMessage,
   SkillResultMessage,
   VoiceStartMessage,
@@ -79,6 +111,11 @@ export type {
  * Returns the parsed message on success, or null on failure (with structured logging).
  */
 export function parseMessage(data: string | Buffer): ProtocolMessage | null {
+  const result = parseMessageDetailed(data);
+  return result.ok ? result.message : null;
+}
+
+export function parseMessageDetailed(data: string | Buffer): ParseMessageResult {
   let parsed: unknown;
 
   try {
@@ -86,18 +123,30 @@ export function parseMessage(data: string | Buffer): ProtocolMessage | null {
     parsed = JSON.parse(raw);
   } catch (error) {
     logger.warn({ error: String(error) }, "Failed to parse WebSocket message as JSON");
-    return null;
+    return {
+      ok: false,
+      error: "Message must be valid JSON.",
+      formErrors: [String(error)],
+    };
   }
 
   const result = ProtocolMessageSchema.safeParse(parsed);
 
   if (!result.success) {
+    const flattened = result.error.flatten() as z.typeToFlattenedError<unknown>;
+    const rawType = (parsed as Record<string, unknown>)?.["type"];
     logger.warn(
-      { errors: result.error.flatten(), rawType: (parsed as Record<string, unknown>)?.["type"] },
+      { errors: flattened, rawType },
       "WebSocket message failed schema validation"
     );
-    return null;
+    return {
+      ok: false,
+      error: "Message failed protocol schema validation.",
+      fieldErrors: flattened.fieldErrors,
+      formErrors: flattened.formErrors,
+      rawType,
+    };
   }
 
-  return result.data;
+  return { ok: true, message: result.data };
 }

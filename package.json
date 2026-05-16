@@ -2,7 +2,7 @@
   "name": "karna",
   "version": "0.1.0",
   "private": true,
-  "description": "Karna \u2014 Your Loyal AI Agent Platform",
+  "description": "Karna — Your Loyal AI Agent Platform",
   "author": "Officethree Technologies",
   "engines": {
     "node": ">=20.0.0",
@@ -18,13 +18,26 @@
     "gateway:dev": "pnpm --filter @karna/gateway dev",
     "gateway:start": "pnpm --filter @karna/gateway start",
     "cli": "pnpm --filter @karna/cli start",
+    "check:workspace-protocol": "node scripts/check-workspace-protocol.js",
+    "check:workspace-graph": "node scripts/check-workspace-graph.js",
+    "openapi:export": "pnpm --filter @karna/gateway openapi:export",
+    "openapi:check": "pnpm --filter @karna/gateway openapi:check",
+    "changelog": "conventional-changelog -p angular -i CHANGELOG.md -s -r 0",
+    "commitlint": "commitlint --verbose",
+    "docs:api": "typedoc --options typedoc.json",
+    "depcheck": "depcheck --ignores=\"@types/*,tsx,turbo,typescript,vitest,next,@commitlint/config-conventional,expo-file-system,fastify,@karna/shared,pino\" --ignore-patterns=\"tests,skills/community\"",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
     "@types/node": "^22.19.15",
+    "conventional-changelog-cli": "^5.0.0",
+    "depcheck": "^1.4.7",
     "next": "^15.0.0",
     "turbo": "^2.4.0",
+    "typedoc": "^0.28.19",
     "typescript": "^5.7.0",
     "vitest": "^4.1.2"
   }

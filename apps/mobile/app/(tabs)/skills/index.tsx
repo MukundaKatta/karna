@@ -8,10 +8,13 @@ import {
   Modal,
   ScrollView,
   Switch,
+  RefreshControl,
   type ListRenderItemInfo,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppStore, type Skill } from '@/lib/store';
+import { gatewayClient } from '@/lib/gateway-client';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { SkillCard } from '@/components/SkillCard';
 
@@ -22,6 +25,7 @@ export default function SkillsScreen() {
   const colors = getColors(darkMode ? 'dark' : 'light');
 
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const activeSkills = skills.filter((s) => s.active);
   const inactiveSkills = skills.filter((s) => !s.active);
@@ -35,6 +39,16 @@ export default function SkillsScreen() {
 
   const handlePress = useCallback((skill: Skill) => {
     setSelectedSkill(skill);
+  }, []);
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    void playHaptic('pullToRefresh');
+    try {
+      await gatewayClient.refreshSkills();
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
 
   const renderItem = useCallback(
@@ -51,6 +65,14 @@ export default function SkillsScreen() {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       >
         {/* Active Skills */}
         {activeSkills.length > 0 && (

@@ -1,6 +1,9 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import { SessionManager } from "../../gateway/src/session/manager.js";
 import { AccessPolicyManager } from "../../gateway/src/access/policies.js";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 vi.mock("../../gateway/src/voice/handler.js", () => ({
   handleVoiceStart: vi.fn(),
   handleVoiceAudioChunk: vi.fn(),
@@ -64,21 +67,36 @@ function createContext(
 describe("gateway websocket protocol", () => {
   const originalNodeEnv = process.env["NODE_ENV"];
   const originalGatewayToken = process.env["GATEWAY_AUTH_TOKEN"];
+  const originalModerationLevel = process.env["KARNA_MODERATION_LEVEL"];
+  const originalModerationLogDir = process.env["KARNA_MODERATION_LOG_DIR"];
+  let moderationLogDir: string | null = null;
 
   beforeEach(() => {
     vi.clearAllMocks();
     resetProtocolTestState();
     delete process.env["GATEWAY_AUTH_TOKEN"];
+    delete process.env["KARNA_MODERATION_LEVEL"];
+    delete process.env["KARNA_MODERATION_LOG_DIR"];
     process.env["NODE_ENV"] = "test";
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     resetProtocolTestState();
+    if (moderationLogDir) {
+      await rm(moderationLogDir, { recursive: true, force: true });
+      moderationLogDir = null;
+    }
     if (originalNodeEnv === undefined) delete process.env["NODE_ENV"];
     else process.env["NODE_ENV"] = originalNodeEnv;
     if (originalGatewayToken === undefined)
       delete process.env["GATEWAY_AUTH_TOKEN"];
     else process.env["GATEWAY_AUTH_TOKEN"] = originalGatewayToken;
+    if (originalModerationLevel === undefined)
+      delete process.env["KARNA_MODERATION_LEVEL"];
+    else process.env["KARNA_MODERATION_LEVEL"] = originalModerationLevel;
+    if (originalModerationLogDir === undefined)
+      delete process.env["KARNA_MODERATION_LOG_DIR"];
+    else process.env["KARNA_MODERATION_LOG_DIR"] = originalModerationLogDir;
   });
 
   it("acknowledges a connect message and creates a session", async () => {
@@ -103,6 +121,77 @@ describe("gateway websocket protocol", () => {
     expect(ws.sent[0]?.type).toBe("connect.ack");
     expect(context.sessionManager.activeSessionCount).toBe(1);
     expect(context.connectedClients.size).toBe(1);
+  });
+
+  it("handles chat.cancel by aborting active runtime work", async () => {
+    const ws = createSocket();
+    const sessionManager = new SessionManager({ flushIntervalMs: 300_000 });
+    const session = sessionManager.createSession("agent-1", "webchat", "user-1");
+    const context = createContext({
+      ws: ws as never,
+      sessionManager,
+      auth: createAuthContext("user-1", "operator"),
+    });
+    let shutdownCalls = 0;
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      async shutdown() {
+        shutdownCalls += 1;
+      },
+      setStreamCallback() {},
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "ok",
+          totalTokens: { inputTokens: 0, outputTokens: 0 },
+          agentId: "agent-1",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "chat-1",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          content: "start",
+          role: "user",
+        },
+      },
+      context,
+    );
+    await handleMessage(
+      ws as never,
+      {
+        id: "cancel-1",
+        type: "chat.cancel",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: { reason: "user_cancelled" },
+      },
+      context,
+    );
+
+    expect(shutdownCalls).toBe(1);
+    expect(sessionManager.getSession(session.id)?.status).toBe("idle");
+    expect(ws.sent).toContainEqual(
+      expect.objectContaining({
+        type: "status",
+        sessionId: session.id,
+        payload: expect.objectContaining({
+          state: "idle",
+          message: "Cancelled the active agent turn.",
+        }),
+      }),
+    );
   });
 
   it("preserves adapter-provided session ids on connect and reuse", async () => {
@@ -399,6 +488,122 @@ describe("gateway websocket protocol", () => {
         role: "assistant",
         metadata: expect.objectContaining({
           model: "gemini-3-flash-preview",
+        }),
+      }),
+    );
+  });
+
+  it("cancels runtime cleanup when a client disconnects mid-stream", async () => {
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+    const session = context.sessionManager.createSession(
+      "agent-1",
+      "webchat",
+      "user-1",
+    );
+    context.auth = createAuthContext("device-1", "operator", "token");
+    let shutdownCalls = 0;
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      async shutdown() {
+        shutdownCalls++;
+      },
+      setStreamCallback(callback) {
+        (ws as { readyState: number }).readyState = 3;
+        callback({ type: "text", text: "late chunk" });
+      },
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "Final reply after disconnect",
+          totalTokens: { inputTokens: 1, outputTokens: 1 },
+          agentId: "karna-general",
+          model: "gemini-3-flash-preview",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-chat-disconnect",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "stream and disconnect",
+        },
+      },
+      context,
+    );
+
+    await vi.waitFor(() => {
+      expect(shutdownCalls).toBe(1);
+    });
+    expect(context.sessionManager.getSession(session.id)?.status).toBe("idle");
+  });
+
+  it("filters unsafe generated responses before transcript persistence and delivery", async () => {
+    moderationLogDir = await mkdtemp(join(tmpdir(), "karna-moderation-"));
+    process.env["KARNA_MODERATION_LEVEL"] = "strict";
+    process.env["KARNA_MODERATION_LOG_DIR"] = moderationLogDir;
+
+    const ws = createSocket();
+    const context = createContext({ ws: ws as never });
+    const session = context.sessionManager.createSession("agent-1", "webchat", "user-1");
+    context.auth = createAuthContext("device-1", "operator", "token");
+
+    setOrchestratorFactoryForTests(async () => ({
+      activeAgentCount: 1,
+      async init() {},
+      setStreamCallback() {},
+      setApprovalCallback() {},
+      setDelegationCallback() {},
+      async handleMessage() {
+        return {
+          success: true,
+          response: "Here is an email test@example.com and shit.",
+          totalTokens: { inputTokens: 4, outputTokens: 6 },
+          agentId: "karna-general",
+          delegations: [],
+        };
+      },
+    }));
+
+    await handleMessage(
+      ws as never,
+      {
+        id: "msg-chat-moderated",
+        type: "chat.message",
+        timestamp: Date.now(),
+        sessionId: session.id,
+        payload: {
+          role: "user",
+          content: "trigger moderation",
+        },
+      },
+      context,
+    );
+
+    const response = ws.sent.find((message) => message.type === "agent.response");
+    expect((response?.payload as Record<string, unknown>)?.content).toContain(
+      "I can't provide that response",
+    );
+    expect(appendToTranscript).toHaveBeenLastCalledWith(
+      session.id,
+      expect.objectContaining({
+        role: "assistant",
+        content: expect.stringContaining("I can't provide that response"),
+        metadata: expect.objectContaining({
+          moderated: true,
+          moderationLevel: "strict",
+          moderationReasons: expect.arrayContaining(["pii_leakage", "profanity"]),
         }),
       }),
     );

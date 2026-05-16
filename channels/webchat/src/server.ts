@@ -14,6 +14,16 @@ import type {
 } from "@karna/shared";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const WEBCHAT_CSP = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "object-src 'none'",
+  "frame-ancestors 'none'",
+  "img-src 'self' data:",
+  "connect-src 'self' ws: wss:",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' https://cdn.jsdelivr.net 'sha256-pHbE5IGNsKkk6GKvUn3tpEeh5yqGTgsgbr3GNb2G6D0='",
+].join("; ");
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +139,12 @@ export class WebChatServer {
   // ─── Express Setup ────────────────────────────────────────────────────
 
   private setupExpress(): void {
+    this.app.use((_req, res, next) => {
+      res.setHeader("Content-Security-Policy", WEBCHAT_CSP);
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      next();
+    });
+
     // Serve static UI files
     const uiDir = join(__dirname, "ui");
     this.app.use(express.static(uiDir));

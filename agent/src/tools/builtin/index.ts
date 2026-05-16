@@ -7,14 +7,22 @@ import { shellTool } from "./shell.js";
 
 // Files
 import {
+  fileDeleteTool,
+  fileInfoTool,
   fileReadTool,
-  fileWriteTool,
   fileListTool,
+  fileMoveTool,
   fileSearchTool,
+  fileWriteTool,
 } from "./files.js";
 
 // Web Search
-import { webSearchTool } from "./web-search.js";
+import {
+  webImageSearchTool,
+  webReadTool,
+  webSearchTool,
+  webSummarizeTool,
+} from "./web-search.js";
 
 // Calendar
 import {
@@ -68,6 +76,7 @@ import {
 import {
   screenshotCaptureTool,
   screenshotCaptureWindowTool,
+  screenshotCaptureIosTool,
 } from "./screenshot.js";
 
 // MCP Client
@@ -95,6 +104,16 @@ import {
 // Memory Tools
 import { memorySearchTool, memoryGetTool } from "./memory-tools.js";
 
+// Utility Tools
+import { calculateTool, convertUnitTool, convertCurrencyTool } from "./utility-tools.js";
+
+// Clipboard Sync
+import {
+  clipboardSyncApplyTool,
+  clipboardSyncHistoryTool,
+  clipboardSyncSendTool,
+} from "./clipboard-sync.js";
+
 // Cross-Channel Message
 import { messageTool } from "./message.js";
 
@@ -121,9 +140,15 @@ export const allBuiltinTools = [
   fileWriteTool,
   fileListTool,
   fileSearchTool,
+  fileMoveTool,
+  fileDeleteTool,
+  fileInfoTool,
 
   // Web Search
   webSearchTool,
+  webReadTool,
+  webSummarizeTool,
+  webImageSearchTool,
 
   // Calendar
   calendarListEventsTool,
@@ -166,6 +191,7 @@ export const allBuiltinTools = [
   // Screenshot
   screenshotCaptureTool,
   screenshotCaptureWindowTool,
+  screenshotCaptureIosTool,
 
   // MCP Client
   mcpListServersTool,
@@ -188,6 +214,16 @@ export const allBuiltinTools = [
   // Memory Tools
   memorySearchTool,
   memoryGetTool,
+
+  // Utility Tools
+  calculateTool,
+  convertUnitTool,
+  convertCurrencyTool,
+
+  // Clipboard Sync
+  clipboardSyncSendTool,
+  clipboardSyncApplyTool,
+  clipboardSyncHistoryTool,
 
   // Cross-Channel Message
   messageTool,
@@ -222,12 +258,23 @@ export function registerBuiltinTools(registry: ToolRegistry): void {
 
 export { shellTool } from "./shell.js";
 export {
+  clearFileAuditLog,
+  fileDeleteTool,
+  fileInfoTool,
   fileReadTool,
-  fileWriteTool,
   fileListTool,
+  fileMoveTool,
   fileSearchTool,
+  fileWriteTool,
+  getFileAuditLog,
 } from "./files.js";
-export { webSearchTool } from "./web-search.js";
+export {
+  clearWebSearchStateForTests,
+  webImageSearchTool,
+  webReadTool,
+  webSearchTool,
+  webSummarizeTool,
+} from "./web-search.js";
 export {
   calendarListEventsTool,
   calendarGetEventTool,
@@ -267,6 +314,7 @@ export {
 export {
   screenshotCaptureTool,
   screenshotCaptureWindowTool,
+  screenshotCaptureIosTool,
 } from "./screenshot.js";
 export {
   mcpListServersTool,
@@ -284,6 +332,12 @@ export {
 } from "./sessions.js";
 export { setElevatedMode } from "./shell.js";
 export { memorySearchTool, memoryGetTool } from "./memory-tools.js";
+export { calculateTool, convertUnitTool, convertCurrencyTool } from "./utility-tools.js";
+export {
+  clipboardSyncApplyTool,
+  clipboardSyncHistoryTool,
+  clipboardSyncSendTool,
+} from "./clipboard-sync.js";
 export { messageTool } from "./message.js";
 export { gatewayRestartTool, sessionStatusTool, sessionSpawnTool } from "./gateway-control.js";
 export { delegateToAgentTool, DELEGATE_TOOL_NAME } from "./delegate.js";

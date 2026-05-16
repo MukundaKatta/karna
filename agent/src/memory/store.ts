@@ -2,6 +2,11 @@
 
 import pino from "pino";
 import type { MemoryEntry, MemorySource, MemoryPriority } from "@karna/shared/types/memory.js";
+import {
+  analyzeMemorySafety,
+  sanitizeMemoryTags,
+  sanitizeMemoryText,
+} from "./safety.js";
 
 const logger = pino({ name: "memory-store" });
 
@@ -66,15 +71,44 @@ export class MemoryStore {
    * Save a new memory entry.
    */
   async save(input: SaveMemoryInput): Promise<MemoryEntry> {
+    const safety = analyzeMemorySafety(input.content);
+    const summarySafety = input.summary
+      ? analyzeMemorySafety(input.summary)
+      : null;
+    const sanitizedInput: SaveMemoryInput = {
+      ...input,
+      content: safety.sanitized,
+      summary: summarySafety?.sanitized ?? input.summary,
+      tags: [
+        ...sanitizeMemoryTags(input.tags),
+        ...(safety.suspicious || summarySafety?.suspicious ? ["security:sanitized"] : []),
+      ],
+      category: input.category ? sanitizeMemoryText(input.category).slice(0, 128) : undefined,
+    };
+
+    if (!sanitizedInput.content) {
+      throw new Error("Memory content was rejected by prompt-injection safety checks");
+    }
+
     logger.debug(
-      { agentId: input.agentId, source: input.source, category: input.category },
+      {
+        agentId: input.agentId,
+        source: input.source,
+        category: sanitizedInput.category,
+        memorySafetyReasons: safety.reasons,
+      },
       "Saving memory"
     );
 
-    const entry = await this.backend.save(input);
+    const entry = await this.backend.save(sanitizedInput);
 
     logger.info(
-      { memoryId: entry.id, agentId: input.agentId, source: input.source },
+      {
+        memoryId: entry.id,
+        agentId: input.agentId,
+        source: input.source,
+        sanitized: safety.suspicious || summarySafety?.suspicious || undefined,
+      },
       "Memory saved"
     );
 

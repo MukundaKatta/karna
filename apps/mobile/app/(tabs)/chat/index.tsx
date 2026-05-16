@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,32 +11,85 @@ import {
   type ListRenderItemInfo,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
+import * as Network from "expo-network";
 import { useAppStore, type ChatMessage } from "@/lib/store";
 import { gatewayClient } from "@/lib/gateway-client";
 import type { MobileWebRTCState } from "@/lib/webrtc";
+import {
+  formatNetworkType,
+  type MobileNetworkType,
+} from "@/lib/connection-quality";
 import { getColors, Typography, Spacing, BorderRadius } from "@/lib/theme";
 import { ChatBubble } from "@/components/ChatBubble";
 import { TypingIndicator } from "@/components/TypingIndicator";
 import { VoiceInput } from "@/components/VoiceInput";
+import { ToolApprovalModal } from "@/components/ToolApprovalModal";
+import { playHaptic } from "@/lib/haptics";
+
+function mapExpoNetworkType(
+  type: unknown,
+  isConnected: boolean,
+): MobileNetworkType {
+  if (!isConnected) return "offline";
+
+  const normalized = String(type).toLowerCase();
+  if (normalized.includes("wifi")) return "wifi";
+  if (normalized.includes("cellular")) return "cellular";
+  if (normalized.includes("none")) return "offline";
+  return "unknown";
+}
 
 export default function ChatScreen() {
   const darkMode = useAppStore((s) => s.darkMode);
   const messages = useAppStore((s) => s.messages);
+  const inputText = useAppStore((s) => s.chatDraft);
+  const setInputText = useAppStore((s) => s.setChatDraft);
   const isTyping = useAppStore((s) => s.isTyping);
   const connectionStatus = useAppStore((s) => s.status);
+  const connectionQuality = useAppStore((s) => s.connectionQuality);
+  const gatewayUrl = useAppStore((s) => s.url);
+  const gatewayToken = useAppStore((s) => s.token);
+  const setNetworkType = useAppStore((s) => s.setNetworkType);
   const colors = getColors(darkMode ? "dark" : "light");
 
-  const [inputText, setInputText] = useState("");
   const [liveVoiceState, setLiveVoiceState] =
     useState<MobileWebRTCState>("idle");
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function refreshNetworkType(): Promise<void> {
+      try {
+        const state = await Network.getNetworkStateAsync();
+        if (cancelled) return;
+
+        setNetworkType(
+          mapExpoNetworkType(state.type, Boolean(state.isConnected)),
+        );
+      } catch {
+        if (!cancelled) {
+          setNetworkType("unknown");
+        }
+      }
+    }
+
+    void refreshNetworkType();
+    const interval = setInterval(() => {
+      void refreshNetworkType();
+    }, 15_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [setNetworkType]);
 
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await playHaptic("messageSent");
     setInputText("");
     gatewayClient.sendChatMessage(text);
   }, [inputText]);
@@ -44,6 +97,19 @@ export default function ChatScreen() {
   const handleRefresh = useCallback(() => {
     void gatewayClient.loadChatHistory(20);
   }, []);
+
+  const handleRetryConnection = useCallback(async () => {
+    try {
+      const state = await Network.getNetworkStateAsync();
+      setNetworkType(mapExpoNetworkType(state.type, Boolean(state.isConnected)));
+      if (state.isConnected === false) return;
+    } catch {
+      setNetworkType("unknown");
+    }
+
+    gatewayClient.disconnect();
+    gatewayClient.connect(gatewayUrl, gatewayToken);
+  }, [gatewayToken, gatewayUrl, setNetworkType]);
 
   const renderMessage = useCallback(
     ({ item }: ListRenderItemInfo<ChatMessage>) => (
@@ -69,6 +135,32 @@ export default function ChatScreen() {
         : connectionStatus === "error"
           ? "Connection Error"
           : "Disconnected";
+  const qualityColor =
+    connectionQuality.networkType === "offline"
+      ? colors.error
+      : connectionQuality.level === "good"
+        ? colors.success
+        : connectionQuality.level === "slow"
+          ? colors.warning
+          : connectionQuality.level === "poor"
+            ? colors.error
+            : colors.textTertiary;
+  const latencyLabel =
+    connectionQuality.latencyMs === null
+      ? "Latency unknown"
+      : `${Math.round(connectionQuality.latencyMs)} ms`;
+  const reconnectLabel =
+    connectionQuality.reconnectAttempts > 0
+      ? ` · reconnect ${connectionQuality.reconnectAttempts}`
+      : "";
+  const qualityLabel = `${formatNetworkType(
+    connectionQuality.networkType,
+  )} · ${latencyLabel}${reconnectLabel}`;
+  const showSlowWarning =
+    connectionQuality.networkType === "offline" ||
+    connectionQuality.level === "slow" ||
+    connectionQuality.level === "poor" ||
+    connectionQuality.reconnectAttempts > 0;
   const showLiveVoiceBanner =
     liveVoiceState === "requesting-media" ||
     liveVoiceState === "negotiating" ||
@@ -93,14 +185,77 @@ export default function ChatScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={90}
     >
+      <View
+        style={[
+          styles.qualityBar,
+          {
+            backgroundColor: colors.surface,
+            borderBottomColor: colors.border,
+          },
+        ]}
+      >
+        <View style={styles.qualityItem}>
+          <View
+            style={[styles.statusDot, { backgroundColor: qualityColor }]}
+          />
+          <Text style={[styles.qualityText, { color: colors.text }]}>
+            {qualityLabel}
+          </Text>
+        </View>
+      </View>
+
       {/* Connection Status Bar */}
       {connectionStatus !== "connected" && (
-        <View
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry gateway connection"
+          onPress={handleRetryConnection}
           style={[styles.statusBar, { backgroundColor: statusColor + "20" }]}
         >
           <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
           <Text style={[styles.statusText, { color: statusColor }]}>
-            {statusLabel}
+            {statusLabel} · Tap to retry
+          </Text>
+        </Pressable>
+      )}
+
+      {showSlowWarning && (
+        <View
+          style={[
+            styles.statusBar,
+            {
+              backgroundColor:
+                connectionQuality.networkType === "offline"
+                  ? colors.error + "20"
+                  : colors.warning + "20",
+            },
+          ]}
+        >
+          <Feather
+            name="zap-off"
+            size={14}
+            color={
+              connectionQuality.networkType === "offline"
+                ? colors.error
+                : colors.warning
+            }
+          />
+          <Text
+            style={[
+              styles.statusText,
+              {
+                color:
+                  connectionQuality.networkType === "offline"
+                    ? colors.error
+                    : colors.warning,
+              },
+            ]}
+          >
+            {connectionQuality.networkType === "offline"
+              ? "Offline"
+              : connectionQuality.compactMode
+                ? "Slow connection - compact mode enabled"
+                : "Slow connection"}
           </Text>
         </View>
       )}
@@ -199,6 +354,7 @@ export default function ChatScreen() {
           )}
         </View>
       </View>
+      <ToolApprovalModal />
     </KeyboardAvoidingView>
   );
 }
@@ -213,6 +369,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: Spacing.sm,
     paddingVertical: Spacing.sm,
+  },
+  qualityBar: {
+    borderBottomWidth: 1,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  qualityItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+  },
+  qualityText: {
+    ...Typography.caption,
+    fontWeight: "600",
   },
   statusDot: {
     width: 8,

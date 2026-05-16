@@ -36,9 +36,30 @@ export function resolveGatewayCorsOrigins(config: KarnaConfig): string[] {
     return config.gateway.cors.origins;
   }
 
+  if (process.env["NODE_ENV"] === "production") {
+    return [
+      "https://app.karna.ai",
+      "https://karna-web.vercel.app",
+      "https://karna-web-0osh.onrender.com",
+    ];
+  }
+
   return ["http://localhost:3000", "http://localhost:5173"];
 }
 
 export function hasGatewayCorsOverride(): boolean {
   return Boolean(process.env["GATEWAY_CORS_ORIGINS"] || process.env["CORS_ORIGINS"]);
+}
+
+export function isGatewayOriginAllowed(origin: string | undefined, allowedOrigins: string[]): boolean {
+  if (!origin) {
+    return true;
+  }
+
+  try {
+    const normalizedOrigin = new URL(origin).origin;
+    return allowedOrigins.some((allowedOrigin) => new URL(allowedOrigin).origin === normalizedOrigin);
+  } catch {
+    return false;
+  }
 }

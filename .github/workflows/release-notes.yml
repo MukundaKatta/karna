@@ -1,0 +1,53 @@
+name: Release Notes
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Git tag to publish notes for
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate changelog
+        run: pnpm run changelog
+
+      - name: Extract latest release notes
+        run: node scripts/extract-latest-changelog.js CHANGELOG.md RELEASE_NOTES.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: |
+            CHANGELOG.md
+            RELEASE_NOTES.md
+
+      - name: Publish GitHub Release notes
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          body_path: RELEASE_NOTES.md
+          make_latest: true

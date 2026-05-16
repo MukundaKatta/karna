@@ -16,6 +16,7 @@ export interface ToolResult {
   output: unknown;
   isError: boolean;
   errorMessage?: string;
+  errorCode?: string;
   durationMs: number;
 }
 
@@ -27,6 +28,7 @@ export interface ToolExecutionContext {
   agentId: string;
   userId?: string;
   workingDirectory?: string;
+  signal?: AbortSignal;
 }
 
 /**

@@ -30,6 +30,18 @@ const ForgotPasswordSchema = z.object({
   email: z.string().email(),
 });
 
+const ResetPasswordSchema = z.object({
+  tokenHash: z.string().min(16, "Reset token is required"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+const DEFAULT_PASSWORD_RESET_REDIRECT_URL = "https://cloud.karna.ai/reset-password";
+const PASSWORD_RESET_REQUEST_WINDOW_MS = 60 * 60 * 1000;
+const PASSWORD_RESET_REQUEST_LIMIT = 3;
+export const PASSWORD_RESET_TOKEN_TTL_SECONDS = 15 * 60;
+
+const passwordResetRequestsByEmail = new Map<string, number[]>();
+
 // ─── Route Registration ─────────────────────────────────────────────────────
 
 export async function authRoutes(server: FastifyInstance): Promise<void> {
@@ -230,23 +242,80 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
     }
 
     const { email } = parseResult.data;
+    const resetRateLimit = recordPasswordResetRequest(email);
+    if (!resetRateLimit.allowed) {
+      logger.warn({ email: normalizeEmail(email) }, "Password reset request rate limit exceeded");
+      return reply.status(429).send({
+        message: "If an account with that email exists, a password reset link has been sent.",
+      });
+    }
+
     const sb = requireSupabase();
 
-    logger.info({ email }, "Password reset requested");
+    logger.info(
+      {
+        email: normalizeEmail(email),
+        tokenTtlSeconds: PASSWORD_RESET_TOKEN_TTL_SECONDS,
+      },
+      "Password reset requested",
+    );
 
-    const redirectUrl = process.env["PASSWORD_RESET_REDIRECT_URL"] ?? "https://cloud.karna.ai/reset-password";
+    const redirectUrl = resolvePasswordResetRedirectUrl(process.env["PASSWORD_RESET_REDIRECT_URL"]);
 
     const { error } = await sb.auth.resetPasswordForEmail(email, {
       redirectTo: redirectUrl,
     });
 
     if (error) {
-      logger.error({ error: error.message }, "Failed to send password reset email");
+      logger.error({ error: error.message, email: normalizeEmail(email) }, "Failed to send password reset email");
       // Don't reveal whether the email exists
     }
 
     // Always return success to prevent email enumeration
     return reply.send({ message: "If an account with that email exists, a password reset link has been sent." });
+  });
+
+  // ─── POST /auth/reset-password ───────────────────────────────────────
+
+  server.post("/auth/reset-password", { config: AUTH_RATE_LIMIT_CONFIG }, async (request, reply) => {
+    const parseResult = ResetPasswordSchema.safeParse(request.body);
+    if (!parseResult.success) {
+      return reply.status(400).send({
+        error: "Validation failed",
+        details: parseResult.error.flatten().fieldErrors,
+      });
+    }
+
+    const { tokenHash, password } = parseResult.data;
+    const sb = requireSupabase();
+
+    const { data: verifyData, error: verifyError } = await sb.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: "recovery",
+    });
+
+    if (verifyError || !verifyData.user) {
+      logger.warn({ error: verifyError?.message }, "Password reset token verification failed");
+      return reply.status(400).send({ error: "Invalid or expired password reset token" });
+    }
+
+    const userId = verifyData.user.id;
+    const { error: updateError } = await sb.auth.admin.updateUserById(userId, { password });
+    if (updateError) {
+      logger.error({ error: updateError.message, userId }, "Password reset update failed");
+      return reply.status(500).send({ error: "Unable to reset password" });
+    }
+
+    if (verifyData.session?.access_token) {
+      const { error: signOutError } = await sb.auth.admin.signOut(verifyData.session.access_token, "global");
+      if (signOutError) {
+        logger.warn({ error: signOutError.message, userId }, "Failed to revoke password reset session");
+      }
+    }
+
+    logger.info({ userId }, "Password reset completed");
+
+    return reply.send({ message: "Password has been reset." });
   });
 
   // ─── GET /auth/me ────────────────────────────────────────────────────
@@ -272,4 +341,62 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
       createdAt: profile?.created_at ?? null,
     });
   });
+}
+
+export function recordPasswordResetRequest(
+  email: string,
+  now = Date.now(),
+  store = passwordResetRequestsByEmail,
+): { allowed: boolean; remaining: number; resetAt: number } {
+  const key = normalizeEmail(email);
+  const windowStart = now - PASSWORD_RESET_REQUEST_WINDOW_MS;
+  const attempts = (store.get(key) ?? []).filter((timestamp) => timestamp > windowStart);
+  const resetAt =
+    attempts.length > 0 ? attempts[0]! + PASSWORD_RESET_REQUEST_WINDOW_MS : now + PASSWORD_RESET_REQUEST_WINDOW_MS;
+
+  if (attempts.length >= PASSWORD_RESET_REQUEST_LIMIT) {
+    store.set(key, attempts);
+    return { allowed: false, remaining: 0, resetAt };
+  }
+
+  attempts.push(now);
+  store.set(key, attempts);
+  return {
+    allowed: true,
+    remaining: PASSWORD_RESET_REQUEST_LIMIT - attempts.length,
+    resetAt: attempts[0]! + PASSWORD_RESET_REQUEST_WINDOW_MS,
+  };
+}
+
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+export function resolvePasswordResetRedirectUrl(value: string | undefined): string {
+  if (!value) {
+    return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const isLocalhost = parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1";
+    const protocolAllowed = parsed.protocol === "https:" || (isLocalhost && parsed.protocol === "http:");
+
+    if (!protocolAllowed) {
+      return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
+    }
+
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+
+    if (!parsed.pathname || parsed.pathname === "/") {
+      parsed.pathname = "/reset-password";
+    }
+
+    return parsed.toString();
+  } catch {
+    return DEFAULT_PASSWORD_RESET_REDIRECT_URL;
+  }
 }

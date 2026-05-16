@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Pressable, Text, Alert } from 'react-native';
+import { View, StyleSheet, Pressable, Text, Alert, Linking } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -10,9 +10,13 @@ import Animated, {
   cancelAnimation,
   Easing,
 } from 'react-native-reanimated';
-import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
-import { startRecording, stopRecording, getRecordingStatus } from '@/lib/voice';
+import {
+  startRecording,
+  stopRecording,
+  getRecordingStatus,
+  getMicrophonePermissionState,
+} from '@/lib/voice';
 import { gatewayClient } from '@/lib/gateway-client';
 import { getMobileWebRTCSession, type MobileWebRTCState } from '@/lib/webrtc';
 import {
@@ -20,6 +24,7 @@ import {
   shouldAutoStopRecording,
 } from '@/lib/vad';
 import { useAppStore } from '@/lib/store';
+import { playHaptic } from '@/lib/haptics';
 import { getColors, Spacing, BorderRadius } from '@/lib/theme';
 
 type MobileVoiceMode = 'push-to-talk' | 'continuous';
@@ -123,7 +128,7 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
     setRecording(false);
     setAudioLevel(0);
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await playHaptic('voiceRecordingStop');
     const uri = await stopRecording();
     if (uri) {
       gatewayClient.sendVoiceMessage(uri).catch((err) => {
@@ -133,7 +138,13 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
   }, [recording, stopPulse]);
 
   const startVoiceRecording = useCallback(async () => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    const permissionState = await getMicrophonePermissionState();
+    if (permissionState === 'denied') {
+      showMicrophoneSettingsAlert();
+      return;
+    }
+
+    await playHaptic('voiceRecordingStart');
     const started = await startRecording();
     if (started) {
       setRecording(true);
@@ -159,6 +170,8 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
           }
         }
       }, 100);
+    } else if ((await getMicrophonePermissionState()) === 'denied') {
+      showMicrophoneSettingsAlert();
     }
   }, [finishRecording, startPulse, voiceMode]);
 
@@ -193,7 +206,7 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
       return;
     }
 
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await playHaptic('voiceLiveToggle');
     const rtc = rtcSessionRef.current;
 
     if (
@@ -362,6 +375,22 @@ export function VoiceInput({ onLiveStateChange }: VoiceInputProps) {
         </Text>
       )}
     </View>
+  );
+}
+
+function showMicrophoneSettingsAlert(): void {
+  Alert.alert(
+    'Microphone Access Required',
+    'Karna needs microphone access to record voice messages. Enable microphone access in Settings to use voice input.',
+    [
+      { text: 'Not Now', style: 'cancel' },
+      {
+        text: 'Open Settings',
+        onPress: () => {
+          void Linking.openSettings();
+        },
+      },
+    ],
   );
 }
 

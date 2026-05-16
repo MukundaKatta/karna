@@ -18,6 +18,8 @@ export interface ContextBuilderConfig {
   reservedOutputTokens: number;
   /** Maximum number of conversation messages to include. */
   maxMessages: number;
+  /** Alias for maxMessages used by runtime/user-facing config. */
+  maxContextMessages?: number;
   /** Maximum tokens for memory context. */
   maxMemoryTokens: number;
   /** Maximum tokens for skill instructions. */
@@ -50,7 +52,7 @@ export interface BuiltContext {
 const DEFAULT_CONFIG: ContextBuilderConfig = {
   maxContextTokens: 128_000,
   reservedOutputTokens: 4096,
-  maxMessages: 100,
+  maxMessages: 20,
   maxMemoryTokens: 4000,
   maxSkillTokens: 2000,
 };
@@ -71,7 +73,7 @@ export function buildContext(
   params: BuildContextParams,
   config?: Partial<ContextBuilderConfig>
 ): BuiltContext {
-  const cfg: ContextBuilderConfig = { ...DEFAULT_CONFIG, ...config };
+  const cfg: ContextBuilderConfig = normalizeConfig(config);
 
   // 1. Build system prompt (with memory and skill sections)
   const memoriesForPrompt = params.memories
@@ -177,11 +179,10 @@ function fitMessages(
     return { messages: [], wasTruncated: false, droppedCount: 0 };
   }
 
-  // Apply message count limit first
-  let selected = messages;
-  if (selected.length > maxMessages) {
-    selected = selected.slice(-maxMessages);
-  }
+  const countDropped = Math.max(0, messages.length - maxMessages);
+  const droppedByCount = countDropped > 0 ? messages.slice(0, countDropped) : [];
+  let selected = countDropped > 0 ? messages.slice(-maxMessages) : messages;
+  const countSummary = countDropped > 0 ? buildHistorySummary(droppedByCount) : null;
 
   // Check if all messages fit in the token budget
   const totalTokens = selected.reduce(
@@ -190,19 +191,23 @@ function fitMessages(
   );
 
   if (totalTokens <= tokenBudget) {
+    const result = countSummary ? [countSummary, ...selected] : selected;
     return {
-      messages: selected,
-      wasTruncated: selected.length < messages.length,
-      droppedCount: messages.length - selected.length,
+      messages: result,
+      wasTruncated: countDropped > 0,
+      droppedCount: countDropped,
     };
   }
 
   // Need to truncate: keep first message and progressively add from the end
-  const result: ChatMessage[] = [];
+  const result: ChatMessage[] = countSummary ? [countSummary] : [];
   let usedTokens = 0;
+  if (countSummary) {
+    usedTokens += estimateTokens(countSummary.content) + 10;
+  }
 
   // Reserve the first message if there are enough messages
-  if (selected.length > 1) {
+  if (selected.length > 1 && !countSummary) {
     const firstTokens = estimateTokens(selected[0].content) + 10;
     result.push(selected[0]);
     usedTokens += firstTokens;
@@ -210,7 +215,8 @@ function fitMessages(
 
   // Add messages from the end (most recent first) until budget is exhausted
   const recentMessages: ChatMessage[] = [];
-  for (let i = selected.length - 1; i >= 1; i--) {
+  const recentStartIndex = countSummary ? 0 : 1;
+  for (let i = selected.length - 1; i >= recentStartIndex; i--) {
     const msgTokens = estimateTokens(selected[i].content) + 10;
     if (usedTokens + msgTokens > tokenBudget) break;
     recentMessages.unshift(selected[i]);
@@ -236,7 +242,43 @@ function fitMessages(
   return {
     messages: result,
     wasTruncated: true,
-    droppedCount,
+    droppedCount: Math.max(droppedCount, countDropped),
+  };
+}
+
+function normalizeConfig(config?: Partial<ContextBuilderConfig>): ContextBuilderConfig {
+  const merged: ContextBuilderConfig = { ...DEFAULT_CONFIG, ...config };
+  const maxContextMessages = config?.maxContextMessages ?? config?.maxMessages ?? resolveEnvMaxContextMessages();
+  return {
+    ...merged,
+    maxMessages: maxContextMessages,
+    maxContextMessages,
+  };
+}
+
+function resolveEnvMaxContextMessages(): number {
+  const raw = process.env["MAX_CONTEXT_MESSAGES"] ?? process.env["KARNA_MAX_CONTEXT_MESSAGES"];
+  const parsed = raw ? Number(raw) : DEFAULT_CONFIG.maxMessages;
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    return DEFAULT_CONFIG.maxMessages;
+  }
+  return parsed;
+}
+
+function buildHistorySummary(messages: ChatMessage[]): ChatMessage {
+  const lines = messages.slice(-12).map((message, index) => {
+    const content = message.content.replace(/\s+/g, " ").trim();
+    const preview = content.length > 180 ? `${content.slice(0, 177)}...` : content;
+    return `${index + 1}. ${message.role}: ${preview}`;
+  });
+
+  return {
+    role: "system",
+    content: [
+      `[Conversation compacted: ${messages.length} older messages summarized to control context size.]`,
+      "Recent summary of older context:",
+      ...lines,
+    ].join("\n"),
   };
 }
 

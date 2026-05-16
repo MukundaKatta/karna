@@ -59,6 +59,7 @@ async function startChat(options: ChatOptions): Promise<void> {
   const sessionId = randomUUID();
   let isStreaming = false;
   let streamBuffer = "";
+  let activeResponse = false;
 
   // Send connect message
   const connectMsg: ProtocolMessage = {
@@ -96,6 +97,7 @@ async function startChat(options: ChatOptions): Promise<void> {
         }
         const content = (message as { payload: { content: string } }).payload.content;
         console.log(chalk.cyan("\nKarna: ") + content + "\n");
+        activeResponse = false;
         break;
       }
 
@@ -106,6 +108,7 @@ async function startChat(options: ChatOptions): Promise<void> {
           process.stdout.write(chalk.cyan("\nKarna: "));
           isStreaming = true;
         }
+        activeResponse = true;
         process.stdout.write(payload.delta);
         streamBuffer += payload.delta;
 
@@ -113,6 +116,7 @@ async function startChat(options: ChatOptions): Promise<void> {
           process.stdout.write("\n\n");
           isStreaming = false;
           streamBuffer = "";
+          activeResponse = false;
         }
         break;
       }
@@ -121,11 +125,15 @@ async function startChat(options: ChatOptions): Promise<void> {
         if (message.type !== "status") break;
         const statusPayload = (message as { payload: { state: string; message?: string } }).payload;
         if (statusPayload.state === "thinking") {
+          activeResponse = true;
           process.stdout.write(chalk.dim("  [thinking...] "));
         } else if (statusPayload.state === "tool_calling") {
+          activeResponse = true;
           process.stdout.write(
             chalk.yellow(`  [calling tool] ${statusPayload.message ?? ""}\n`),
           );
+        } else if (statusPayload.state === "idle" || statusPayload.state === "error") {
+          activeResponse = false;
         }
         break;
       }
@@ -262,6 +270,7 @@ async function startChat(options: ChatOptions): Promise<void> {
     };
 
     ws.send(JSON.stringify(chatMsg));
+    activeResponse = true;
   });
 
   rl.on("close", () => {
@@ -270,8 +279,28 @@ async function startChat(options: ChatOptions): Promise<void> {
     process.exit(0);
   });
 
-  // Handle Ctrl+C
-  process.on("SIGINT", () => {
+  // Ctrl+C cancels an active response first; a second idle Ctrl+C exits.
+  rl.on("SIGINT", () => {
+    if (activeResponse && ws.readyState === WebSocket.OPEN) {
+      const cancelMsg: ProtocolMessage = {
+        id: randomUUID(),
+        type: "chat.cancel",
+        timestamp: Date.now(),
+        sessionId,
+        payload: { reason: "Cancelled from CLI with Ctrl+C" },
+      };
+      ws.send(JSON.stringify(cancelMsg));
+      activeResponse = false;
+      if (isStreaming) {
+        process.stdout.write("\n");
+      }
+      isStreaming = false;
+      streamBuffer = "";
+      console.log(chalk.dim("\nCancelled response. Conversation history preserved.\n"));
+      rl.prompt();
+      return;
+    }
+
     console.log(chalk.dim("\n\nGoodbye!"));
     ws.close();
     rl.close();

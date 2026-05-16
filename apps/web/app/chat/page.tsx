@@ -13,6 +13,7 @@ import { getWSClient } from "@/lib/ws";
 import { ChatMessage } from "@/components/ChatMessage";
 import { Badge } from "@/components/Badge";
 import { VoiceOverlay } from "@/components/VoiceOverlay";
+import { WEB_SHORTCUT_EVENTS } from "@/lib/keyboard-shortcuts";
 
 export default function ChatPage() {
   const {
@@ -37,6 +38,7 @@ export default function ChatPage() {
   const [wsConfigError, setWsConfigError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
   const streamMessageIdRef = useRef<string | null>(null);
 
   const scrollToBottom = useCallback(() => {
@@ -259,7 +261,28 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  const handleSend = () => {
+  useEffect(() => {
+    const updateViewportHeight = () => {
+      const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
+      pageRef.current?.style.setProperty(
+        "--chat-viewport-height",
+        `${Math.round(viewportHeight)}px`,
+      );
+    };
+
+    updateViewportHeight();
+    window.visualViewport?.addEventListener("resize", updateViewportHeight);
+    window.visualViewport?.addEventListener("scroll", updateViewportHeight);
+    window.addEventListener("resize", updateViewportHeight);
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", updateViewportHeight);
+      window.visualViewport?.removeEventListener("scroll", updateViewportHeight);
+      window.removeEventListener("resize", updateViewportHeight);
+    };
+  }, []);
+
+  const handleSend = useCallback(() => {
     const content = input.trim();
     if (!content || agentState === "thinking" || agentState === "streaming") return;
     // Guard: if the gateway isn't connected we'd otherwise leave the user
@@ -287,7 +310,17 @@ export default function ChatPage() {
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
-  };
+  }, [activeSessionId, addMessage, agentState, input, setAgentState, wsState]);
+
+  const handleNewChat = useCallback(() => {
+    setInput("");
+    setMessages([]);
+    setActiveSession(null);
+    resetStream();
+    streamMessageIdRef.current = null;
+    setAgentState("idle");
+    inputRef.current?.focus();
+  }, [resetStream, setActiveSession, setAgentState, setMessages]);
 
   const handleToolApproval = (toolCallId: string, approved: boolean) => {
     const ws = getWSClient();
@@ -309,8 +342,29 @@ export default function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   };
 
+  useEffect(() => {
+    const sendChat = () => handleSend();
+    const newChat = () => handleNewChat();
+    const toggleVoice = () => setVoiceMode((open) => !open);
+    const closeOverlays = () => setVoiceMode(false);
+
+    window.addEventListener(WEB_SHORTCUT_EVENTS.sendChat, sendChat);
+    window.addEventListener(WEB_SHORTCUT_EVENTS.newChat, newChat);
+    window.addEventListener(WEB_SHORTCUT_EVENTS.toggleVoice, toggleVoice);
+    window.addEventListener(WEB_SHORTCUT_EVENTS.closeOverlays, closeOverlays);
+    return () => {
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.sendChat, sendChat);
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.newChat, newChat);
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.toggleVoice, toggleVoice);
+      window.removeEventListener(WEB_SHORTCUT_EVENTS.closeOverlays, closeOverlays);
+    };
+  }, [handleNewChat, handleSend]);
+
   return (
-    <div className="flex flex-col h-full">
+    <div
+      ref={pageRef}
+      className="flex min-h-0 flex-col h-full max-h-[var(--chat-viewport-height,100%)]"
+    >
       {/* Header — offset left on mobile for hamburger menu */}
       <div className="flex items-center justify-between px-5 pl-14 md:pl-5 h-14 border-b border-dark-700 shrink-0">
         <h1 className="text-base font-semibold text-white">Chat</h1>
@@ -371,9 +425,9 @@ export default function ChatPage() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain scroll-pb-32">
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-dark-500">
+          <div className="flex min-h-full flex-col items-center justify-center px-6 py-10 text-center text-dark-500">
             <MessageSquareIcon />
             <p className="mt-3 text-lg font-medium text-dark-300">Start a conversation</p>
             <p className="text-sm mt-1">Send a message to begin chatting with Karna</p>
@@ -409,7 +463,7 @@ export default function ChatPage() {
       />
 
       {/* Input area — safe area padding for notched phones */}
-      <div className="border-t border-dark-700 px-3 sm:px-4 py-2 sm:py-3 pb-safe">
+      <div className="sticky bottom-0 shrink-0 border-t border-dark-700 bg-dark-900/95 px-3 py-2 pb-[calc(env(safe-area-inset-bottom,0px)+0.5rem)] backdrop-blur sm:px-4 sm:py-3">
         <div className="flex items-end gap-1.5 sm:gap-2 max-w-4xl mx-auto">
           <button
             className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
@@ -432,7 +486,7 @@ export default function ChatPage() {
           <button
             onClick={() => setVoiceMode(true)}
             className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
-            title="Voice input"
+            title="Voice input (Cmd/Ctrl Shift V)"
           >
             <Mic size={18} />
           </button>
@@ -453,7 +507,7 @@ export default function ChatPage() {
                 ? "bg-accent-600 text-white hover:bg-accent-500 active:scale-95"
                 : "bg-dark-700 text-dark-500 cursor-not-allowed",
             )}
-            title={wsState === "connected" ? "Send message" : "Gateway not connected"}
+            title={wsState === "connected" ? "Send message (Cmd/Ctrl Enter)" : "Gateway not connected"}
           >
             {agentState === "thinking" || agentState === "streaming" ? (
               <Loader2 size={18} className="animate-spin" />

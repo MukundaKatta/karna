@@ -97,7 +97,7 @@ export function getSystemHealth(): SystemHealth {
   }
 
   if (lastDbStatus === "disconnected") {
-    status = status === "healthy" ? "degraded" : status;
+    status = "unhealthy";
   }
 
   return {

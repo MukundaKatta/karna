@@ -10,8 +10,8 @@ import {
   Alert,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useAppStore } from '@/lib/store';
+import { playHaptic } from '@/lib/haptics';
 import { gatewayClient } from '@/lib/gateway-client';
 import { registerForPushNotifications } from '@/lib/notifications';
 import {
@@ -25,6 +25,8 @@ export default function SettingsScreen() {
   const setDarkMode = useAppStore((s) => s.setDarkMode);
   const notifications = useAppStore((s) => s.notifications);
   const setNotifications = useAppStore((s) => s.setNotifications);
+  const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
+  const setHapticsEnabled = useAppStore((s) => s.setHapticsEnabled);
   const agentName = useAppStore((s) => s.agentName);
   const setAgentName = useAppStore((s) => s.setAgentName);
   const url = useAppStore((s) => s.url);
@@ -65,7 +67,7 @@ export default function SettingsScreen() {
     setToken(editingToken);
     gatewayClient.disconnect();
     gatewayClient.connect(normalizedUrl, editingToken);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    void playHaptic('success');
   }, [editingUrl, editingToken, setUrl, setToken]);
 
   const handleClearChat = useCallback(() => {
@@ -79,9 +81,7 @@ export default function SettingsScreen() {
           style: 'destructive',
           onPress: () => {
             clearChat();
-            Haptics.notificationAsync(
-              Haptics.NotificationFeedbackType.Success,
-            );
+            void playHaptic('success');
           },
         },
       ],
@@ -91,14 +91,14 @@ export default function SettingsScreen() {
   const handleReconnect = useCallback(() => {
     gatewayClient.disconnect();
     gatewayClient.connect(url, token);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    void playHaptic('voiceLiveToggle');
   }, [url, token]);
 
   const handleNotificationsToggle = useCallback(
     async (enabled: boolean) => {
       if (!enabled) {
         setNotifications(false);
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        await playHaptic('selection');
         return;
       }
 
@@ -113,7 +113,7 @@ export default function SettingsScreen() {
       }
 
       setNotifications(true);
-      await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await playHaptic('success');
     },
     [setNotifications],
   );
@@ -312,7 +312,7 @@ export default function SettingsScreen() {
               value={liveVoiceEnabled}
               onValueChange={(val) => {
                 setLiveVoiceEnabled(val);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void playHaptic('selection');
               }}
               trackColor={{
                 false: colors.surfaceAlt,
@@ -377,13 +377,36 @@ export default function SettingsScreen() {
               value={darkMode}
               onValueChange={(val) => {
                 setDarkMode(val);
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                void playHaptic('selection');
               }}
               trackColor={{
                 false: colors.surfaceAlt,
                 true: colors.primary + '60',
               }}
               thumbColor={darkMode ? colors.primary : colors.textTertiary}
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.row}>
+            <View style={styles.rowLabel}>
+              <Feather name="activity" size={18} color={colors.textSecondary} />
+              <Text style={[styles.label, { color: colors.text }]}>
+                Haptic Feedback
+              </Text>
+            </View>
+            <Switch
+              value={hapticsEnabled}
+              onValueChange={(val) => {
+                setHapticsEnabled(val);
+                void playHaptic('selection');
+              }}
+              trackColor={{
+                false: colors.surfaceAlt,
+                true: colors.primary + '60',
+              }}
+              thumbColor={hapticsEnabled ? colors.primary : colors.textTertiary}
             />
           </View>
 

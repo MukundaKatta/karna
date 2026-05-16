@@ -9,6 +9,16 @@ export const GatewayConfigSchema = z.object({
   maxConnections: z.number().int().positive().default(100),
   heartbeatIntervalMs: z.number().int().positive().default(30_000),
   sessionTimeoutMs: z.number().int().positive().default(3_600_000),
+  websocket: z
+    .object({
+      maxPayloadBytes: z.number().int().positive().default(1_048_576),
+      maxMediaPayloadBytes: z.number().int().positive().default(10_485_760),
+      bandwidthWindowMs: z.number().int().positive().default(60_000),
+      maxBandwidthBytesPerWindow: z.number().int().positive().default(62_914_560),
+      chatMessagesPerMinute: z.number().int().positive().default(10),
+      otherMessagesPerMinute: z.number().int().positive().default(30),
+    })
+    .default({}),
   cors: z
     .object({
       origins: z.array(z.string()).default([]),

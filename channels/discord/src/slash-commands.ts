@@ -1,14 +1,19 @@
 import {
+  ActionRowBuilder,
   REST,
   Routes,
+  StringSelectMenuBuilder,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
   EmbedBuilder,
+  type StringSelectMenuInteraction,
 } from "discord.js";
 import type pino from "pino";
 import type { DiscordAdapter } from "./adapter.js";
 
 // ─── Command Definitions ────────────────────────────────────────────────────
+
+const SKILL_SELECT_CUSTOM_ID = "karna:skill-select";
 
 const commands = [
   new SlashCommandBuilder()
@@ -18,6 +23,26 @@ const commands = [
       option
         .setName("message")
         .setDescription("Your message to the agent")
+        .setRequired(true),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("ask")
+    .setDescription("Ask Karna a question")
+    .addStringOption((option) =>
+      option
+        .setName("message")
+        .setDescription("Your question for Karna")
+        .setRequired(true),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("remember")
+    .setDescription("Ask Karna to remember something")
+    .addStringOption((option) =>
+      option
+        .setName("text")
+        .setDescription("The note, fact, or context Karna should remember")
         .setRequired(true),
     ),
 
@@ -70,8 +95,12 @@ export async function handleSlashCommand(
   const { commandName } = interaction;
 
   switch (commandName) {
+    case "ask":
     case "chat":
       await handleChat(interaction, adapter, logger);
+      break;
+    case "remember":
+      await handleRemember(interaction, adapter, logger);
       break;
     case "status":
       await handleStatus(interaction);
@@ -142,6 +171,34 @@ async function handleStatus(
   await interaction.reply({ embeds: [embed] });
 }
 
+async function handleRemember(
+  interaction: ChatInputCommandInteraction,
+  adapter: DiscordAdapter,
+  logger: pino.Logger,
+): Promise<void> {
+  const text = interaction.options.getString("text", true);
+  const channelId = interaction.channelId;
+
+  logger.debug(
+    { channelId, userId: interaction.user.id },
+    "Remember command received",
+  );
+
+  await interaction.deferReply();
+
+  await adapter.forwardToGateway(channelId, `Remember this: ${text}`, {
+    userId: interaction.user.id,
+    isDirectMessage: !interaction.guildId,
+    agentMentioned: Boolean(interaction.guildId),
+  });
+
+  await interaction.editReply("Saving that with Karna.");
+}
+
+export function getDiscordSlashCommandNames(): string[] {
+  return commands.map((command) => String(command.toJSON().name));
+}
+
 async function handleHelp(
   interaction: ChatInputCommandInteraction,
 ): Promise<void> {
@@ -151,8 +208,12 @@ async function handleHelp(
     .setDescription("I'm Karna, your AI agent. Here's how to interact with me:")
     .addFields(
       {
-        name: "/chat",
+        name: "/ask or /chat",
         value: "Send a message to the AI agent",
+      },
+      {
+        name: "/remember",
+        value: "Save a note, fact, or context with Karna",
       },
       {
         name: "/status",
@@ -212,5 +273,53 @@ async function handleSkills(
       text: "Contact your administrator if you need specific skills enabled.",
     });
 
-  await interaction.reply({ embeds: [embed], ephemeral: true });
+  const selectMenu = new StringSelectMenuBuilder()
+    .setCustomId(SKILL_SELECT_CUSTOM_ID)
+    .setPlaceholder("Choose a skill area")
+    .addOptions(
+      {
+        label: "Chat",
+        value: "chat",
+        description: "Ask questions and continue the current conversation",
+      },
+      {
+        label: "Memory",
+        value: "memory",
+        description: "Save or recall notes, facts, and context",
+      },
+      {
+        label: "Tools",
+        value: "tools",
+        description: "Run configured agent tools with approval when needed",
+      },
+    );
+
+  const row = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    selectMenu,
+  );
+
+  await interaction.reply({
+    embeds: [embed],
+    components: [row],
+    ephemeral: true,
+  });
+}
+
+export async function handleSkillSelectInteraction(
+  interaction: StringSelectMenuInteraction,
+): Promise<void> {
+  if (interaction.customId !== SKILL_SELECT_CUSTOM_ID) return;
+
+  const selected = interaction.values[0] ?? "chat";
+  const label =
+    selected === "memory"
+      ? "Use /remember to save context, or ask Karna to recall what it knows."
+      : selected === "tools"
+        ? "Ask Karna to perform a task; approval buttons appear for gated tools."
+        : "Use /ask or /chat to continue the conversation.";
+
+  await interaction.reply({
+    content: label,
+    ephemeral: true,
+  });
 }

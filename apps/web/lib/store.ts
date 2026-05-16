@@ -121,16 +121,110 @@ export const useChatStore = create<ChatState>((set) => ({
 
 // ─── Dashboard Store ────────────────────────────────────────────────────────
 
-interface DashboardState {
-  sidebarCollapsed: boolean;
-  toggleSidebar: () => void;
-  setSidebarCollapsed: (collapsed: boolean) => void;
+const WEB_DASHBOARD_STORAGE_KEY = "karna:web:dashboard";
+
+type StoredDashboardSettings = {
+  sidebarCollapsed?: boolean;
+  theme?: DashboardThemePreference;
+};
+
+export type DashboardThemePreference = "light" | "dark";
+
+export function getSystemDashboardTheme(): DashboardThemePreference {
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: light)").matches
+  ) {
+    return "light";
+  }
+
+  return "dark";
 }
 
-export const useDashboardStore = create<DashboardState>((set) => ({
+export function applyDashboardTheme(theme: DashboardThemePreference): void {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+}
+
+export function readStoredDashboardSettings(): StoredDashboardSettings {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WEB_DASHBOARD_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as StoredDashboardSettings;
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredDashboardSettings(settings: StoredDashboardSettings): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(WEB_DASHBOARD_STORAGE_KEY, JSON.stringify(settings));
+}
+
+interface DashboardState {
+  hydrated: boolean;
+  sidebarCollapsed: boolean;
+  theme: DashboardThemePreference;
+  hydrateDashboardSettings: () => void;
+  toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleTheme: () => void;
+  setTheme: (theme: DashboardThemePreference) => void;
+}
+
+export const useDashboardStore = create<DashboardState>((set, get) => ({
+  hydrated: false,
   sidebarCollapsed: false,
-  toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
-  setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
+  theme: "dark",
+  hydrateDashboardSettings: () => {
+    if (get().hydrated) return;
+    const stored = readStoredDashboardSettings();
+    const theme = stored.theme ?? getSystemDashboardTheme();
+    applyDashboardTheme(theme);
+    set({
+      hydrated: true,
+      sidebarCollapsed: stored.sidebarCollapsed ?? false,
+      theme,
+    });
+  },
+  toggleSidebar: () =>
+    set((state) => {
+      const sidebarCollapsed = !state.sidebarCollapsed;
+      writeStoredDashboardSettings({ sidebarCollapsed, theme: state.theme });
+      return { sidebarCollapsed };
+    }),
+  setSidebarCollapsed: (sidebarCollapsed) => {
+    writeStoredDashboardSettings({ sidebarCollapsed, theme: get().theme });
+    set({ sidebarCollapsed });
+  },
+  toggleTheme: () => {
+    const theme = get().theme === "dark" ? "light" : "dark";
+    applyDashboardTheme(theme);
+    writeStoredDashboardSettings({
+      sidebarCollapsed: get().sidebarCollapsed,
+      theme,
+    });
+    set({ theme });
+  },
+  setTheme: (theme) => {
+    applyDashboardTheme(theme);
+    writeStoredDashboardSettings({
+      sidebarCollapsed: get().sidebarCollapsed,
+      theme,
+    });
+    set({ theme });
+  },
 }));
 
 // ─── Voice Settings Store ───────────────────────────────────────────────────

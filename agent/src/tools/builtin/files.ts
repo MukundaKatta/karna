@@ -1,13 +1,45 @@
-// ─── File Operations Tool ──────────────────────────────────────────────────
+// ─── File Operations Tools ─────────────────────────────────────────────────
 
-import { readFile, writeFile, readdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import {
+  appendFile,
+  mkdir,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from "node:fs/promises";
+import {
+  basename,
+  dirname,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import { homedir } from "node:os";
 import { z } from "zod";
 import type { ToolDefinitionRuntime, ToolExecutionContext } from "../registry.js";
 
-const MAX_FILE_SIZE = 1_000_000; // 1MB
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const MAX_SEARCH_RESULTS = 50;
 const MAX_READ_LINES = 5000;
+const AUDIT_LOG_LIMIT = 200;
+const auditLog: FileAuditEntry[] = [];
+
+export interface FileAuditEntry {
+  operation: string;
+  path: string;
+  targetPath?: string;
+  agentId: string;
+  sessionId: string;
+  timestamp: string;
+  success: boolean;
+  error?: string;
+}
 
 // ─── File Read Tool ─────────────────────────────────────────────────────────
 
@@ -50,32 +82,37 @@ export const fileReadTool: ToolDefinitionRuntime = {
     context: ToolExecutionContext
   ): Promise<unknown> {
     const parsed = FileReadInputSchema.parse(input);
-    const filePath = resolvePath(parsed.path, context.workingDirectory);
+    return auditFileOperation("file_read", parsed.path, context, async () => {
+      const filePath = resolvePath(parsed.path, context);
 
-    const fileStat = await stat(filePath);
-    if (fileStat.size > MAX_FILE_SIZE) {
-      throw new Error(
-        `File too large (${fileStat.size} bytes). Maximum: ${MAX_FILE_SIZE} bytes.`
-      );
-    }
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) {
+        throw new Error(`Path is not a file: ${filePath}`);
+      }
+      if (fileStat.size > MAX_FILE_SIZE) {
+        throw new Error(
+          `File too large (${fileStat.size} bytes). Maximum: ${MAX_FILE_SIZE} bytes.`
+        );
+      }
 
-    const content = await readFile(filePath, "utf-8");
+      const content = await readFile(filePath, "utf-8");
 
-    if (parsed.offset !== undefined || parsed.limit !== undefined) {
-      const lines = content.split("\n");
-      const start = parsed.offset ?? 0;
-      const end = parsed.limit ? start + parsed.limit : lines.length;
-      const slice = lines.slice(start, end);
-      return {
-        path: filePath,
-        content: slice.join("\n"),
-        totalLines: lines.length,
-        startLine: start,
-        endLine: Math.min(end, lines.length),
-      };
-    }
+      if (parsed.offset !== undefined || parsed.limit !== undefined) {
+        const lines = content.split("\n");
+        const start = parsed.offset ?? 0;
+        const end = parsed.limit ? start + parsed.limit : lines.length;
+        const slice = lines.slice(start, end);
+        return {
+          path: filePath,
+          content: slice.join("\n"),
+          totalLines: lines.length,
+          startLine: start,
+          endLine: Math.min(end, lines.length),
+        };
+      }
 
-    return { path: filePath, content, totalLines: content.split("\n").length };
+      return { path: filePath, content, totalLines: content.split("\n").length };
+    });
   },
 };
 
@@ -119,20 +156,20 @@ export const fileWriteTool: ToolDefinitionRuntime = {
     context: ToolExecutionContext
   ): Promise<unknown> {
     const parsed = FileWriteInputSchema.parse(input);
-    const filePath = resolvePath(parsed.path, context.workingDirectory);
+    return auditFileOperation("file_write", parsed.path, context, async () => {
+      const filePath = resolvePath(parsed.path, context);
 
-    if (parsed.createDirectories) {
-      const { mkdir } = await import("node:fs/promises");
-      const { dirname } = await import("node:path");
-      await mkdir(dirname(filePath), { recursive: true });
-    }
+      if (parsed.createDirectories) {
+        await mkdir(dirname(filePath), { recursive: true });
+      }
 
-    await writeFile(filePath, parsed.content, "utf-8");
+      await writeFile(filePath, parsed.content, "utf-8");
 
-    return {
-      path: filePath,
-      bytesWritten: Buffer.byteLength(parsed.content, "utf-8"),
-    };
+      return {
+        path: filePath,
+        bytesWritten: Buffer.byteLength(parsed.content, "utf-8"),
+      };
+    });
   },
 };
 
@@ -173,15 +210,17 @@ export const fileListTool: ToolDefinitionRuntime = {
     context: ToolExecutionContext
   ): Promise<unknown> {
     const parsed = FileListInputSchema.parse(input);
-    const dirPath = resolvePath(parsed.path, context.workingDirectory);
+    return auditFileOperation("file_list", parsed.path, context, async () => {
+      const dirPath = resolvePath(parsed.path, context);
 
-    const entries = await listDirectory(dirPath, parsed.recursive, parsed.maxDepth, 0);
+      const entries = await listDirectory(dirPath, parsed.recursive, parsed.maxDepth, 0);
 
-    return {
-      path: dirPath,
-      entries,
-      totalEntries: entries.length,
-    };
+      return {
+        path: dirPath,
+        entries,
+        totalEntries: entries.length,
+      };
+    });
   },
 };
 
@@ -232,61 +271,323 @@ export const fileSearchTool: ToolDefinitionRuntime = {
     context: ToolExecutionContext
   ): Promise<unknown> {
     const parsed = FileSearchInputSchema.parse(input);
-    const dirPath = resolvePath(parsed.path, context.workingDirectory);
+    return auditFileOperation("file_search", parsed.path, context, async () => {
+      const dirPath = resolvePath(parsed.path, context);
 
-    const files = await listDirectory(dirPath, true, 5, 0);
-    const fileEntries = files.filter((e) => e.type === "file");
+      const files = await listDirectory(dirPath, true, 5, 0);
+      const fileEntries = files.filter((e) => e.type === "file");
 
-    // Apply glob filter
-    const filteredFiles = parsed.glob
-      ? fileEntries.filter((f) => matchGlob(f.name, parsed.glob!))
-      : fileEntries;
+      const filteredFiles = parsed.glob
+        ? fileEntries.filter((f) => matchGlob(f.name, parsed.glob!))
+        : fileEntries;
 
-    const matches: Array<{
-      file: string;
-      line: number;
-      content: string;
-    }> = [];
+      const matches: Array<{
+        file: string;
+        line: number;
+        content: string;
+      }> = [];
 
-    for (const file of filteredFiles) {
-      if (matches.length >= parsed.maxResults) break;
+      for (const file of filteredFiles) {
+        if (matches.length >= parsed.maxResults) break;
 
-      try {
-        const fileStat = await stat(file.path);
-        if (fileStat.size > MAX_FILE_SIZE) continue;
+        try {
+          const fileStat = await stat(file.path);
+          if (fileStat.size > MAX_FILE_SIZE) continue;
 
-        const content = await readFile(file.path, "utf-8");
-        const lines = content.split("\n");
+          const content = await readFile(file.path, "utf-8");
+          const lines = content.split("\n");
 
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].includes(parsed.pattern)) {
-            matches.push({
-              file: file.path,
-              line: i + 1,
-              content: lines[i].trim(),
-            });
-            if (matches.length >= parsed.maxResults) break;
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(parsed.pattern)) {
+              matches.push({
+                file: file.path,
+                line: i + 1,
+                content: lines[i].trim(),
+              });
+              if (matches.length >= parsed.maxResults) break;
+            }
           }
+        } catch {
+          // Skip files that can't be read
         }
-      } catch {
-        // Skip files that can't be read
       }
-    }
 
-    return {
-      pattern: parsed.pattern,
-      directory: dirPath,
-      matches,
-      totalMatches: matches.length,
-    };
+      return {
+        pattern: parsed.pattern,
+        directory: dirPath,
+        matches,
+        totalMatches: matches.length,
+      };
+    });
+  },
+};
+
+// ─── File Move Tool ────────────────────────────────────────────────────────
+
+const FileMoveInputSchema = z.object({
+  sourcePath: z.string().min(1).describe("Existing file or directory path"),
+  targetPath: z.string().min(1).describe("Destination file or directory path"),
+});
+
+export const fileMoveTool: ToolDefinitionRuntime = {
+  name: "file_move",
+  description: "Move or rename a file or directory inside the allowed file sandbox.",
+  parameters: {
+    type: "object",
+    properties: {
+      sourcePath: { type: "string", description: "Existing file or directory path" },
+      targetPath: { type: "string", description: "Destination file or directory path" },
+    },
+    required: ["sourcePath", "targetPath"],
+  },
+  inputSchema: FileMoveInputSchema,
+  riskLevel: "high",
+  requiresApproval: true,
+  timeout: 10_000,
+  tags: ["file", "move"],
+
+  async execute(
+    input: Record<string, unknown>,
+    context: ToolExecutionContext
+  ): Promise<unknown> {
+    const parsed = FileMoveInputSchema.parse(input);
+    return auditFileOperation(
+      "file_move",
+      parsed.sourcePath,
+      context,
+      async () => {
+        const sourcePath = resolvePath(parsed.sourcePath, context);
+        const targetPath = resolvePath(parsed.targetPath, context);
+        await mkdir(dirname(targetPath), { recursive: true });
+        await rename(sourcePath, targetPath);
+        return { sourcePath, targetPath };
+      },
+      parsed.targetPath
+    );
+  },
+};
+
+// ─── File Delete Tool ──────────────────────────────────────────────────────
+
+const FileDeleteInputSchema = z.object({
+  path: z.string().min(1).describe("File or directory path to delete"),
+  recursive: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe("Allow recursive directory deletion"),
+});
+
+export const fileDeleteTool: ToolDefinitionRuntime = {
+  name: "file_delete",
+  description:
+    "Delete a file or directory inside the allowed file sandbox. Directories require recursive=true.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "File or directory path to delete" },
+      recursive: { type: "boolean", description: "Allow recursive directory deletion" },
+    },
+    required: ["path"],
+  },
+  inputSchema: FileDeleteInputSchema,
+  riskLevel: "critical",
+  requiresApproval: true,
+  timeout: 10_000,
+  tags: ["file", "delete"],
+
+  async execute(
+    input: Record<string, unknown>,
+    context: ToolExecutionContext
+  ): Promise<unknown> {
+    const parsed = FileDeleteInputSchema.parse(input);
+    return auditFileOperation("file_delete", parsed.path, context, async () => {
+      const filePath = resolvePath(parsed.path, context);
+      await rm(filePath, { recursive: parsed.recursive, force: false });
+      return { path: filePath, deleted: true };
+    });
+  },
+};
+
+// ─── File Info Tool ────────────────────────────────────────────────────────
+
+const FileInfoInputSchema = z.object({
+  path: z.string().min(1).describe("File or directory path to inspect"),
+});
+
+export const fileInfoTool: ToolDefinitionRuntime = {
+  name: "file_info",
+  description:
+    "Return metadata for a file or directory, including size, type, modified date, and extension.",
+  parameters: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "File or directory path to inspect" },
+    },
+    required: ["path"],
+  },
+  inputSchema: FileInfoInputSchema,
+  riskLevel: "low",
+  requiresApproval: false,
+  timeout: 10_000,
+  tags: ["file", "info"],
+
+  async execute(
+    input: Record<string, unknown>,
+    context: ToolExecutionContext
+  ): Promise<unknown> {
+    const parsed = FileInfoInputSchema.parse(input);
+    return auditFileOperation("file_info", parsed.path, context, async () => {
+      const filePath = resolvePath(parsed.path, context);
+      const fileStat = await stat(filePath);
+      return {
+        path: filePath,
+        name: basename(filePath),
+        extension: extname(filePath),
+        type: fileStat.isFile()
+          ? "file"
+          : fileStat.isDirectory()
+            ? "directory"
+            : "other",
+        size: fileStat.size,
+        createdAt: fileStat.birthtime.toISOString(),
+        modifiedAt: fileStat.mtime.toISOString(),
+      };
+    });
   },
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function resolvePath(path: string, workingDirectory?: string): string {
-  if (path.startsWith("/")) return resolve(path);
-  return resolve(workingDirectory ?? process.cwd(), path);
+export function getFileAuditLog(): FileAuditEntry[] {
+  return [...auditLog];
+}
+
+export function clearFileAuditLog(): void {
+  auditLog.length = 0;
+}
+
+function resolvePath(path: string, context: ToolExecutionContext): string {
+  const workingDirectory = resolve(context.workingDirectory ?? process.cwd());
+  const filePath = isAbsolute(path) ? resolve(path) : resolve(workingDirectory, path);
+  assertAllowedPath(filePath, context);
+  assertNotSensitivePath(filePath);
+  return filePath;
+}
+
+function assertAllowedPath(path: string, context: ToolExecutionContext): void {
+  const allowedDirs = getAllowedDirectories(context);
+  if (allowedDirs.some((dir) => isPathInside(path, dir))) {
+    return;
+  }
+
+  throw new Error(
+    `Path is outside allowed directories. Configure KARNA_FILE_ALLOWED_DIRS or use the session working directory.`
+  );
+}
+
+function assertNotSensitivePath(path: string): void {
+  const normalized = path.split(sep).join("/");
+  const home = homedir();
+  const sensitiveDirs = [
+    ".ssh",
+    ".aws",
+    ".gnupg",
+    ".kube",
+    ".docker",
+    ".config/gh",
+    ".config/gcloud",
+  ];
+
+  if (basename(path) === ".env" || basename(path).startsWith(".env.")) {
+    throw new Error(`Path is blocked by sensitive file deny list: ${path}`);
+  }
+
+  for (const entry of sensitiveDirs) {
+    const absolute = resolve(home, entry).split(sep).join("/");
+    if (normalized === absolute || normalized.startsWith(`${absolute}/`)) {
+      throw new Error(`Path is blocked by sensitive directory deny list: ${path}`);
+    }
+  }
+}
+
+function getAllowedDirectories(context: ToolExecutionContext): string[] {
+  const configured = (process.env.KARNA_FILE_ALLOWED_DIRS ?? "")
+    .split(/[,:]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => resolve(expandHome(entry)));
+
+  return [
+    resolve(context.workingDirectory ?? process.cwd()),
+    ...configured,
+  ].filter((entry, index, dirs) => dirs.indexOf(entry) === index);
+}
+
+function expandHome(path: string): string {
+  if (path === "~") return homedir();
+  if (path.startsWith(`~${sep}`) || path.startsWith("~/")) {
+    return resolve(homedir(), path.slice(2));
+  }
+  return path;
+}
+
+function isPathInside(path: string, directory: string): boolean {
+  const diff = relative(directory, path);
+  return diff === "" || (!diff.startsWith("..") && !isAbsolute(diff));
+}
+
+async function auditFileOperation<T>(
+  operation: string,
+  path: string,
+  context: ToolExecutionContext,
+  callback: () => Promise<T>,
+  targetPath?: string
+): Promise<T> {
+  try {
+    const result = await callback();
+    await recordAudit({
+      operation,
+      path,
+      targetPath,
+      agentId: context.agentId,
+      sessionId: context.sessionId,
+      timestamp: new Date().toISOString(),
+      success: true,
+    }, context);
+    return result;
+  } catch (error) {
+    await recordAudit({
+      operation,
+      path,
+      targetPath,
+      agentId: context.agentId,
+      sessionId: context.sessionId,
+      timestamp: new Date().toISOString(),
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    }, context);
+    throw error;
+  }
+}
+
+async function recordAudit(
+  entry: FileAuditEntry,
+  context: ToolExecutionContext
+): Promise<void> {
+  auditLog.push(entry);
+  if (auditLog.length > AUDIT_LOG_LIMIT) {
+    auditLog.shift();
+  }
+
+  const dir = resolve(context.workingDirectory ?? process.cwd(), ".karna");
+  const auditPath = join(dir, "file-operations.audit.jsonl");
+  try {
+    await mkdir(dir, { recursive: true });
+    await appendFile(auditPath, `${JSON.stringify(entry)}\n`, "utf-8");
+  } catch {
+    // In-memory audit still records the operation if the filesystem log fails.
+  }
 }
 
 interface DirectoryEntry {

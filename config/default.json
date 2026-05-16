@@ -10,6 +10,14 @@
     "rateLimit": {
       "maxRequestsPerMinute": 60,
       "maxConnectionsPerIp": 5
+    },
+    "websocket": {
+      "maxPayloadBytes": 1048576,
+      "maxMediaPayloadBytes": 10485760,
+      "bandwidthWindowMs": 60000,
+      "maxBandwidthBytesPerWindow": 62914560,
+      "chatMessagesPerMinute": 10,
+      "otherMessagesPerMinute": 30
     }
   },
   "agent": {

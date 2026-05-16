@@ -29,6 +29,17 @@ pnpm dev    # Start with hot reload
 pnpm start  # Production mode
 ```
 
+## WebSocket Keepalive
+
+The gateway sends WebSocket ping frames every 30 seconds and closes connections
+that do not answer with a pong within 10 seconds. The application-level
+`heartbeat` protocol remains separate and is still used for health/status
+messages inside an authenticated session.
+
+Self-hosted load balancers and reverse proxies should allow idle WebSocket
+connections for longer than the 30 second ping interval. Use at least 60 seconds
+for Nginx `proxy_read_timeout`, AWS ALB idle timeout, and similar settings.
+
 ## Dependencies
 
 - **Fastify** — HTTP and WebSocket server

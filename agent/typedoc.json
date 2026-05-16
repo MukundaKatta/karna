@@ -1,0 +1,18 @@
+{
+  "entryPoints": [
+    "src/runtime.ts",
+    "src/tools/registry.ts",
+    "src/tools/executor.ts",
+    "src/tools/approval.ts",
+    "src/models/router.ts",
+    "src/models/provider.ts",
+    "src/context/builder.ts",
+    "src/context/system-prompt.ts",
+    "src/memory/store.ts",
+    "src/memory/embedder.ts",
+    "src/workflows/engine.ts",
+    "src/orchestration/orchestrator.ts",
+    "src/orchestration/handoff.ts",
+    "src/orchestration/agent-pool.ts"
+  ]
+}

@@ -4,6 +4,8 @@ import * as FileSystem from 'expo-file-system';
 let currentRecording: Audio.Recording | null = null;
 let currentSound: Audio.Sound | null = null;
 
+export type MicrophonePermissionState = 'granted' | 'denied' | 'undetermined';
+
 const RECORDING_OPTIONS: Audio.RecordingOptions = {
   isMeteringEnabled: true,
   android: {
@@ -31,7 +33,18 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
   },
 };
 
+export async function getMicrophonePermissionState(): Promise<MicrophonePermissionState> {
+  const { status } = await Audio.getPermissionsAsync();
+  if (status === 'granted') return 'granted';
+  if (status === 'denied') return 'denied';
+  return 'undetermined';
+}
+
 export async function requestMicrophonePermission(): Promise<boolean> {
+  const currentStatus = await getMicrophonePermissionState();
+  if (currentStatus === 'granted') return true;
+  if (currentStatus === 'denied') return false;
+
   const { status } = await Audio.requestPermissionsAsync();
   return status === 'granted';
 }

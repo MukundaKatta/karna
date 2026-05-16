@@ -1,0 +1,54 @@
+name: API Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-api-docs
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build API Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build workspace packages
+        run: pnpm --filter @karna/shared build && pnpm --filter @karna/plugin-sdk build && pnpm --filter @karna/agent build
+
+      - name: Generate TypeDoc API docs
+        run: pnpm run docs:api
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+
+  deploy:
+    name: Deploy API Docs
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}api/
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

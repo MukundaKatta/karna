@@ -5,6 +5,7 @@ import type {
   ProtocolMessage,
   ConnectMessage,
   ChatMessage,
+  ChatCancelMessage,
   SkillInvokeMessage,
   VoiceStartMessage,
   VoiceAudioChunkMessage,
@@ -37,6 +38,11 @@ import type { AccessPolicyManager } from "../access/policies.js";
 import type { AuditLogger } from "../audit/logger.js";
 import type { TraceCollector } from "../observability/trace-collector.js";
 import { DEFAULT_AGENTS } from "../catalog/default-agents.js";
+import {
+  logModerationEvent,
+  moderateGeneratedContent,
+  shouldLogModerationContent,
+} from "../security/moderation.js";
 
 const logger = pino({ name: "message-handler" });
 const ACCESS_CONTROLLED_CHANNELS = new Set([
@@ -198,14 +204,24 @@ export interface SessionTurnExecutionOptions {
 
 // ─── Send Helper ────────────────────────────────────────────────────────────
 
-function sendMessage(ws: WebSocket, message: Record<string, unknown>): void {
+function sendMessage(ws: WebSocket, message: Record<string, unknown>): boolean {
   try {
     if (ws.readyState === ws.OPEN) {
+      logger.info(
+        {
+          direction: "outbound",
+          messageType: message["type"],
+          sessionId: message["sessionId"],
+        },
+        "WebSocket message sent",
+      );
       ws.send(JSON.stringify(message));
+      return true;
     }
   } catch (error) {
     logger.error({ error: String(error) }, "Failed to send WebSocket message");
   }
+  return false;
 }
 
 function sendError(
@@ -439,6 +455,27 @@ export async function runSessionTurn(
   const resolvedModel = result.model ?? "";
 
   if (result.success) {
+    const moderation = moderateGeneratedContent(result.response);
+    if (!moderation.allowed) {
+      await logModerationEvent({
+        sessionId: session.id,
+        agentId: result.agentId,
+        model: resolvedModel || undefined,
+        level: moderation.level,
+        reasons: moderation.reasons,
+        originalContentHash: moderation.originalContentHash ?? "",
+        originalContent: shouldLogModerationContent() ? result.response : undefined,
+        replacementContent: moderation.content,
+        timestamp: Date.now(),
+      }).catch((error) => {
+        logger.error({ error: String(error), sessionId: session.id }, "Failed to log moderation event");
+      });
+      result = {
+        ...result,
+        response: moderation.content,
+      };
+    }
+
     await appendToTranscript(session.id, {
       id: nanoid(),
       sessionId: session.id,
@@ -449,6 +486,9 @@ export async function runSessionTurn(
         inputTokens: result.totalTokens.inputTokens,
         outputTokens: result.totalTokens.outputTokens,
         model: resolvedModel || undefined,
+        moderated: !moderation.allowed,
+        moderationLevel: moderation.level,
+        moderationReasons: moderation.reasons.length > 0 ? moderation.reasons : undefined,
       },
     });
 
@@ -521,12 +561,23 @@ export async function handleMessage(
         await handleChatMessage(ws, message, context);
         break;
 
+      case "chat.cancel":
+        await handleChatCancel(ws, message, context);
+        break;
+
       case "tool.approval.response":
         await handleToolApprovalResponse(ws, message, context);
         break;
 
       case "heartbeat.ack":
         handleHeartbeatAck(ws, message, context);
+        break;
+
+      case "memory.search":
+      case "memory.list":
+      case "reminder.list":
+      case "skill.list":
+        handleMobileListRequest(ws, message);
         break;
 
       case "skill.invoke":
@@ -587,6 +638,39 @@ export async function handleMessage(
 }
 
 // ─── Individual Handlers ────────────────────────────────────────────────────
+
+async function handleChatCancel(
+  ws: WebSocket,
+  message: ChatCancelMessage,
+  context: ConnectionContext,
+): Promise<void> {
+  const result = await restartGatewayRuntime();
+  logger.info(
+    {
+      sessionId: message.sessionId,
+      reason: message.payload?.reason,
+      hadActiveOrchestrator: result.hadActiveOrchestrator,
+      clearedPendingApprovals: result.clearedPendingApprovals,
+    },
+    "Cancelled active chat turn",
+  );
+
+  sendMessage(ws, {
+    id: nanoid(),
+    type: "status",
+    timestamp: Date.now(),
+    sessionId: message.sessionId,
+    payload: {
+      state: "idle",
+      message: "Cancelled the active agent turn.",
+      progress: 1,
+    },
+  });
+
+  if (message.sessionId) {
+    context.sessionManager.updateSessionStatus(message.sessionId, "idle");
+  }
+}
 
 async function handleConnect(
   ws: WebSocket,
@@ -840,10 +924,34 @@ async function handleChatMessage(
   try {
     // Set up streaming callback to forward deltas to the client
     let streamIndex = 0;
+    let disconnectedStreamCleanupStarted = false;
+    const cleanupDisconnectedStream = (): void => {
+      if (disconnectedStreamCleanupStarted) return;
+      disconnectedStreamCleanupStarted = true;
+      logger.warn(
+        { sessionId },
+        "Client disconnected during active stream; cancelling runtime",
+      );
+      void restartGatewayRuntime().then((result) => {
+        logger.info(
+          {
+            sessionId,
+            hadActiveOrchestrator: result.hadActiveOrchestrator,
+            clearedPendingApprovals: result.clearedPendingApprovals,
+          },
+          "Cleaned up runtime after stream client disconnect",
+        );
+      });
+      context.sessionManager.updateSessionStatus(sessionId, "idle");
+    };
     const streamCallback: StreamCallback = (event) => {
       switch (event.type) {
         case "text":
-          sendMessage(ws, {
+          if (!moderateGeneratedContent(event.text).allowed) {
+            logger.warn({ sessionId }, "Suppressed unsafe streamed response chunk");
+            break;
+          }
+          if (!sendMessage(ws, {
             id: nanoid(),
             type: "agent.response.stream",
             timestamp: Date.now(),
@@ -853,10 +961,12 @@ async function handleChatMessage(
               index: streamIndex++,
               finishReason: null,
             },
-          });
+          })) {
+            cleanupDisconnectedStream();
+          }
           break;
         case "tool_use":
-          sendMessage(ws, {
+          if (!sendMessage(ws, {
             id: nanoid(),
             type: "tool.approval.requested",
             timestamp: Date.now(),
@@ -867,7 +977,9 @@ async function handleChatMessage(
               arguments: event.input,
               riskLevel: "medium",
             },
-          });
+          })) {
+            cleanupDisconnectedStream();
+          }
           break;
       }
     };
@@ -1041,6 +1153,50 @@ function handleHeartbeatAck(
       client.lastSeen = Date.now();
       break;
     }
+  }
+}
+
+function handleMobileListRequest(
+  ws: WebSocket,
+  message: ProtocolMessage,
+): void {
+  switch (message.type) {
+    case "memory.search":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "memory.search.result",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: { results: [] },
+      });
+      break;
+    case "memory.list":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "memory.list",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: {},
+      });
+      break;
+    case "reminder.list":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "reminder.list",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: {},
+      });
+      break;
+    case "skill.list":
+      sendMessage(ws, {
+        id: nanoid(),
+        type: "skill.list",
+        timestamp: Date.now(),
+        sessionId: message.sessionId,
+        payload: {},
+      });
+      break;
   }
 }
 

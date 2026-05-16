@@ -14,12 +14,19 @@ describe("openapi routes", () => {
   it("serves the OpenAPI spec for real gateway routes", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/docs",
+      url: "/docs/openapi.json",
     });
 
     expect(response.statusCode).toBe(200);
     const spec = response.json();
     expect(spec.openapi).toBe("3.1.0");
+    expect(spec["x-websocket-protocol"].path).toBe("/ws");
+    expect(spec["x-websocket-protocol"].serverMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "assistant.delta" }),
+        expect.objectContaining({ type: "tool.approval.requested" }),
+      ]),
+    );
     expect(spec.paths["/api/agents"]).toBeDefined();
     expect(spec.paths["/api/skills"]).toBeDefined();
     expect(spec.paths["/api/skills/{id}"]).toBeDefined();
@@ -40,16 +47,34 @@ describe("openapi routes", () => {
     expect(spec.paths["/api/access/policies/{channel}/pairings/approve"]).toBeDefined();
     expect(spec.paths["/api/memory"]).toBeDefined();
     expect(spec.paths["/api/memory/search"]).toBeDefined();
+    expect(spec.paths["/docs/openapi.json"]).toBeDefined();
+    expect(spec.paths["/docs"]).toBeDefined();
   });
 
   it("serves the Swagger UI shell", async () => {
     const response = await app.inject({
       method: "GET",
-      url: "/api/docs/ui",
+      url: "/docs",
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.body).toContain("SwaggerUIBundle");
-    expect(response.body).toContain("/api/docs");
+    expect(response.body).toContain("/docs/openapi.json");
+  });
+
+  it("keeps legacy docs endpoints available", async () => {
+    const specResponse = await app.inject({
+      method: "GET",
+      url: "/api/docs",
+    });
+    const uiResponse = await app.inject({
+      method: "GET",
+      url: "/api/docs/ui",
+    });
+
+    expect(specResponse.statusCode).toBe(200);
+    expect(specResponse.json().openapi).toBe("3.1.0");
+    expect(uiResponse.statusCode).toBe(200);
+    expect(uiResponse.body).toContain("/docs/openapi.json");
   });
 });

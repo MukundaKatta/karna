@@ -30,6 +30,18 @@ interface PendingResponse {
   streamComplete: boolean;
 }
 
+interface QueuedTelegramMessage {
+  chatId: number;
+  content: string;
+  attachments?: Array<{ type: string; url?: string; data?: string; name?: string }>;
+  metadata?: Record<string, unknown>;
+  queuedAt: number;
+}
+
+type ReconnectQueueInput = Omit<QueuedTelegramMessage, "queuedAt">;
+
+const MAX_RECONNECT_QUEUE_SIZE = 100;
+
 // ─── TelegramAdapter ────────────────────────────────────────────────────────
 
 export class TelegramAdapter {
@@ -42,6 +54,8 @@ export class TelegramAdapter {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private readonly sessionMap: PersistentSessionMap<number, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
+  private reconnectQueue: QueuedTelegramMessage[] = [];
+  private droppedReconnectMessages = 0;
   private isShuttingDown = false;
 
   constructor(config: TelegramAdapterConfig) {
@@ -244,10 +258,11 @@ export class TelegramAdapter {
   ): Promise<void> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn({ chatId }, "Gateway not connected, cannot forward message");
+      this.enqueueForReconnect({ chatId, content, attachments, metadata });
       try {
         await this.bot.api.sendMessage(
           chatId,
-          "I'm currently reconnecting to my backend. Please try again in a moment.",
+          "I'm reconnecting to my backend. I queued this message and will process it shortly.",
         );
       } catch {
         // Swallow send errors during reconnection
@@ -385,6 +400,7 @@ export class TelegramAdapter {
         this.reconnectAttempts = 0;
         this.startHeartbeat();
         this.reregisterSessions();
+        void this.flushReconnectQueue();
         resolve();
       });
 
@@ -653,6 +669,70 @@ export class TelegramAdapter {
         this.scheduleReconnect();
       });
     }, delay);
+  }
+
+  private enqueueForReconnect(input: ReconnectQueueInput): void {
+    if (this.reconnectQueue.length >= MAX_RECONNECT_QUEUE_SIZE) {
+      const dropped = this.reconnectQueue.shift();
+      this.droppedReconnectMessages++;
+      this.logger.warn(
+        {
+          chatId: dropped?.chatId,
+          droppedReconnectMessages: this.droppedReconnectMessages,
+        },
+        "Dropped oldest Telegram message from reconnect queue",
+      );
+    }
+
+    const message: QueuedTelegramMessage = {
+      ...input,
+      queuedAt: Date.now(),
+    };
+
+    this.reconnectQueue.push(message);
+    this.logger.info(
+      {
+        chatId: message.chatId,
+        queueSize: this.reconnectQueue.length,
+        droppedReconnectMessages: this.droppedReconnectMessages,
+      },
+      "Queued Telegram message while gateway reconnects",
+    );
+  }
+
+  private async flushReconnectQueue(): Promise<void> {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    if (this.reconnectQueue.length === 0) return;
+
+    const queued = this.reconnectQueue.splice(0);
+    this.logger.info(
+      {
+        queuedMessages: queued.length,
+        droppedReconnectMessages: this.droppedReconnectMessages,
+      },
+      "Flushing queued Telegram messages after reconnect",
+    );
+
+    for (const message of queued) {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this.reconnectQueue.unshift(
+          message,
+          ...queued.slice(queued.indexOf(message) + 1),
+        );
+        return;
+      }
+
+      await this.forwardToGateway(
+        message.chatId,
+        message.content,
+        message.attachments,
+        {
+          ...message.metadata,
+          queuedDuringReconnect: true,
+          queuedAt: message.queuedAt,
+        },
+      );
+    }
   }
 
   // ─── Heartbeat ─────────────────────────────────────────────────────────

@@ -1,0 +1,210 @@
+version: 2
+
+registries:
+  npmjs:
+    type: npm-registry
+    url: https://registry.npmjs.org
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:repo
+    groups:
+      npm-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /apps/mobile
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:20"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:mobile
+    groups:
+      mobile-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /apps/web
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:40"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:web
+    groups:
+      web-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /gateway
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:gateway
+    groups:
+      gateway-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /agent
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:20"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:agent
+    groups:
+      agent-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /packages/shared
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "10:40"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:packages
+    groups:
+      shared-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /packages/supabase
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "11:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:packages
+    groups:
+      supabase-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /channels/slack
+    registries:
+      - npmjs
+    schedule:
+      interval: weekly
+      day: monday
+      time: "11:20"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:channels
+    groups:
+      slack-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: "09:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:ci
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /gateway
+    schedule:
+      interval: monthly
+      day: monday
+      time: "09:30"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:gateway
+    groups:
+      gateway-docker-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /apps/web
+    schedule:
+      interval: monthly
+      day: monday
+      time: "10:00"
+      timezone: America/Los_Angeles
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - area:web
+    groups:
+      web-docker-minor-patch:
+        update-types:
+          - minor
+          - patch

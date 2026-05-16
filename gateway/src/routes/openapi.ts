@@ -1,6 +1,38 @@
 import type { FastifyInstance } from "fastify";
+import fastifySwagger from "@fastify/swagger";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
-const OPENAPI_SPEC = {
+const OutboundMessageBodySchema = z
+  .object({
+    sessionId: z.string().optional(),
+    channelType: z.string().optional(),
+    channelId: z.string().optional(),
+    userId: z.string().optional(),
+    content: z.string().min(1),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+const SessionMessageBodySchema = z
+  .object({
+    content: z.string().min(1),
+    reply: z.boolean().optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .passthrough();
+
+const MemorySearchBodySchema = z
+  .object({
+    query: z.string().min(1),
+    agentId: z.string().optional(),
+    category: z.string().optional(),
+    source: z.string().optional(),
+    limit: z.number().int().positive().optional(),
+  })
+  .passthrough();
+
+export const OPENAPI_SPEC = {
   openapi: "3.1.0",
   info: {
     title: "Karna Gateway API",
@@ -24,6 +56,88 @@ const OPENAPI_SPEC = {
     { name: "Operations", description: "Live delivery and soft runtime control endpoints" },
     { name: "Docs", description: "OpenAPI specification and Swagger UI" },
   ],
+  "x-websocket-protocol": {
+    path: "/ws",
+    description:
+      "Gateway WebSocket channel used for live chat, streaming assistant responses, tool approval events, and runtime status updates.",
+    clientMessages: [
+      {
+        type: "chat.message",
+        description: "Send a user message into a live session.",
+        payload: {
+          type: "object",
+          required: ["sessionId", "message"],
+          properties: {
+            sessionId: { type: "string" },
+            message: { type: "string" },
+            metadata: { type: "object", additionalProperties: true },
+          },
+        },
+      },
+      {
+        type: "chat.cancel",
+        description: "Cancel an in-flight assistant turn for a session.",
+        payload: {
+          type: "object",
+          required: ["sessionId"],
+          properties: {
+            sessionId: { type: "string" },
+          },
+        },
+      },
+      {
+        type: "approval.resolve",
+        description: "Approve or deny a pending tool approval request.",
+        payload: {
+          type: "object",
+          required: ["approvalId", "approved"],
+          properties: {
+            approvalId: { type: "string" },
+            approved: { type: "boolean" },
+            reason: { type: "string" },
+          },
+        },
+      },
+      {
+        type: "ping",
+        description: "Heartbeat message. The gateway replies with pong.",
+        payload: { type: "object", additionalProperties: true },
+      },
+    ],
+    serverMessages: [
+      {
+        type: "session.updated",
+        description: "Session lifecycle, status, or metadata changed.",
+      },
+      {
+        type: "assistant.delta",
+        description: "Streaming assistant response chunk.",
+      },
+      {
+        type: "assistant.completed",
+        description: "Assistant turn completed with final metadata.",
+      },
+      {
+        type: "tool.approval.requested",
+        description: "A tool call requires operator approval.",
+      },
+      {
+        type: "runtime.shutdown",
+        description: "Gateway is restarting or shutting down and clients should reconnect.",
+      },
+      {
+        type: "pong",
+        description: "Heartbeat acknowledgement.",
+      },
+    ],
+  },
+  components: {
+    schemas: {
+      OutboundMessageBody: zodComponent(OutboundMessageBodySchema, "OutboundMessageBody"),
+      SessionMessageBody: zodComponent(SessionMessageBodySchema, "SessionMessageBody"),
+      MemorySearchBody: zodComponent(MemorySearchBodySchema, "MemorySearchBody"),
+    },
+  },
   paths: {
     "/health": {
       get: {
@@ -360,6 +474,7 @@ const OPENAPI_SPEC = {
         tags: ["Sessions"],
         summary: "Inject a message into a session",
         parameters: [pathParam("sessionId", "Target session id")],
+        requestBody: jsonBodyRef("SessionMessageBody"),
         responses: {
           "200": { description: "Queued or immediate reply result" },
           "400": { description: "Invalid message payload" },
@@ -372,6 +487,7 @@ const OPENAPI_SPEC = {
       post: {
         tags: ["Operations"],
         summary: "Deliver an outbound message to a live session or channel",
+        requestBody: jsonBodyRef("OutboundMessageBody"),
         responses: {
           "200": { description: "Message persisted and optionally delivered to live clients" },
           "400": { description: "Invalid outbound message payload" },
@@ -518,6 +634,7 @@ const OPENAPI_SPEC = {
       post: {
         tags: ["Memory"],
         summary: "Search memory entries",
+        requestBody: jsonBodyRef("MemorySearchBody"),
         responses: {
           "200": { description: "Matching memory entries" },
           "400": { description: "Invalid memory search request" },
@@ -544,7 +661,7 @@ const OPENAPI_SPEC = {
         },
       },
     },
-    "/api/docs": {
+    "/docs/openapi.json": {
       get: {
         tags: ["Docs"],
         summary: "OpenAPI specification",
@@ -553,10 +670,30 @@ const OPENAPI_SPEC = {
         },
       },
     },
-    "/api/docs/ui": {
+    "/docs": {
       get: {
         tags: ["Docs"],
         summary: "Swagger UI",
+        responses: {
+          "200": { description: "Swagger UI HTML" },
+        },
+      },
+    },
+    "/api/docs": {
+      get: {
+        tags: ["Docs"],
+        summary: "Legacy OpenAPI specification endpoint",
+        deprecated: true,
+        responses: {
+          "200": { description: "OpenAPI JSON document" },
+        },
+      },
+    },
+    "/api/docs/ui": {
+      get: {
+        tags: ["Docs"],
+        summary: "Legacy Swagger UI endpoint",
+        deprecated: true,
         responses: {
           "200": { description: "Swagger UI HTML" },
         },
@@ -575,19 +712,38 @@ const SWAGGER_HTML = `<!DOCTYPE html>
   <div id="swagger-ui"></div>
   <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
   <script>
-    SwaggerUIBundle({ url: '/api/docs', dom_id: '#swagger-ui', deepLinking: true });
+    SwaggerUIBundle({ url: '/docs/openapi.json', dom_id: '#swagger-ui', deepLinking: true });
   </script>
 </body>
 </html>`;
 
 export function registerOpenApiRoutes(app: FastifyInstance): void {
+  app.register(fastifySwagger, {
+    mode: "static",
+    specification: {
+      document: JSON.parse(JSON.stringify(OPENAPI_SPEC)) as Record<string, unknown>,
+    },
+  } as never);
+
+  app.get("/docs/openapi.json", async (_, reply) => {
+    reply.type("application/json").send(getSwaggerSpec(app));
+  });
+
+  app.get("/docs", async (_, reply) => {
+    reply.type("text/html").send(SWAGGER_HTML);
+  });
+
   app.get("/api/docs", async (_, reply) => {
-    reply.type("application/json").send(OPENAPI_SPEC);
+    reply.type("application/json").send(getSwaggerSpec(app));
   });
 
   app.get("/api/docs/ui", async (_, reply) => {
     reply.type("text/html").send(SWAGGER_HTML);
   });
+}
+
+function getSwaggerSpec(app: FastifyInstance) {
+  return (app as FastifyInstance & { swagger?: () => unknown }).swagger?.() ?? OPENAPI_SPEC;
 }
 
 function pathParam(name: string, description: string) {
@@ -608,6 +764,25 @@ function queryParam(name: string, type: "string" | "integer" | "boolean", descri
     description,
     schema: { type },
   };
+}
+
+function jsonBodyRef(schemaName: string) {
+  return {
+    required: true,
+    content: {
+      "application/json": {
+        schema: { $ref: `#/components/schemas/${schemaName}` },
+      },
+    },
+  };
+}
+
+function zodComponent(schema: z.ZodTypeAny, name: string) {
+  return zodToJsonSchema(schema, {
+    name,
+    target: "openApi3",
+    $refStrategy: "none",
+  });
 }
 
 function sessionFilterParams() {

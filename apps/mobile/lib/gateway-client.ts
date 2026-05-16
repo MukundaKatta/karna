@@ -5,6 +5,7 @@ import type {
   MemoryEntry,
   Skill,
   Reminder,
+  ToolApprovalRequest,
 } from "./store";
 import { readAudioFileAsBase64, playAudioResponse } from "./voice";
 import {
@@ -40,12 +41,17 @@ class GatewayClient {
   private pendingStreamMessageId: string | null = null;
   private historyInFlight = false;
   private channelId = `mobile-${generateId()}`;
+  private approvalAllForSession = false;
+  private approvalTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+  private streamDeltaBuffers = new Map<string, string>();
+  private streamFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   connect(url: string, token: string): void {
     this.url = normalizeMobileGatewayWsUrl(url);
     this.token = token;
     this.intentionalClose = false;
     this.reconnectAttempts = 0;
+    useAppStore.getState().setReconnectAttempts(0);
     void this.establishConnection();
   }
 
@@ -61,7 +67,14 @@ class GatewayClient {
     }
     this.sessionId = null;
     this.pendingStreamMessageId = null;
-    useAppStore.getState().setStatus("disconnected");
+    this.approvalAllForSession = false;
+    this.clearApprovalTimeouts();
+    this.clearStreamFlushTimers();
+    const store = useAppStore.getState();
+    store.setStatus("disconnected");
+    store.setPendingToolApproval(null);
+    store.setReconnectAttempts(0);
+    store.setLatency(null);
   }
 
   send(message: ProtocolMessage): void {
@@ -70,6 +83,63 @@ class GatewayClient {
       return;
     }
     this.ws.send(JSON.stringify(message));
+  }
+
+  async refreshTasks(): Promise<void> {
+    this.send({
+      id: generateId(),
+      type: "reminder.list",
+      timestamp: Date.now(),
+      sessionId: this.sessionId ?? undefined,
+      payload: {},
+    });
+  }
+
+  async refreshMemories(
+    options: { query?: string; category?: MemoryEntry["category"] } = {},
+  ): Promise<void> {
+    const memoryUrl = deriveMobileGatewayHttpUrl(
+      this.url || useAppStore.getState().url,
+    );
+    memoryUrl.pathname = "/api/memory";
+    memoryUrl.searchParams.set("limit", "100");
+    if (options.query) {
+      memoryUrl.searchParams.set("query", options.query);
+    }
+    if (options.category) {
+      memoryUrl.searchParams.set("category", options.category);
+    }
+
+    const response = await fetch(memoryUrl.toString());
+    if (!response.ok) {
+      throw new Error(`Memory refresh failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      entries?: Array<Record<string, unknown>>;
+      memories?: Array<Record<string, unknown>>;
+    };
+    const memories = (payload.entries ?? payload.memories ?? []).map(
+      mapMemoryEntry,
+    );
+    useAppStore.getState().setMemories(memories);
+  }
+
+  async refreshSkills(): Promise<void> {
+    const skillsUrl = deriveMobileGatewayHttpUrl(
+      this.url || useAppStore.getState().url,
+    );
+    skillsUrl.pathname = "/api/skills";
+
+    const response = await fetch(skillsUrl.toString());
+    if (!response.ok) {
+      throw new Error(`Skills refresh failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as {
+      skills?: Array<Record<string, unknown>>;
+    };
+    useAppStore.getState().setSkills((payload.skills ?? []).map(mapSkill));
   }
 
   sendChatMessage(content: string): void {
@@ -103,7 +173,13 @@ class GatewayClient {
       type: "chat.message",
       timestamp: Date.now(),
       sessionId: this.sessionId ?? undefined,
-      payload: { content, role: "user" },
+      payload: {
+        content,
+        role: "user",
+        metadata: store.connectionQuality.compactMode
+          ? { compactMode: true, stream: false }
+          : undefined,
+      },
     });
   }
 
@@ -179,6 +255,42 @@ class GatewayClient {
     });
   }
 
+  respondToToolApproval(
+    toolCallId: string,
+    approved: boolean,
+    options: { approveAllForSession?: boolean; reason?: string } = {},
+  ): void {
+    const store = useAppStore.getState();
+    const pending = store.pendingToolApproval;
+    const toolName = pending?.toolName ?? "tool";
+    const toolInput = pending?.arguments;
+    const reason =
+      options.reason ??
+      (approved
+        ? "Approved from mobile."
+        : "Denied from mobile.");
+
+    if (approved && options.approveAllForSession) {
+      this.approvalAllForSession = true;
+    }
+
+    this.clearApprovalTimeout(toolCallId);
+    store.setPendingToolApproval(null);
+    this.attachToolApprovalDecision(toolCallId, toolName, toolInput, approved, reason);
+
+    this.send({
+      id: generateId(),
+      type: "tool.approval.response",
+      timestamp: Date.now(),
+      sessionId: this.sessionId ?? undefined,
+      payload: {
+        toolCallId,
+        approved,
+        reason,
+      },
+    });
+  }
+
   onMessage(handler: MessageHandler): () => void {
     this.handlers.add(handler);
     return () => {
@@ -215,7 +327,9 @@ class GatewayClient {
 
       this.ws.onopen = () => {
         this.reconnectAttempts = 0;
-        useAppStore.getState().setStatus("connecting");
+        const currentStore = useAppStore.getState();
+        currentStore.setStatus("connecting");
+        currentStore.setReconnectAttempts(0);
         console.log("[GatewayClient] WebSocket opened");
 
         this.send({
@@ -246,6 +360,12 @@ class GatewayClient {
             useAppStore.getState().setStatus("connected");
           }
           if (message.type === "heartbeat.check") {
+            const serverTime = message.payload?.serverTime;
+            if (typeof serverTime === "number") {
+              useAppStore
+                .getState()
+                .setLatency(Math.max(0, Date.now() - serverTime));
+            }
             this.send({
               id: generateId(),
               type: "heartbeat.ack",
@@ -295,6 +415,7 @@ class GatewayClient {
 
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000);
     this.reconnectAttempts++;
+    useAppStore.getState().setReconnectAttempts(this.reconnectAttempts);
     console.log(
       `[GatewayClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
     );
@@ -377,9 +498,11 @@ class GatewayClient {
         store.setTyping(false);
         const content = (payload.content as string) ?? "";
         if (this.pendingStreamMessageId) {
+          this.flushStreamingDelta(this.pendingStreamMessageId);
           store.updateMessage(this.pendingStreamMessageId, {
             content,
             toolCalls: payload.toolCalls as ToolCall[] | undefined,
+            isStreaming: false,
           });
         } else {
           const assistantMessage: ChatMessage = {
@@ -388,6 +511,7 @@ class GatewayClient {
             content,
             timestamp: Date.now(),
             toolCalls: payload.toolCalls as ToolCall[] | undefined,
+            isStreaming: false,
           };
           store.addMessage(assistantMessage);
         }
@@ -415,18 +539,18 @@ class GatewayClient {
           store.addMessage({
             id: this.pendingStreamMessageId,
             role: "assistant",
-            content: delta,
+            content: "",
             timestamp: Date.now(),
+            isStreaming: true,
           });
-        } else {
-          const existing = store.messages.find(
-            (m) => m.id === this.pendingStreamMessageId,
-          );
-          if (existing) {
-            store.updateMessage(this.pendingStreamMessageId, {
-              content: existing.content + delta,
-            });
-          }
+        }
+        this.appendStreamingDelta(this.pendingStreamMessageId, delta);
+        if (payload.finishReason) {
+          this.flushStreamingDelta(this.pendingStreamMessageId);
+          store.updateMessage(this.pendingStreamMessageId, {
+            isStreaming: false,
+          });
+          this.pendingStreamMessageId = null;
         }
         break;
       }
@@ -437,30 +561,30 @@ class GatewayClient {
           role: "assistant",
           content: "",
           timestamp: Date.now(),
+          isStreaming: true,
         };
         store.addMessage(streamMessage);
+        this.pendingStreamMessageId = streamMessage.id;
         break;
       }
 
       case "chat.stream.delta": {
         if (message.id) {
-          const existing = store.messages.find((m) => m.id === message.id);
-          if (existing) {
-            store.updateMessage(message.id, {
-              content: existing.content + ((payload.delta as string) ?? ""),
-            });
-          }
+          this.appendStreamingDelta(message.id, (payload.delta as string) ?? "");
         }
         break;
       }
 
       case "chat.stream.end": {
         store.setTyping(false);
-        if (message.id && payload.toolCalls) {
+        if (message.id) {
+          this.flushStreamingDelta(message.id);
           store.updateMessage(message.id, {
+            isStreaming: false,
             toolCalls: payload.toolCalls as ToolCall[],
           });
         }
+        this.pendingStreamMessageId = null;
         break;
       }
 
@@ -525,9 +649,12 @@ class GatewayClient {
       case "tool.approval.requested": {
         const toolCallId = payload.toolCallId as string | undefined;
         const toolName = (payload.toolName as string | undefined) ?? "tool";
+        const riskLevel = parseRiskLevel(payload.riskLevel);
         const toolInput = isRecord(payload.arguments)
           ? payload.arguments
           : undefined;
+        const description =
+          typeof payload.description === "string" ? payload.description : undefined;
 
         if (!toolCallId) {
           this.addSystemMessage(
@@ -537,25 +664,45 @@ class GatewayClient {
           break;
         }
 
-        const reason =
-          "Mobile approval is not available yet, so Karna denied this tool request to keep your session safe.";
-        this.attachDeniedToolCall(toolCallId, toolName, toolInput, reason);
-        this.addSystemMessage(
-          `Karna requested the ${toolName} tool. Mobile denied it for safety because tool approvals are not available in the app yet.`,
-        );
+        if (this.approvalAllForSession) {
+          this.send({
+            id: generateId(),
+            type: "tool.approval.response",
+            timestamp: Date.now(),
+            sessionId: this.sessionId ?? message.sessionId,
+            payload: {
+              toolCallId,
+              approved: true,
+              reason: "Approved by mobile approve-all for this session.",
+            },
+          });
+          break;
+        }
 
-        this.send({
-          id: generateId(),
-          type: "tool.approval.response",
-          timestamp: Date.now(),
-          sessionId: this.sessionId ?? message.sessionId,
-          payload: {
-            toolCallId,
-            approved: false,
-            reason,
-          },
-        });
-        store.setTyping(false);
+        const requestedAt = Date.now();
+        const request: ToolApprovalRequest = {
+          toolCallId,
+          toolName,
+          riskLevel,
+          arguments: toolInput,
+          description,
+          requestedAt,
+          expiresAt: requestedAt + 60_000,
+        };
+
+        this.clearApprovalTimeout(toolCallId);
+        store.setPendingToolApproval(request);
+        this.approvalTimeouts.set(
+          toolCallId,
+          setTimeout(() => {
+            if (useAppStore.getState().pendingToolApproval?.toolCallId !== toolCallId) {
+              return;
+            }
+            this.respondToToolApproval(toolCallId, false, {
+              reason: "Rejected: mobile approval timed out after 60 seconds.",
+            });
+          }, 60_000),
+        );
         break;
       }
 
@@ -707,10 +854,11 @@ class GatewayClient {
     });
   }
 
-  private attachDeniedToolCall(
+  private attachToolApprovalDecision(
     toolCallId: string,
     toolName: string,
     toolInput: Record<string, unknown> | undefined,
+    approved: boolean,
     reason: string,
   ): void {
     const store = useAppStore.getState();
@@ -729,7 +877,7 @@ class GatewayClient {
     const toolCall: ToolCall = {
       id: toolCallId,
       name: toolName,
-      status: "error",
+      status: approved ? "success" : "error",
       input: toolInput,
       output: reason,
     };
@@ -737,6 +885,67 @@ class GatewayClient {
     store.updateMessage(parent.id, {
       toolCalls: [...(parent.toolCalls ?? []), toolCall],
     });
+  }
+
+  private clearApprovalTimeout(toolCallId: string): void {
+    const timer = this.approvalTimeouts.get(toolCallId);
+    if (timer) {
+      clearTimeout(timer);
+      this.approvalTimeouts.delete(toolCallId);
+    }
+  }
+
+  private clearApprovalTimeouts(): void {
+    for (const timer of this.approvalTimeouts.values()) {
+      clearTimeout(timer);
+    }
+    this.approvalTimeouts.clear();
+  }
+
+  private appendStreamingDelta(messageId: string, delta: string): void {
+    if (!delta) return;
+    const pending = this.streamDeltaBuffers.get(messageId) ?? "";
+    this.streamDeltaBuffers.set(messageId, pending + delta);
+
+    if (this.streamFlushTimers.has(messageId)) {
+      return;
+    }
+
+    this.streamFlushTimers.set(
+      messageId,
+      setTimeout(() => {
+        this.flushStreamingDelta(messageId);
+      }, 50),
+    );
+  }
+
+  private flushStreamingDelta(messageId: string): void {
+    const timer = this.streamFlushTimers.get(messageId);
+    if (timer) {
+      clearTimeout(timer);
+      this.streamFlushTimers.delete(messageId);
+    }
+
+    const delta = this.streamDeltaBuffers.get(messageId);
+    if (!delta) return;
+
+    this.streamDeltaBuffers.delete(messageId);
+    const store = useAppStore.getState();
+    const existing = store.messages.find((message) => message.id === messageId);
+    if (!existing) return;
+
+    store.updateMessage(messageId, {
+      content: existing.content + delta,
+      isStreaming: true,
+    });
+  }
+
+  private clearStreamFlushTimers(): void {
+    for (const timer of this.streamFlushTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.streamFlushTimers.clear();
+    this.streamDeltaBuffers.clear();
   }
 }
 
@@ -764,8 +973,63 @@ function mapHistoryMessage(entry: Record<string, unknown>): ChatMessage | null {
   return { id, role, content, timestamp };
 }
 
+function mapMemoryEntry(entry: Record<string, unknown>): MemoryEntry {
+  const category = entry.category;
+  const importance =
+    typeof entry.importance === "number"
+      ? entry.importance
+      : typeof entry.priority === "number"
+        ? entry.priority
+        : 0.5;
+
+  return {
+    id: String(entry.id ?? generateId()),
+    content: String(entry.content ?? entry.summary ?? ""),
+    category:
+      category === "fact" ||
+      category === "preference" ||
+      category === "event" ||
+      category === "task"
+        ? category
+        : "fact",
+    importance: Math.max(0, Math.min(1, importance)),
+    createdAt:
+      typeof entry.createdAt === "number"
+        ? entry.createdAt
+        : Date.parse(String(entry.createdAt ?? "")) || Date.now(),
+  };
+}
+
+function mapSkill(entry: Record<string, unknown>): Skill {
+  return {
+    id: String(entry.id ?? entry.name ?? generateId()),
+    name: String(entry.name ?? entry.id ?? "Untitled skill"),
+    description: String(entry.description ?? ""),
+    icon: String(entry.icon ?? "zap"),
+    active:
+      typeof entry.active === "boolean"
+        ? entry.active
+        : typeof entry.enabled === "boolean"
+          ? entry.enabled
+          : true,
+    version: String(entry.version ?? "1.0.0"),
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseRiskLevel(value: unknown): ToolApprovalRequest["riskLevel"] {
+  if (
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "critical"
+  ) {
+    return value;
+  }
+  return "medium";
 }
 
 // ── Singleton ────────────────────────────────────────────────────────────────

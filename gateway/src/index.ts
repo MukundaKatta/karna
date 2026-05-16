@@ -3,7 +3,15 @@ import websocket from "@fastify/websocket";
 import cors from "@fastify/cors";
 import pino from "pino";
 import { nanoid } from "nanoid";
-import { parseMessage } from "./protocol/schema.js";
+import { parseMessageDetailed } from "./protocol/schema.js";
+import {
+  checkWebSocketMessageRate,
+  resolveWebSocketLimitConfig,
+  validateWebSocketMessageSize,
+  type BandwidthTracker,
+  type MessageRateBucket,
+} from "./protocol/limits.js";
+import { startWebSocketPingPong } from "./protocol/ping-pong.js";
 import { handleMessage, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
 import { SessionManager } from "./session/manager.js";
 import { HeartbeatScheduler } from "./heartbeat/scheduler.js";
@@ -11,6 +19,10 @@ import { getConfigPath, loadConfig } from "./config/loader.js";
 import { getSystemHealth, setConnectionCounter, setSessionCounter } from "./health/status.js";
 import { MetricsCollector } from "./health/metrics.js";
 import { validateGatewayEnv } from "./config/validate-env.js";
+import {
+  parseRouteLogLevels,
+  registerRequestLogging,
+} from "./middleware/request-logging.js";
 import { MemoryStore, InMemoryBackend } from "@karna/agent/memory/store.js";
 import { SupabaseMemoryBackend } from "@karna/agent/memory/supabase-backend.js";
 import { createSupabaseClient } from "@karna/supabase";
@@ -20,6 +32,7 @@ import { registerAccessRoutes } from "./routes/access.js";
 import { registerSessionRoutes } from "./routes/sessions.js";
 import { registerActivityRoutes } from "./routes/activity.js";
 import { registerOpenApiRoutes } from "./routes/openapi.js";
+import { registerModerationRoutes } from "./routes/moderation.js";
 import { registerTraceRoutes } from "./routes/traces.js";
 import { registerApiRoutes } from "./routes/api.js";
 import { registerControlRoutes } from "./routes/control.js";
@@ -36,11 +49,20 @@ import {
   resolveGatewayCorsOrigins,
   resolveGatewayHost,
   resolveGatewayPort,
+  isGatewayOriginAllowed,
 } from "./config/runtime-env.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { WorkflowEngine } from "@karna/agent/workflows/engine.js";
 import { createDefaultWorkflows } from "./catalog/default-workflows.js";
+import {
+  DEFAULT_SHUTDOWN_TIMEOUT_MS,
+  buildShutdownNotice,
+  closeClientsForShutdown,
+  notifyClientsOfShutdown,
+  trackInFlight,
+  waitForInFlight,
+} from "./shutdown/graceful.js";
 
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
@@ -103,6 +125,9 @@ async function main(): Promise<void> {
 
   // Connected clients registry
   const connectedClients = new Map<string, ConnectedClient>();
+  const inFlightMessages = new Set<Promise<unknown>>();
+  let isDraining = false;
+  const websocketLimits = resolveWebSocketLimitConfig(config.gateway.websocket);
 
   // Wire up health counters
   setConnectionCounter(() => connectedClients.size);
@@ -116,10 +141,29 @@ async function main(): Promise<void> {
     genReqId: () => nanoid(),
   });
 
+  registerRequestLogging(server, {
+    filePath: process.env["GATEWAY_REQUEST_LOG_FILE"],
+    maxFileBytes: process.env["GATEWAY_REQUEST_LOG_MAX_BYTES"]
+      ? Number(process.env["GATEWAY_REQUEST_LOG_MAX_BYTES"])
+      : undefined,
+    routeLogLevels: parseRouteLogLevels(process.env["GATEWAY_REQUEST_LOG_LEVELS"]),
+  });
+
+  server.addHook("onRequest", async (request, reply) => {
+    if (!isDraining || request.url === "/health") return;
+
+    reply.header("Connection", "close");
+    return reply.status(503).send({
+      error: "server_shutdown",
+      message: "Gateway is draining connections for shutdown",
+      retryable: true,
+    });
+  });
+
   // Register WebSocket plugin
   await server.register(websocket, {
     options: {
-      maxPayload: 1_048_576, // 1 MB
+      maxPayload: websocketLimits.maxMediaPayloadBytes,
     },
   });
 
@@ -132,6 +176,7 @@ async function main(): Promise<void> {
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-API-Key"],
     credentials: true,
+    maxAge: 86_400,
   });
 
   // ─── Security Headers ─────────────────────────────────────────────────
@@ -204,6 +249,7 @@ async function main(): Promise<void> {
   });
 
   registerMemoryRoutes(server, memoryStore);
+  registerModerationRoutes(server);
   registerAccessRoutes(server, accessPolicies);
   registerSessionRoutes(server, sessionManager, auditLogger, traceCollector);
   registerActivityRoutes(server, auditLogger);
@@ -225,7 +271,31 @@ async function main(): Promise<void> {
 
   server.get("/ws", { websocket: true }, (socket, request) => {
     const connectionId = nanoid();
+    const requestOrigin = typeof request.headers.origin === "string" ? request.headers.origin : undefined;
+    let invalidMessageCount = 0;
+    const bandwidthTracker: BandwidthTracker = {
+      windowStartedAt: Date.now(),
+      bytes: 0,
+    };
+    const rateBuckets = new Map<string, MessageRateBucket>();
+    if (!isGatewayOriginAllowed(requestOrigin, corsOrigins)) {
+      logger.warn({ connectionId, requestOrigin }, "Rejected WebSocket connection from untrusted origin");
+      socket.close(1008, "Origin not allowed");
+      return;
+    }
+
+    if (isDraining) {
+      socket.send(JSON.stringify(buildShutdownNotice("draining")));
+      socket.close(1001, "Server shutting down");
+      return;
+    }
+
     logger.info({ connectionId }, "WebSocket connection opened");
+    const pingPong = startWebSocketPingPong(socket, {
+      onPingError: (error) => {
+        logger.warn({ connectionId, error: String(error) }, "WebSocket ping failed");
+      },
+    });
 
     const context: ConnectionContext = {
       ws: socket,
@@ -236,14 +306,45 @@ async function main(): Promise<void> {
       connectedClients,
       auditLogger,
       traceCollector,
-      requestOrigin: typeof request.headers.origin === "string" ? request.headers.origin : null,
+      requestOrigin: requestOrigin ?? null,
       allowedOrigins: corsOrigins,
     };
 
     socket.on("message", (rawData: Buffer | string) => {
-      const message = parseMessage(rawData as string | Buffer);
+      const limitResult = validateWebSocketMessageSize(
+        rawData,
+        websocketLimits,
+        bandwidthTracker,
+      );
+      if (!limitResult.ok) {
+        logger.warn(
+          {
+            connectionId,
+            code: limitResult.code,
+            sizeBytes: limitResult.sizeBytes,
+            bandwidthBytes: bandwidthTracker.bytes,
+          },
+          "Rejected oversized or excessive WebSocket message",
+        );
+        socket.send(
+          JSON.stringify({
+            id: nanoid(),
+            type: "error",
+            timestamp: Date.now(),
+            payload: {
+              code: limitResult.code,
+              message: limitResult.message,
+              retryable: limitResult.code === "BANDWIDTH_LIMIT_EXCEEDED",
+            },
+          }),
+        );
+        return;
+      }
 
-      if (!message) {
+      const parsed = parseMessageDetailed(rawData as string | Buffer);
+
+      if (!parsed.ok) {
+        invalidMessageCount++;
         socket.send(
           JSON.stringify({
             id: nanoid(),
@@ -251,23 +352,73 @@ async function main(): Promise<void> {
             timestamp: Date.now(),
             payload: {
               code: "INVALID_MESSAGE",
-              message: "Failed to parse message. Ensure it conforms to the protocol schema.",
-              retryable: false,
+              message: parsed.error,
+              details: {
+                fieldErrors: parsed.fieldErrors,
+                formErrors: parsed.formErrors,
+                rawType: parsed.rawType,
+                invalidMessageCount,
+              },
+              retryable: invalidMessageCount < 5,
+            },
+          }),
+        );
+        if (invalidMessageCount >= 5) {
+          socket.close(1008, "Too many invalid protocol messages");
+        }
+        return;
+      }
+
+      const rateKey = `${parsed.message.sessionId ?? connectionId}:${parsed.message.type}`;
+      logger.info(
+        {
+          direction: "inbound",
+          connectionId,
+          messageType: parsed.message.type,
+          sessionId: parsed.message.sessionId,
+        },
+        "WebSocket message received",
+      );
+      const rateBucket = rateBuckets.get(rateKey) ?? {
+        windowStartedAt: Date.now(),
+        count: 0,
+      };
+      rateBuckets.set(rateKey, rateBucket);
+      const rateResult = checkWebSocketMessageRate(
+        parsed.message.type,
+        rateBucket,
+        websocketLimits,
+      );
+      if (!rateResult.ok) {
+        socket.send(
+          JSON.stringify({
+            id: nanoid(),
+            type: "error",
+            timestamp: Date.now(),
+            payload: {
+              code: "rate_limit_exceeded",
+              message: "Too many WebSocket messages. Please wait before retrying.",
+              retryable: true,
+              limit: rateResult.limit,
+              resetAt: rateResult.resetAt,
             },
           }),
         );
         return;
       }
 
-      handleMessage(socket, message, context).catch((error) => {
+      invalidMessageCount = 0;
+      const operation = handleMessage(socket, parsed.message, context).catch((error) => {
         logger.error(
           { connectionId, error: String(error) },
           "Unhandled error in message handler",
         );
       });
+      trackInFlight(inFlightMessages, operation);
     });
 
     socket.on("close", (code: number, reason: Buffer) => {
+      pingPong.stop();
       logger.info(
         { connectionId, code, reason: reason.toString("utf-8") },
         "WebSocket connection closed",
@@ -294,7 +445,34 @@ async function main(): Promise<void> {
   // ─── Graceful Shutdown ──────────────────────────────────────────────────
 
   const shutdown = async (signal: string): Promise<void> => {
-    logger.info({ signal }, "Received shutdown signal");
+    if (isDraining) {
+      logger.info({ signal }, "Shutdown already in progress");
+      return;
+    }
+
+    isDraining = true;
+    logger.info(
+      { signal, connections: connectedClients.size, inFlightMessages: inFlightMessages.size },
+      "Received shutdown signal",
+    );
+
+    const notified = notifyClientsOfShutdown(
+      connectedClients.values(),
+      signal,
+      DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    );
+    logger.info({ notified }, "Sent shutdown notice to WebSocket clients");
+
+    const drainStatus = await waitForInFlight(
+      inFlightMessages,
+      DEFAULT_SHUTDOWN_TIMEOUT_MS,
+    );
+    if (drainStatus === "timeout") {
+      logger.warn(
+        { remaining: inFlightMessages.size },
+        "Timed out waiting for in-flight messages to complete",
+      );
+    }
 
     // Stop heartbeat scheduler
     heartbeatScheduler.stopAll();
@@ -302,15 +480,8 @@ async function main(): Promise<void> {
     // Stop session manager (flushes to storage)
     await sessionManager.stop();
 
-    // Close all WebSocket connections
-    for (const [clientId, client] of connectedClients) {
-      try {
-        client.ws.close(1001, "Server shutting down");
-      } catch {
-        // Ignore errors closing connections during shutdown
-      }
-      connectedClients.delete(clientId);
-    }
+    const closed = closeClientsForShutdown(connectedClients);
+    logger.info({ closed }, "Closed WebSocket clients for shutdown");
 
     // Close the server
     await server.close();

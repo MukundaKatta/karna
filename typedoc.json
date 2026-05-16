@@ -1,0 +1,23 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "name": "Karna API",
+  "entryPointStrategy": "packages",
+  "entryPoints": [
+    "packages/shared",
+    "packages/plugin-sdk",
+    "agent"
+  ],
+  "out": "docs/api",
+  "cleanOutputDir": true,
+  "categorizeByGroup": true,
+  "includeVersion": true,
+  "navigationLinks": {
+    "Repository": "https://github.com/MukundaKatta/karna",
+    "Guide": "../"
+  },
+  "packageOptions": {
+    "excludePrivate": true,
+    "excludeInternal": true,
+    "readme": "none"
+  }
+}

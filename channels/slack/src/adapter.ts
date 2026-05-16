@@ -124,6 +124,8 @@ export class SlackAdapter {
   // ─── Event Handlers ───────────────────────────────────────────────────
 
   private setupEventHandlers(): void {
+    this.setupSlashCommands();
+
     // Handle direct messages
     this.app.message(async ({ message, say }) => {
       const msg = message as any;
@@ -131,15 +133,20 @@ export class SlackAdapter {
       // Ignore bot messages and subtypes (edits, deletes, etc.)
       if (msg.subtype) return;
       if (!("text" in msg) || !msg.text) return;
-      if (msg.channel_type !== "im" && msg.channel_type !== "mpim") return;
 
       const channel = msg.channel;
       const threadTs = msg.thread_ts ?? msg.ts;
       const text = msg.text;
+      const isDirectMessage =
+        msg.channel_type === "im" || msg.channel_type === "mpim";
+
+      if (!isDirectMessage && !this.hasActiveThreadSession(channel, msg.thread_ts)) {
+        return;
+      }
 
       this.logger.debug(
-        { channel, threadTs, textLength: text.length },
-        "Received direct message",
+        { channel, threadTs, isDirectMessage, textLength: text.length },
+        isDirectMessage ? "Received direct message" : "Received Slack thread reply",
       );
 
       // Handle file attachments
@@ -168,8 +175,8 @@ export class SlackAdapter {
         threadTs,
         {
           userId: msg.user,
-          isDirectMessage: true,
-          agentMentioned: false,
+          isDirectMessage,
+          agentMentioned: !isDirectMessage,
         },
         attachments.length > 0 ? attachments : undefined,
       );
@@ -199,6 +206,61 @@ export class SlackAdapter {
         agentMentioned: true,
       });
     });
+  }
+
+  private setupSlashCommands(): void {
+    this.app.command("/ask", async ({ ack, command, respond }) => {
+      await ack();
+      const text = command.text.trim();
+      await this.acknowledgeSlashCommand(respond, "Asking Karna...");
+      await this.forwardToGateway(command.channel_id, text || "Hello!", undefined, {
+        userId: command.user_id,
+        isDirectMessage: false,
+        agentMentioned: true,
+      });
+    });
+
+    this.app.command("/remember", async ({ ack, command, respond }) => {
+      await ack();
+      const text = command.text.trim();
+      await this.acknowledgeSlashCommand(respond, "Saving that with Karna...");
+      await this.forwardToGateway(
+        command.channel_id,
+        text ? `Remember this: ${text}` : "Show me what you remember.",
+        undefined,
+        {
+          userId: command.user_id,
+          isDirectMessage: false,
+          agentMentioned: true,
+        },
+      );
+    });
+
+    this.app.command("/skills", async ({ ack, command, respond }) => {
+      await ack();
+      await this.acknowledgeSlashCommand(respond, "Checking Karna skills...");
+      await this.forwardToGateway(
+        command.channel_id,
+        command.text.trim() || "List available skills and how to use them.",
+        undefined,
+        {
+          userId: command.user_id,
+          isDirectMessage: false,
+          agentMentioned: true,
+        },
+      );
+    });
+  }
+
+  private async acknowledgeSlashCommand(
+    respond: (message: string | Record<string, unknown>) => Promise<unknown>,
+    text: string,
+  ): Promise<void> {
+    try {
+      await respond({ response_type: "ephemeral", text });
+    } catch (error) {
+      this.logger.warn({ error: String(error) }, "Failed to acknowledge Slack slash command");
+    }
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────
@@ -645,6 +707,14 @@ export class SlackAdapter {
     }
 
     return null;
+  }
+
+  private hasActiveThreadSession(
+    channel: string | undefined,
+    threadTs: string | undefined,
+  ): boolean {
+    if (!channel || !threadTs) return false;
+    return this.sessionMap.has(`${channel}:${threadTs}`);
   }
 
   resetSession(channel: string, threadTs?: string): void {

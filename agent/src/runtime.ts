@@ -18,6 +18,7 @@ import { routeModel, type AgentConfig } from "./models/router.js";
 import { ToolRegistry, type ToolDefinitionRuntime, type ToolPolicy, type ToolResult } from "./tools/registry.js";
 import { executeTool } from "./tools/executor.js";
 import { requiresApproval, requestApproval, type ApprovalCallback } from "./tools/approval.js";
+import { selectRelevantChatTools } from "./tools/selection.js";
 import { MemoryStore, type SaveMemoryInput } from "./memory/store.js";
 import type { Embedder } from "./memory/embedder.js";
 
@@ -103,6 +104,18 @@ const DEFAULT_MAX_HISTORY = 50;
  * 6. Handle tool_use blocks (approval -> execute -> feed back)
  * 7. Extract and store new memories
  * 8. Return the final response
+ *
+ * @example
+ * ```ts
+ * const runtime = new AgentRuntime(toolRegistry, memoryStore);
+ * await runtime.init();
+ * const result = await runtime.run({
+ *   message: "Summarize my latest notes",
+ *   session,
+ *   agent,
+ *   conversationHistory: [],
+ * });
+ * ```
  */
 export class AgentRuntime {
   private readonly toolRegistry: ToolRegistry;
@@ -222,7 +235,20 @@ export class AgentRuntime {
 
       // 4. Get available tools
       const toolPolicy = this.buildToolPolicy(input.agent, input.session);
-      const chatTools = this.toolRegistry.getChatTools(toolPolicy);
+      const allChatTools = this.toolRegistry.getChatTools(toolPolicy);
+      const toolSelection = selectRelevantChatTools(input.message, allChatTools);
+      const chatTools = toolSelection.tools;
+
+      if (toolSelection.pruned) {
+        logger.info(
+          {
+            sessionId: input.session.id,
+            selectedTools: toolSelection.selectedToolNames,
+            droppedToolCount: toolSelection.droppedToolCount,
+          },
+          "Pruned chat tools for context budget"
+        );
+      }
 
       // 5. Enter the agent loop (LLM call -> tool use -> repeat)
       let messages: ChatMessage[] = [
@@ -446,11 +472,16 @@ export class AgentRuntime {
         agentId: agent.id,
         userId: session.userId,
         workingDirectory: undefined,
+        signal: this.abortController?.signal,
       });
 
       messages.push({
         role: "tool",
-        content: JSON.stringify(result.isError ? { error: result.errorMessage } : result.output),
+        content: JSON.stringify(
+          result.isError
+            ? { error: result.errorMessage, code: result.errorCode }
+            : result.output,
+        ),
         toolCallId: toolUse.id,
         toolName: toolUse.name,
       });
