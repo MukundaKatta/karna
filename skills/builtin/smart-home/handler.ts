@@ -450,8 +450,8 @@ export class SmartHomeHandler implements SkillHandler {
 
     if (!this.config) {
       return {
-        success: true,
-        output: "Home Assistant is not configured. Set HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN environment variables to connect.",
+        success: false,
+        output: "Home Assistant is not configured. Set HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN environment variables to connect your smart home.",
         data: { configured: false },
       };
     }
@@ -547,8 +547,8 @@ export class SmartHomeHandler implements SkillHandler {
     if (!this.config) {
       logger.debug({ domain, service, data }, "Stub: would call HA service");
       return {
-        success: true,
-        output: `[Stub] Would call ${domain}.${service} with ${JSON.stringify(data)}. Configure HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN to connect.`,
+        success: false,
+        output: `Home Assistant is not configured. Set HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN environment variables to connect your smart home.`,
         data: { stub: true, domain, service, data },
       };
     }
@@ -559,8 +559,8 @@ export class SmartHomeHandler implements SkillHandler {
   private async getEntityState(entityId: string): Promise<SkillResult> {
     if (!this.config) {
       return {
-        success: true,
-        output: `[Stub] Would get state for ${entityId}. Configure Home Assistant to connect.`,
+        success: false,
+        output: `Home Assistant is not configured. Set HOME_ASSISTANT_URL and HOME_ASSISTANT_TOKEN environment variables to connect your smart home.`,
         data: { stub: true, entityId },
       };
     }

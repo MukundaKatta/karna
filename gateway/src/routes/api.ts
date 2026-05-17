@@ -282,6 +282,14 @@ async function loadSkillCatalogDetail(id: string): Promise<SkillCatalogDetail | 
 
 async function loadCommunitySkillDetail(id: string): Promise<SkillCatalogDetail | null> {
   try {
+    const communitySkillMd = join(homedir(), ".karna", "community-skills", id, "SKILL.md");
+    try {
+      const raw = await readFile(communitySkillMd, "utf-8");
+      return parseSkillMarkdown(id, raw, "community");
+    } catch {
+      // SKILL.md not found on disk — fall back to installed.json metadata
+    }
+
     const raw = await readFile(COMMUNITY_SKILLS_DB, "utf-8");
     const parsed = JSON.parse(raw) as {
       installed?: Array<{

@@ -57,6 +57,7 @@ const PREP_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
 
 export class MeetingPrepHandler implements SkillHandler {
   private preppedMeetings: Set<string> = new Set();
+  private calendarToolUnavailable = false;
 
   async initialize(context: SkillContext): Promise<void> {
     logger.info({ sessionId: context.sessionId }, "Meeting prep skill initialized");
@@ -108,6 +109,7 @@ export class MeetingPrepHandler implements SkillHandler {
     const meetingDescription = input["description"] as string | undefined;
 
     // Fetch upcoming meetings
+    this.calendarToolUnavailable = false;
     const meetings = await this.fetchUpcomingMeetings(context);
 
     // If a title/description was provided directly (no calendar), create an ad-hoc meeting
@@ -141,6 +143,12 @@ export class MeetingPrepHandler implements SkillHandler {
     }
 
     if (meetings.length === 0) {
+      if (this.calendarToolUnavailable) {
+        return {
+          success: false,
+          output: "Calendar tools are not connected — unable to fetch meeting data.",
+        };
+      }
       return {
         success: true,
         output: "No upcoming meetings found in the next 2 hours. Provide a meeting title to prep manually.",
@@ -283,6 +291,7 @@ export class MeetingPrepHandler implements SkillHandler {
 
     if (!context.callTool) {
       logger.debug("No callTool available — calendar tool not connected");
+      this.calendarToolUnavailable = true;
       return [];
     }
 
@@ -397,6 +406,7 @@ export class MeetingPrepHandler implements SkillHandler {
 
     if (!context.callTool) {
       logger.debug("No callTool available — email/notes tools not connected");
+      this.calendarToolUnavailable = true;
       return [];
     }
 

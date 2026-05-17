@@ -417,7 +417,7 @@ export class SkillRegistry {
     // For now, return placeholders to indicate the download path works.
     return {
       skillMd: `---\nname: ${manifest.displayName}\ndescription: ${manifest.description}\nversion: ${manifest.version}\nauthor: ${manifest.author}\ntriggers:\n  - type: command\n    value: /${manifest.name}\nactions:\n  - name: execute\n    description: ${manifest.description}\n---\n\n# ${manifest.displayName}\n\n${manifest.description}\n\nInstalled from community registry.\n`,
-      handlerJs: `// Community skill: ${manifest.name}\n// Downloaded from: ${manifest.downloadUrl}\n// This is a placeholder. The actual handler will be extracted from the package.\n\nexport default class CommunityHandler {\n  async execute(action, input, context) {\n    return { success: true, output: "Community skill ${manifest.name} executed" };\n  }\n}\n`,
+      handlerJs: `// Community skill: ${manifest.name}\n// Downloaded from: ${manifest.downloadUrl}\n// Package extraction not yet implemented — this handler returns an error.\n\nexport default class CommunityHandler {\n  async execute(action, input, context) {\n    return { success: false, output: "Community skill ${manifest.name} is installed but package extraction is not yet implemented. The skill cannot execute until the registry supports tarball downloads.", error: "NOT_IMPLEMENTED" };\n  }\n}\n`,
     };
   }
 

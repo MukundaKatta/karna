@@ -519,19 +519,6 @@ class GatewayClient {
         break;
       }
 
-      case "chat.response": {
-        store.setTyping(false);
-        const assistantMessage: ChatMessage = {
-          id: message.id ?? generateId(),
-          role: "assistant",
-          content: (payload.content as string) ?? "",
-          timestamp: Date.now(),
-          toolCalls: payload.toolCalls as ToolCall[] | undefined,
-        };
-        store.addMessage(assistantMessage);
-        break;
-      }
-
       case "agent.response.stream": {
         const delta = (payload.delta as string) ?? "";
         if (!this.pendingStreamMessageId) {
@@ -552,39 +539,6 @@ class GatewayClient {
           });
           this.pendingStreamMessageId = null;
         }
-        break;
-      }
-
-      case "chat.stream.start": {
-        const streamMessage: ChatMessage = {
-          id: message.id ?? generateId(),
-          role: "assistant",
-          content: "",
-          timestamp: Date.now(),
-          isStreaming: true,
-        };
-        store.addMessage(streamMessage);
-        this.pendingStreamMessageId = streamMessage.id;
-        break;
-      }
-
-      case "chat.stream.delta": {
-        if (message.id) {
-          this.appendStreamingDelta(message.id, (payload.delta as string) ?? "");
-        }
-        break;
-      }
-
-      case "chat.stream.end": {
-        store.setTyping(false);
-        if (message.id) {
-          this.flushStreamingDelta(message.id);
-          store.updateMessage(message.id, {
-            isStreaming: false,
-            toolCalls: payload.toolCalls as ToolCall[],
-          });
-        }
-        this.pendingStreamMessageId = null;
         break;
       }
 
@@ -706,66 +660,6 @@ class GatewayClient {
         break;
       }
 
-      case "tool.start": {
-        if (message.id) {
-          const parentId = payload.messageId as string | undefined;
-          if (parentId) {
-            const parent = store.messages.find((m) => m.id === parentId);
-            if (parent) {
-              const toolCall: ToolCall = {
-                id: message.id,
-                name: (payload.name as string) ?? "unknown",
-                status: "running",
-                input: payload.input as Record<string, unknown> | undefined,
-              };
-              store.updateMessage(parentId, {
-                toolCalls: [...(parent.toolCalls ?? []), toolCall],
-              });
-            }
-          }
-        }
-        break;
-      }
-
-      case "tool.end": {
-        if (message.id) {
-          const parentId = payload.messageId as string | undefined;
-          if (parentId) {
-            const parent = store.messages.find((m) => m.id === parentId);
-            if (parent) {
-              store.updateMessage(parentId, {
-                toolCalls: parent.toolCalls?.map((tc) =>
-                  tc.id === message.id
-                    ? {
-                        ...tc,
-                        status: (payload.error
-                          ? "error"
-                          : "success") as ToolCall["status"],
-                        output:
-                          (payload.output as string) ??
-                          (payload.error as string) ??
-                          "",
-                        duration: payload.duration as number | undefined,
-                      }
-                    : tc,
-                ),
-              });
-            }
-          }
-        }
-        break;
-      }
-
-      case "typing.start": {
-        store.setTyping(true);
-        break;
-      }
-
-      case "typing.stop": {
-        store.setTyping(false);
-        break;
-      }
-
       // ── Memory handlers ─────────────────────────────────────────────────
 
       case "memory.search.result": {
@@ -824,13 +718,28 @@ class GatewayClient {
         break;
       }
 
-      // ── Chat history handler ────────────────────────────────────────────
+      // ── Orchestration handlers ─────────────────────────────────────────
 
-      case "chat.history": {
-        const olderMessages = payload.messages as ChatMessage[] | undefined;
-        if (olderMessages && olderMessages.length > 0) {
-          store.loadOlderMessages(olderMessages);
+      case "skill.result": {
+        const skillOutput = (payload.result as string) ?? "";
+        const isError = Boolean(payload.isError);
+        if (isError) {
+          this.addSystemMessage(
+            `Skill "${(payload.skillId as string) ?? "unknown"}" failed: ${skillOutput}`,
+          );
         }
+        break;
+      }
+
+      case "agent.handoff": {
+        const reason = (payload.reason as string) ?? "";
+        if (reason) {
+          this.addSystemMessage(`Agent handoff: ${reason}`);
+        }
+        break;
+      }
+
+      case "orchestration.status": {
         break;
       }
 
