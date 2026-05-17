@@ -12,7 +12,7 @@ import {
   type MessageRateBucket,
 } from "./protocol/limits.js";
 import { startWebSocketPingPong } from "./protocol/ping-pong.js";
-import { handleMessage, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
+import { handleMessage, cleanupApprovalsForSession, type ConnectedClient, type ConnectionContext } from "./protocol/handler.js";
 import { SessionManager } from "./session/manager.js";
 import { HeartbeatScheduler } from "./heartbeat/scheduler.js";
 import { getConfigPath, loadConfig } from "./config/loader.js";
@@ -424,9 +424,12 @@ async function main(): Promise<void> {
         "WebSocket connection closed",
       );
 
-      // Clean up connected client entry
+      // Clean up connected client entry and pending approvals
       for (const [clientId, client] of connectedClients) {
         if (client.ws === socket) {
+          for (const sessionId of client.sessionIds) {
+            cleanupApprovalsForSession(sessionId);
+          }
           connectedClients.delete(clientId);
           logger.debug({ clientId }, "Removed disconnected client");
           break;

@@ -95,7 +95,7 @@ let orchestrator: OrchestratorLike | null = null;
 let orchestratorFactory: (() => Promise<OrchestratorLike>) | null = null;
 const pendingApprovals = new Map<
   string,
-  { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout> }
+  { resolve: (approved: boolean) => void; timer: ReturnType<typeof setTimeout>; sessionId: string }
 >();
 
 export function setOrchestratorFactoryForTests(
@@ -112,6 +112,16 @@ export function resetProtocolTestState(): void {
   pendingApprovals.clear();
   orchestrator = null;
   orchestratorFactory = null;
+}
+
+export function cleanupApprovalsForSession(sessionId: string): void {
+  for (const [toolCallId, pending] of pendingApprovals) {
+    if (pending.sessionId === sessionId) {
+      clearTimeout(pending.timer);
+      pending.resolve(false);
+      pendingApprovals.delete(toolCallId);
+    }
+  }
 }
 
 export async function restartGatewayRuntime(): Promise<{
@@ -1008,6 +1018,7 @@ async function handleChatMessage(
               });
             },
             timer,
+            sessionId,
           });
         });
       },

@@ -44,6 +44,7 @@ export class MemoryManager {
   private readonly workingMemoryMaxTokens: number;
   private readonly maxLongTermMemoriesPerAgent: number | null;
   private readonly knownAgentIds = new Set<string>();
+  private promotionInProgress = new Set<string>();
   private maintenanceTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(longTermStore: MemoryStore | null, options?: MemoryManagerOptions) {
@@ -192,37 +193,47 @@ export class MemoryManager {
    */
   async promoteToLongTerm(sessionId: string, agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
-    this.knownAgentIds.add(agentId);
 
-    const entries = this.shortTerm.getForSession(sessionId);
-    const toPromote = entries.filter((e) => e.importance >= this.promotionThreshold);
+    if (this.promotionInProgress.has(sessionId)) {
+      return 0;
+    }
+    this.promotionInProgress.add(sessionId);
 
-    let promoted = 0;
-    for (const entry of toPromote) {
-      try {
-        await this.longTerm.save({
-          agentId,
-          content: entry.content,
-          source: "conversation",
-          priority: entry.importance >= 0.9 ? "high" : "normal",
-          tags: entry.tags,
-          category: entry.category,
-          sessionId,
-        });
-        promoted++;
-      } catch (error) {
-        logger.warn(
-          { error: String(error), entryId: entry.id },
-          "Failed to promote entry to long-term memory",
-        );
+    try {
+      this.knownAgentIds.add(agentId);
+
+      const entries = this.shortTerm.getForSession(sessionId);
+      const toPromote = entries.filter((e) => e.importance >= this.promotionThreshold);
+
+      let promoted = 0;
+      for (const entry of toPromote) {
+        try {
+          await this.longTerm.save({
+            agentId,
+            content: entry.content,
+            source: "conversation",
+            priority: entry.importance >= 0.9 ? "high" : "normal",
+            tags: entry.tags,
+            category: entry.category,
+            sessionId,
+          });
+          promoted++;
+        } catch (error) {
+          logger.warn(
+            { error: String(error), entryId: entry.id },
+            "Failed to promote entry to long-term memory",
+          );
+        }
       }
-    }
 
-    if (promoted > 0) {
-      logger.info({ sessionId, promoted, total: toPromote.length }, "Promoted entries to long-term memory");
-    }
+      if (promoted > 0) {
+        logger.info({ sessionId, promoted, total: toPromote.length }, "Promoted entries to long-term memory");
+      }
 
-    return promoted;
+      return promoted;
+    } finally {
+      this.promotionInProgress.delete(sessionId);
+    }
   }
 
   /**

@@ -253,8 +253,8 @@ export class CodeReviewerHandler implements SkillHandler {
       logger.debug({ filePath }, "Reading file for review");
       return {
         success: false,
-        output: `File reading requires the file_read tool. Provide the code directly via the 'code' parameter, or ensure the files tool is available.`,
-        error: "File read not available in stub mode",
+        output: `Cannot review file '${filePath}' — the file contents were not provided. Please paste the code directly or ensure the file_read tool is available.`,
+        error: "FILE_CONTENT_REQUIRED",
       };
     }
 

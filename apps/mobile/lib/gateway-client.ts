@@ -521,8 +521,17 @@ class GatewayClient {
 
       case "agent.response.stream": {
         const delta = (payload.delta as string) ?? "";
+        const incomingId = message.id ?? generateId();
+
+        // Finalize previous stream if a new one starts
+        if (this.pendingStreamMessageId && this.pendingStreamMessageId !== incomingId) {
+          this.flushStreamingDelta(this.pendingStreamMessageId);
+          store.updateMessage(this.pendingStreamMessageId, { isStreaming: false });
+          this.pendingStreamMessageId = null;
+        }
+
         if (!this.pendingStreamMessageId) {
-          this.pendingStreamMessageId = message.id ?? generateId();
+          this.pendingStreamMessageId = incomingId;
           store.addMessage({
             id: this.pendingStreamMessageId,
             role: "assistant",
