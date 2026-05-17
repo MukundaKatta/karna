@@ -90,7 +90,7 @@ export class TraceCollector {
   private readonly maxTraces: number;
   private activeTraces = new Map<string, Trace>();
 
-  constructor(maxTraces = 1000) {
+  constructor(maxTraces = 50_000) {
     this.maxTraces = maxTraces;
   }
 

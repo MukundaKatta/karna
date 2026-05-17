@@ -203,6 +203,9 @@ export class ExpenseTrackerHandler implements SkillHandler {
     }
 
     const currency = (input["currency"] as string)?.toUpperCase() ?? "INR";
+    if (!/^[A-Z]{3}$/.test(currency)) {
+      return { success: false, output: "Invalid currency code. Must be exactly 3 uppercase letters (e.g. USD, EUR, INR).", error: "Invalid currency" };
+    }
     const category = this.inferCategory(
       (input["category"] as string) ?? "",
       (input["description"] as string) ?? ""

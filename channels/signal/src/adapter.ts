@@ -63,6 +63,7 @@ export class SignalAdapter {
   private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
   private isShuttingDown = false;
+  private signalReconnectAttempt = 0;
 
   constructor(config: SignalAdapterConfig) {
     this.config = {
@@ -134,6 +135,7 @@ export class SignalAdapter {
 
     this.signalWs.on("open", () => {
       this.logger.info("Connected to signal-cli REST API");
+      this.signalReconnectAttempt = 0;
     });
 
     this.signalWs.on("message", (data: WebSocket.RawData) => {
@@ -146,7 +148,12 @@ export class SignalAdapter {
         "Signal API connection closed",
       );
       if (!this.isShuttingDown) {
-        setTimeout(() => this.connectToSignalApi(), 5_000);
+        this.signalReconnectAttempt = (this.signalReconnectAttempt ?? 0) + 1;
+        const baseDelay = 5_000;
+        const maxDelay = 60_000;
+        const delay = Math.min(baseDelay * Math.pow(2, this.signalReconnectAttempt - 1), maxDelay);
+        this.logger.info({ attempt: this.signalReconnectAttempt, delayMs: delay }, "Scheduling Signal API reconnect");
+        setTimeout(() => this.connectToSignalApi(), delay);
       }
     });
 

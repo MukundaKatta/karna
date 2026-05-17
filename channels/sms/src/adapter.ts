@@ -433,10 +433,12 @@ export class SMSAdapter {
         body,
       });
 
+      const segmentCount = Math.ceil(body.length / 160);
       this.logger.debug(
         {
           to,
           bodyLength: body.length,
+          segmentCount,
           estimatedSegments: estimateSmsSegments(body),
         },
         "SMS sent",

@@ -1,4 +1,5 @@
 import pino from "pino";
+import { appendFile, rename, stat } from "node:fs/promises";
 
 const logger = pino({ name: "audit-logger" });
 
@@ -221,5 +222,34 @@ export class LogAuditBackend implements AuditBackend {
     }
 
     return results.slice(-(params.limit ?? 100));
+  }
+}
+
+// ─── File Backend (with rotation) ──────────────────────────────────────────
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+export class FileAuditBackend implements AuditBackend {
+  private readonly filePath: string;
+
+  constructor(filePath: string) {
+    this.filePath = filePath;
+  }
+
+  async write(event: AuditEvent): Promise<void> {
+    // Rotate if file exceeds 10 MB
+    try {
+      const stats = await stat(this.filePath);
+      if (stats.size >= MAX_FILE_SIZE_BYTES) {
+        await rename(this.filePath, this.filePath + ".bak");
+      }
+    } catch {
+      // File may not exist yet — that's fine
+    }
+    await appendFile(this.filePath, JSON.stringify(event) + "\n", "utf-8");
+  }
+
+  async query(_params: AuditQueryParams): Promise<AuditEvent[]> {
+    return []; // File backend does not support querying
   }
 }

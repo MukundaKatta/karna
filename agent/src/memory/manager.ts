@@ -193,6 +193,10 @@ export class MemoryManager {
    */
   async promoteToLongTerm(sessionId: string, agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
+    if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+      logger.warn({ agentId }, "Invalid agentId format");
+      return 0;
+    }
 
     if (this.promotionInProgress.has(sessionId)) {
       return 0;
@@ -241,15 +245,20 @@ export class MemoryManager {
    */
   async consolidateLongTerm(agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
+    if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+      logger.warn({ agentId }, "Invalid agentId format");
+      return 0;
+    }
 
     const memories = await this.longTerm.listByAgent(agentId);
     const groups = new Map<string, MemoryEntry[]>();
 
     for (const memory of memories) {
-      if (memory.tags.includes("consolidated")) continue;
+      if ((memory.tags ?? []).includes("consolidated")) continue;
+      const tags = memory.tags ?? [];
       const key = `${memory.sessionId ?? "global"}::${memory.category ?? "general"}`;
       const group = groups.get(key) ?? [];
-      group.push(memory);
+      group.push({ ...memory, tags });
       groups.set(key, group);
     }
 
@@ -273,7 +282,11 @@ export class MemoryManager {
         tags: Array.from(new Set([...ordered.flatMap((memory) => memory.tags), "consolidated"])),
       });
 
-      await Promise.all(ordered.map((memory) => this.longTerm!.delete(memory.id)));
+      try {
+        await Promise.all(ordered.map((memory) => this.longTerm!.delete(memory.id)));
+      } catch (error) {
+        logger.warn({ error: String(error), agentId }, "Failed to delete memories during consolidation — continuing");
+      }
       consolidatedGroups++;
     }
 
@@ -289,6 +302,10 @@ export class MemoryManager {
    */
   async enforceRetention(agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
+    if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+      logger.warn({ agentId }, "Invalid agentId format");
+      return 0;
+    }
 
     const memories = await this.longTerm.listByAgent(agentId);
     const now = Date.now();

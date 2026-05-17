@@ -90,7 +90,13 @@ export async function loadPersistedState(): Promise<void> {
     if (!info.exists) return;
 
     const raw = await FileSystem.readAsStringAsync(STORE_FILE);
-    const data = JSON.parse(raw) as Partial<PersistedState>;
+    let data: Partial<PersistedState>;
+    try {
+      data = JSON.parse(raw) as Partial<PersistedState>;
+    } catch (parseErr) {
+      console.warn("[Store] Corrupted store file, resetting to defaults:", parseErr);
+      return;
+    }
     const patch: Record<string, unknown> = {};
 
     for (const key of PERSIST_KEYS) {

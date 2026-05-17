@@ -63,16 +63,28 @@ export class ModelFailover {
           // Buffer events before yielding to prevent garbled output on failover.
           // If the stream fails mid-way, we discard the partial output and try
           // the next model cleanly instead of yielding partial + full response.
+          const MAX_BUFFER_SIZE = 10_000;
           const events: Array<unknown> = [];
-          let streamCompleted = false;
+          let bufferOverflow = false;
           for await (const event of provider.chat(modifiedParams)) {
+            if (bufferOverflow) {
+              yield event as StreamEvent;
+              continue;
+            }
             events.push(event);
+            if (events.length >= MAX_BUFFER_SIZE) {
+              logger.warn({ provider: provider.name, model }, "Failover buffer limit reached, streaming directly");
+              for (const buffered of events) {
+                yield buffered as StreamEvent;
+              }
+              events.length = 0;
+              bufferOverflow = true;
+            }
           }
-          streamCompleted = true;
 
           // Stream completed successfully — yield all buffered events
           for (const event of events) {
-            yield event as any;
+            yield event as StreamEvent;
           }
 
           // If we get here, the request succeeded

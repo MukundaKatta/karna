@@ -64,8 +64,8 @@ export function generateChallenge(size = 48): string {
  * @returns A hex-encoded HMAC signature
  */
 export function hmacSign(payload: string, secret: string): string {
-  if (!secret) {
-    throw new Error("HMAC secret must not be empty");
+  if (!secret || secret.length < 16) {
+    throw new Error("HMAC secret must be at least 16 characters");
   }
   return createHmac("sha256", secret).update(payload, "utf8").digest("hex");
 }
@@ -79,8 +79,8 @@ export function hmacSign(payload: string, secret: string): string {
  * @returns `true` if the signature is valid
  */
 export function hmacVerify(payload: string, signature: string, secret: string): boolean {
-  if (!secret) {
-    throw new Error("HMAC secret must not be empty");
+  if (!secret || secret.length < 16) {
+    throw new Error("HMAC secret must be at least 16 characters");
   }
   const expected = hmacSign(payload, secret);
 

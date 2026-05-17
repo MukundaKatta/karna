@@ -102,7 +102,7 @@ export function checkWebSocketMessageRate(
   limits: WebSocketLimitConfig,
   now = Date.now(),
 ): MessageRateResult {
-  const windowMs = 60_000;
+  const windowMs = limits.bandwidthWindowMs;
   if (now - bucket.windowStartedAt >= windowMs) {
     bucket.windowStartedAt = now;
     bucket.count = 0;

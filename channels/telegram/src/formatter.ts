@@ -42,6 +42,7 @@ export function splitLongMessage(
   text: string,
   maxLen: number = TELEGRAM_MAX_MESSAGE_LENGTH,
 ): string[] {
+  if (!text) return [];
   if (text.length <= maxLen) return [text];
 
   const chunks: string[] = [];

@@ -106,7 +106,7 @@ export function registerApiRoutes(
     async (request, reply) => {
       const days = parseHistoryPeriod(request.query?.period);
       if (!days) {
-        return reply.status(400).send({ error: "period must be one of 7d, 14d, or 30d" });
+        return reply.status(400).send({ error: "Invalid period. Valid values: 7d, 14d, 30d" });
       }
 
       const payload = await buildAnalyticsHistory(
@@ -270,6 +270,10 @@ async function loadCommunitySkillCatalog(): Promise<SkillCatalogEntry[]> {
 }
 
 async function loadSkillCatalogDetail(id: string): Promise<SkillCatalogDetail | null> {
+  if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+    return null;
+  }
+
   const builtinPath = join(BUILTIN_SKILLS_DIR, id, "SKILL.md");
 
   try {

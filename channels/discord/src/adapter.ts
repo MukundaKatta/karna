@@ -78,6 +78,10 @@ export class DiscordAdapter {
   private slashCommandRegistration: Promise<void> | null = null;
 
   constructor(config: DiscordAdapterConfig) {
+    if (!config.botToken || config.botToken.length < 50) {
+      throw new Error("Invalid Discord bot token format");
+    }
+
     this.config = {
       reconnectIntervalMs: 5_000,
       maxReconnectAttempts: 20,

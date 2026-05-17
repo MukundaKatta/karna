@@ -47,6 +47,8 @@ export class StripePaymentProvider implements PaymentProvider {
       email: validated.email,
       name: validated.name,
       metadata: validated.metadata ?? {},
+    }, {
+      idempotencyKey: crypto.randomUUID(),
     });
 
     logger.info({ customerId: customer.id }, "Stripe customer created");
@@ -73,6 +75,8 @@ export class StripePaymentProvider implements PaymentProvider {
       metadata: validated.metadata ?? {},
       payment_behavior: "default_incomplete",
       expand: ["latest_invoice.payment_intent"],
+    }, {
+      idempotencyKey: crypto.randomUUID(),
     });
 
     logger.info({ subscriptionId: subscription.id }, "Stripe subscription created");
@@ -175,7 +179,9 @@ export class StripePaymentProvider implements PaymentProvider {
       sessionParams.customer = customerId;
     }
 
-    const session = await this.stripe.checkout.sessions.create(sessionParams);
+    const session = await this.stripe.checkout.sessions.create(sessionParams, {
+      idempotencyKey: crypto.randomUUID(),
+    });
 
     logger.info({ sessionId: session.id }, "Stripe checkout session created");
 

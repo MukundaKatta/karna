@@ -122,7 +122,7 @@ export function parseMessageDetailed(data: string | Buffer): ParseMessageResult 
     const raw = typeof data === "string" ? data : data.toString("utf-8");
     parsed = JSON.parse(raw);
   } catch (error) {
-    logger.warn({ error: String(error) }, "Failed to parse WebSocket message as JSON");
+    logger.warn({ err: error instanceof Error ? error : new Error(String(error)) }, "Failed to parse WebSocket message as JSON");
     return {
       ok: false,
       error: "Message must be valid JSON.",

@@ -243,9 +243,10 @@ export class CronScheduler {
     }
 
     if (type === "every" && job.schedule.everyMs) {
+      const jitter = Math.floor(job.schedule.everyMs * 0.1 * (Math.random() - 0.5));
       const timer = setInterval(() => {
         this.executeJob(job).catch((e) => logger.error({ error: String(e) }, "Job execution failed"));
-      }, job.schedule.everyMs);
+      }, job.schedule.everyMs + jitter);
       (timer as NodeJS.Timeout).unref?.();
       this.timers.set(job.id, timer);
     }

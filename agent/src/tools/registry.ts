@@ -88,6 +88,13 @@ export class ToolRegistry {
       throw new Error(`Tool "${tool.name}" is already registered`);
     }
 
+    // Clamp timeout to valid range (1..300_000)
+    if (tool.timeout <= 0 || tool.timeout > 300_000) {
+      const clamped = Math.max(1, Math.min(tool.timeout, 300_000));
+      logger.warn({ tool: tool.name, original: tool.timeout, clamped }, "Tool timeout out of range, clamping");
+      tool = { ...tool, timeout: clamped };
+    }
+
     logger.debug({ tool: tool.name, riskLevel: tool.riskLevel }, "Registered tool");
     this.tools.set(tool.name, tool);
   }

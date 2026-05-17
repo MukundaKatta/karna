@@ -322,7 +322,7 @@ describe("channel routing metadata", () => {
 
   it("re-registers active Discord sessions when the gateway reconnects", () => {
     const adapter = new DiscordAdapter({
-      botToken: "discord-token",
+      botToken: "discord-token-placeholder-value-that-is-long-enough-for-validation-check",
       clientId: "client-id",
       gatewayUrl: "ws://localhost:3000/ws",
     });

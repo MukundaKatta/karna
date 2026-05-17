@@ -119,6 +119,14 @@ export class SessionManager {
     metadata?: Record<string, unknown>,
     preferredSessionId?: string,
   ): Session {
+    // Validate userId format
+    if (userId !== undefined) {
+      const validUserId = /^[a-zA-Z0-9._-]+$/;
+      if (userId.length === 0 || userId.length > 256 || !validUserId.test(userId)) {
+        throw new Error("Invalid userId: must be 1-256 characters, alphanumeric plus dash, underscore, or dot");
+      }
+    }
+
     // Evict expired sessions if we're at capacity
     if (this.sessions.size >= this.maxSessions) {
       this.evictExpiredSessions();

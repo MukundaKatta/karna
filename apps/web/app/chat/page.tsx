@@ -479,6 +479,7 @@ export default function ChatPage() {
               onKeyDown={handleKeyDown}
               placeholder="Type a message..."
               rows={1}
+              maxLength={32000}
               className="w-full px-3 sm:px-4 py-2.5 bg-dark-700 border border-dark-600 rounded-xl text-sm text-dark-100 placeholder:text-dark-500 focus:outline-none focus:border-accent-500 resize-none"
               style={{ maxHeight: "120px" }}
             />

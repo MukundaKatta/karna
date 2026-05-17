@@ -48,6 +48,11 @@ class GatewayClient {
 
   connect(url: string, token: string): void {
     this.url = normalizeMobileGatewayWsUrl(url);
+    if (!/^wss?:\/\//i.test(this.url)) {
+      console.error("[GatewayClient] Invalid URL scheme: must use ws:// or wss://", this.url);
+      useAppStore.getState().setStatus("error");
+      return;
+    }
     this.token = token;
     this.intentionalClose = false;
     this.reconnectAttempts = 0;

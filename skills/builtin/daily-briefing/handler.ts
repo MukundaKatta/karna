@@ -123,8 +123,13 @@ export class DailyBriefingHandler implements SkillHandler {
     const isHeartbeat = input["trigger"] === "heartbeat";
 
     // On heartbeat, only trigger between 6 AM and 10 AM
+    // Note: Uses server timezone by default. Pass input.timezone (e.g. "America/New_York") for accurate local time.
     if (isHeartbeat) {
-      const hour = new Date().getHours();
+      const tz = (input["timezone"] as string) ?? undefined;
+      const now = new Date();
+      const hour = tz
+        ? parseInt(now.toLocaleString("en-US", { timeZone: tz, hour: "numeric", hour12: false }), 10)
+        : now.getHours();
       if (hour < 6 || hour >= 10) {
         return {
           success: true,

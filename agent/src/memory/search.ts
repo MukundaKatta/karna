@@ -126,8 +126,16 @@ export async function semanticSearch(
     };
   });
 
+  // Deduplicate by content (keep first/highest-scored occurrence)
+  const seenContent = new Set<string>();
+  const deduplicated = results.filter((r) => {
+    if (seenContent.has(r.memory.content)) return false;
+    seenContent.add(r.memory.content);
+    return true;
+  });
+
   // Sort by combined score and apply limit
-  return results
+  return deduplicated
     .filter((r) => r.combinedScore >= minRelevance)
     .sort((a, b) => b.combinedScore - a.combinedScore)
     .slice(0, limit);

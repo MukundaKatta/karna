@@ -800,6 +800,11 @@ async function handleChatMessage(
   const { content, role } = message.payload;
   const sessionId = message.sessionId;
 
+  if (content.length > 100_000) {
+    sendError(ws, "CONTENT_TOO_LARGE", "Message content exceeds maximum length of 100,000 characters");
+    return;
+  }
+
   if (!sessionId) {
     sendError(ws, "MISSING_SESSION", "sessionId is required for chat messages");
     return;
@@ -1228,6 +1233,12 @@ async function handleSkillInvoke(
 
   const { skillId, action, parameters } = message.payload;
   const sessionId = message.sessionId;
+
+  const safeIdPattern = /^[a-zA-Z0-9_-]+$/;
+  if (!safeIdPattern.test(skillId) || !safeIdPattern.test(action)) {
+    sendError(ws, "INVALID_SKILL_FORMAT", "skillId and action must contain only alphanumeric characters, hyphens, and underscores");
+    return;
+  }
 
   logger.info({ sessionId, skillId, action }, "Skill invocation requested");
 

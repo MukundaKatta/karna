@@ -42,6 +42,11 @@ export function validateGatewayEnv(mode?: ValidationMode): ValidationResult {
 
   if (envMode === "test") return result;
 
+  if (!process.env["NODE_ENV"]) {
+    logger.warn("NODE_ENV is not set — defaulting to 'development'");
+    result.warnings.push("NODE_ENV is not set — defaulting to 'development'");
+  }
+
   // In production, use strict Zod schema validation
   if (envMode === "production") {
     const parsed = ProductionEnvSchema.safeParse({

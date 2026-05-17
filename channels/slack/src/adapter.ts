@@ -538,6 +538,11 @@ export class SlackAdapter {
     content: string,
     threadTs?: string,
   ): Promise<void> {
+    // Slack message payload limit is ~40KB; truncate if needed
+    if (content.length > 39_000) {
+      content = content.slice(0, 39_000) + "... [truncated]";
+    }
+
     try {
       // Build Block Kit message for rich formatting
       const blocks = this.buildBlocks(content);

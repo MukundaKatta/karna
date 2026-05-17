@@ -78,6 +78,10 @@ export async function executeTool(
     );
 
     if (error instanceof ToolTimeoutError) {
+      if (toolTimeoutCounts.size >= 1000) {
+        logger.warn("toolTimeoutCounts map exceeded max size, clearing old entries");
+        toolTimeoutCounts.clear();
+      }
       toolTimeoutCounts.set(tool.name, (toolTimeoutCounts.get(tool.name) ?? 0) + 1);
     }
 

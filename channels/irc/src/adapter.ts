@@ -215,6 +215,10 @@ export class IrcAdapter {
 
         // Join configured channels
         for (const channel of this.config.channels) {
+          if (!channel.startsWith("#") || channel.includes(" ")) {
+            this.logger.error({ channel }, "Invalid IRC channel name: must start with # and contain no spaces");
+            continue;
+          }
           this.ircSend(`JOIN ${channel}`);
           this.logger.info({ channel }, "Joining IRC channel");
         }

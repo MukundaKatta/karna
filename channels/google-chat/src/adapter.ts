@@ -602,7 +602,7 @@ export class GoogleChatAdapter {
 
   // ─── Google Chat Message Sending ──────────────────────────────────────
 
-  private async sendToChannel(conversation: GoogleChatConversationInfo, text: string): Promise<void> {
+  private async sendToChannel(conversation: GoogleChatConversationInfo, text: string, retryCount = 0): Promise<void> {
     let token: string;
     try {
       token = await this.getAccessToken();
@@ -635,6 +635,13 @@ export class GoogleChatAdapter {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             res.resume();
             resolve();
+          } else if (res.statusCode && res.statusCode >= 500 && retryCount < 3) {
+            res.resume();
+            const delay = 1000 * Math.pow(2, retryCount);
+            this.logger.warn({ statusCode: res.statusCode, retryCount, delay }, "Retrying Google Chat API call after 5xx error");
+            setTimeout(() => {
+              void this.sendToChannel(conversation, text, retryCount + 1).then(resolve);
+            }, delay);
           } else {
             this.logger.error(
               { statusCode: res.statusCode, spaceName: conversation.spaceName },

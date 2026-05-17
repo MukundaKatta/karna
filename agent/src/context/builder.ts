@@ -34,6 +34,8 @@ export interface BuildContextParams {
   skills?: SkillMetadata[];
   currentTime?: Date;
   customInstructions?: string;
+  /** Number of tools that will be sent alongside the context (used for token budgeting). */
+  toolCount?: number;
 }
 
 export interface BuiltContext {
@@ -96,7 +98,8 @@ export function buildContext(
 
   // 3. Estimate tokens and truncate
   const systemPromptTokens = estimateTokens(systemPrompt);
-  const availableForMessages = cfg.maxContextTokens - cfg.reservedOutputTokens - systemPromptTokens;
+  const estimatedToolTokens = (params.toolCount ?? 0) * 500;
+  const availableForMessages = cfg.maxContextTokens - cfg.reservedOutputTokens - systemPromptTokens - estimatedToolTokens;
 
   const { messages, wasTruncated, droppedCount } = fitMessages(
     allMessages,

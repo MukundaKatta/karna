@@ -62,7 +62,8 @@ export function registerSecurityMiddleware(app: FastifyInstance): void {
   // Security headers
   app.addHook("onSend", async (_req: FastifyRequest, reply: FastifyReply) => {
     reply.header("X-Content-Type-Options", "nosniff");
-    reply.header("X-Frame-Options", "DENY");
+    reply.header("X-Frame-Options", "SAMEORIGIN");
+    reply.header("Access-Control-Max-Age", "86400");
     reply.header("X-XSS-Protection", "0");
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
     reply.header(
@@ -99,7 +100,8 @@ export function registerSecurityMiddleware(app: FastifyInstance): void {
 
   // Request ID tracking
   app.addHook("onRequest", async (req: FastifyRequest) => {
-    const requestId = req.headers["x-request-id"] || crypto.randomUUID();
+    const rawRequestId = req.headers["x-request-id"] || crypto.randomUUID();
+    const requestId = typeof rawRequestId === "string" ? rawRequestId.slice(0, 128) : rawRequestId;
     (req as any).requestId = requestId;
   });
 

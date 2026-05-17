@@ -128,6 +128,12 @@ export function parseStripeWebhook(
   const dataObject = ((body["data"] as Record<string, unknown>)?.["object"] as Record<string, unknown>) ?? {};
   const created = (body["created"] as number) ?? Date.now() / 1000;
 
+  // Replay prevention: reject events older than 5 minutes
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - created) > 300) {
+    throw new Error("Stripe webhook event timestamp is stale (older than 5 minutes)");
+  }
+
   const event: StripeEvent = {
     id: eventId,
     type: normalizeEventType(eventType),

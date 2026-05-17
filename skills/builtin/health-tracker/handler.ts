@@ -176,6 +176,12 @@ export class HealthTrackerHandler implements SkillHandler {
     const date = (input["date"] as string) ?? this.today();
     const note = input["note"] as string | undefined;
 
+    // Validate date is not in the future
+    const parsedDate = new Date(date);
+    if (!isNaN(parsedDate.getTime()) && parsedDate.getTime() > Date.now() + 86400000) {
+      return { success: false, output: "Date cannot be in the future.", error: "Future date" };
+    }
+
     if (!metric) {
       return {
         success: false,
@@ -307,6 +313,10 @@ export class HealthTrackerHandler implements SkillHandler {
 
   private async getDailySummary(input: Record<string, unknown>): Promise<SkillResult> {
     const date = (input["date"] as string) ?? this.today();
+    const endDate = input["endDate"] as string | undefined;
+    if (endDate && date > endDate) {
+      return { success: false, output: "Start date must be on or before end date.", error: "Invalid date range" };
+    }
     const store = await this.loadStore();
     const entry = store.entries[date];
 

@@ -56,6 +56,10 @@ export class NewsDigestHandler implements SkillHandler {
   private cache: Map<string, DigestCache> = new Map();
 
   async initialize(context: SkillContext): Promise<void> {
+    const apiKey = (context as Record<string, unknown>)["apiKey"] as string | undefined;
+    if (apiKey !== undefined && (typeof apiKey !== "string" || apiKey.length <= 10)) {
+      throw new Error("News digest API key must be a string longer than 10 characters");
+    }
     logger.info({ sessionId: context.sessionId }, "News digest skill initialized");
   }
 

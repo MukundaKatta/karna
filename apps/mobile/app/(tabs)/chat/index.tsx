@@ -340,6 +340,8 @@ export default function ChatScreen() {
             onSubmitEditing={handleSend}
             returnKeyType="send"
             blurOnSubmit={false}
+            accessibilityLabel="Chat message input"
+            accessibilityHint="Type your message to Karna"
           />
 
           {inputText.trim() ? (

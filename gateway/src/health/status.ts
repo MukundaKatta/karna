@@ -112,7 +112,7 @@ export function getSystemHealth(): SystemHealth {
       heapTotalMB: Math.round(heapTotalMB * 100) / 100,
       rssMB: Math.round((memory.rss / 1024 / 1024) * 100) / 100,
     },
-    version: "0.1.0",
+    version: process.env["npm_package_version"] ?? "0.1.0",
     startedAt,
   };
 }

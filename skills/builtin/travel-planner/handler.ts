@@ -180,7 +180,8 @@ export class TravelPlannerHandler implements SkillHandler {
     input: Record<string, unknown>,
     context: SkillContext
   ): Promise<SkillResult> {
-    const destination = (input["destination"] as string) ?? "";
+    const rawDestination = (input["destination"] as string) ?? "";
+    const destination = rawDestination.replace(/[^a-zA-Z0-9\s,.\-]/g, "").slice(0, 200);
     const startDate = (input["startDate"] as string) ?? "";
     const endDate = (input["endDate"] as string) ?? "";
     const budgetTotal = (input["budget"] as number) ?? 0;
@@ -288,7 +289,7 @@ export class TravelPlannerHandler implements SkillHandler {
     input: Record<string, unknown>,
     context: SkillContext
   ): Promise<SkillResult> {
-    const location = (input["location"] as string) ?? "";
+    const location = ((input["location"] as string) ?? "").replace(/[^a-zA-Z0-9\s,.\-]/g, "").slice(0, 200);
     const checkIn = (input["checkIn"] as string) ?? "";
     const checkOut = (input["checkOut"] as string) ?? "";
 
@@ -321,7 +322,7 @@ export class TravelPlannerHandler implements SkillHandler {
     input: Record<string, unknown>,
     context: SkillContext
   ): Promise<SkillResult> {
-    const location = (input["location"] as string) ?? "";
+    const location = ((input["location"] as string) ?? "").replace(/[^a-zA-Z0-9\s,.\-]/g, "").slice(0, 200);
     if (!location) {
       return { success: false, output: "Specify a location to find attractions.", error: "Missing location" };
     }

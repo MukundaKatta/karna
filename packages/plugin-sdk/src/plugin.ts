@@ -126,9 +126,21 @@ export interface KarnaPlugin {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+/** Supported plugin SDK API version range. */
+const SUPPORTED_API_VERSION = "1";
+
 /**
  * Create a KarnaPlugin with type inference.
+ * Validates the plugin's declared apiVersion (if present) against the SDK.
  */
-export function definePlugin(plugin: KarnaPlugin): KarnaPlugin {
+export function definePlugin(plugin: KarnaPlugin & { apiVersion?: string }): KarnaPlugin {
+  if (plugin.apiVersion !== undefined) {
+    const major = plugin.apiVersion.split(".")[0];
+    if (major !== SUPPORTED_API_VERSION) {
+      throw new Error(
+        `Plugin "${plugin.name}" declares apiVersion "${plugin.apiVersion}" which is incompatible with SDK API version ${SUPPORTED_API_VERSION}.x`,
+      );
+    }
+  }
   return plugin;
 }

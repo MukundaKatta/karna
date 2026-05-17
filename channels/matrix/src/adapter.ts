@@ -191,6 +191,10 @@ export class MatrixAdapter {
         // Auto-accept invites
         if (response.rooms?.invite) {
           for (const roomId of Object.keys(response.rooms.invite)) {
+            if (!this.isValidRoomIdOrAlias(roomId)) {
+              this.logger.error({ roomId }, "Invalid Matrix room ID or alias format, skipping");
+              continue;
+            }
             this.logger.info({ roomId }, "Auto-joining invited room");
             void this.matrixRequest("POST", `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/join`, {});
           }
@@ -664,6 +668,11 @@ export class MatrixAdapter {
     }
 
     return null;
+  }
+
+  private isValidRoomIdOrAlias(roomIdOrAlias: string): boolean {
+    // Room IDs: !localpart:server  Room aliases: #alias:server
+    return /^[!#][^:]+:.+$/.test(roomIdOrAlias);
   }
 
   private async resolveConversationInfo(
