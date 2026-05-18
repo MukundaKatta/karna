@@ -457,9 +457,11 @@ export class SignalAdapter {
   // ─── Signal Message Sending ────────────────────────────────────────────
 
   private async sendSignalMessage(recipientNumber: string, text: string): Promise<void> {
+    const MAX_SIGNAL_MESSAGE_LENGTH = 2000;
+    const message = text.length > MAX_SIGNAL_MESSAGE_LENGTH ? text.slice(0, MAX_SIGNAL_MESSAGE_LENGTH) : text;
     const url = `${this.config.signalApiUrl}/v2/send`;
     const body = JSON.stringify({
-      message: text,
+      message,
       number: this.config.signalNumber,
       recipients: [recipientNumber],
     });

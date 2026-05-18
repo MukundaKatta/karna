@@ -1,5 +1,5 @@
 import Razorpay from "razorpay";
-import { createHmac } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { createLogger } from "@karna/shared";
 import type {
   PaymentProvider,
@@ -147,6 +147,10 @@ export class RazorpayPaymentProvider implements PaymentProvider {
   async createOrder(amount: number, currency: string, receipt: string): Promise<Order> {
     CreateOrderParamsSchema.parse({ amount, currency, receipt });
 
+    if (amount <= 0 || !Number.isInteger(amount)) {
+      throw new Error("Amount must be a positive integer (in smallest currency unit)");
+    }
+
     logger.info({ amount, currency, receipt }, "Creating Razorpay order");
 
     const order = (await this.razorpay.orders.create({
@@ -184,7 +188,10 @@ export class RazorpayPaymentProvider implements PaymentProvider {
 
     logger.debug({ orderId, paymentId }, "Verifying Razorpay payment signature");
 
-    return expectedSignature === signature;
+    const sigBuf = Buffer.from(signature, "hex");
+    const expectedBuf = Buffer.from(expectedSignature, "hex");
+    if (sigBuf.length !== expectedBuf.length) return false;
+    return timingSafeEqual(sigBuf, expectedBuf);
   }
 
   // ─── Webhooks ─────────────────────────────────────────────────────────
@@ -197,7 +204,9 @@ export class RazorpayPaymentProvider implements PaymentProvider {
     const rawBody = typeof payload === "string" ? payload : JSON.stringify(payload);
     const expectedSignature = createHmac("sha256", this.webhookSecret).update(rawBody).digest("hex");
 
-    if (expectedSignature !== signature) {
+    const whSigBuf = Buffer.from(signature, "hex");
+    const whExpectedBuf = Buffer.from(expectedSignature, "hex");
+    if (whSigBuf.length !== whExpectedBuf.length || !timingSafeEqual(whSigBuf, whExpectedBuf)) {
       logger.warn("Invalid Razorpay webhook signature");
       throw new Error("Invalid webhook signature");
     }

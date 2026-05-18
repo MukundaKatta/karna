@@ -76,6 +76,16 @@ export async function executeHandoff(
   const maxDepth = options?.maxDepth ?? DEFAULT_MAX_DEPTH;
   const sliceSize = options?.conversationSliceSize ?? DEFAULT_CONVERSATION_SLICE_SIZE;
 
+  if (!payload.targetAgentId || payload.targetAgentId.trim() === "") {
+    return {
+      success: false,
+      response: "Handoff target agent ID is required",
+      agentId: "",
+      model: undefined,
+      tokenUsage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
   // ─── Guard: depth ─────────────────────────────────────────────────────
   if (depth >= maxDepth) {
     logger.warn(

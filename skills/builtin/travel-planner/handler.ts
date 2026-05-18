@@ -196,6 +196,11 @@ export class TravelPlannerHandler implements SkillHandler {
 
     const start = new Date(startDate);
     const end = new Date(endDate);
+
+    if (start > end) {
+      return { success: false, output: "Departure date must be before return date", error: "Invalid dates" };
+    }
+
     const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
 
     if (days <= 0 || days > 60) {

@@ -159,6 +159,10 @@ export function routeModel(message: string, agent?: AgentConfig): RouteResult {
     model = DEFAULT_MODELS[complexity];
   }
 
+  if (!/^[a-zA-Z0-9._-]+$/.test(model)) {
+    throw new Error(`Invalid model ID format: "${model}"`);
+  }
+
   // Determine provider
   const providerName = agent?.defaultProvider ?? inferProvider(model);
   const provider = getProvider(providerName);

@@ -259,6 +259,10 @@ export class ExpenseTrackerHandler implements SkillHandler {
       };
     }
 
+    if (Number(parsed["amount"]) <= 0) {
+      return { success: false, output: "Amount must be positive", error: "Invalid amount" };
+    }
+
     return this.addExpense(parsed);
   }
 

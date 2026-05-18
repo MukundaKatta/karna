@@ -3,6 +3,7 @@
 // query retrieval (retrieve → format context).
 
 import pino from "pino";
+import { nanoid } from "nanoid";
 import { chunkText, type ChunkOptions, type TextChunk } from "./chunker.js";
 import { RAGRetriever, type RetrieveOptions, type RetrievalResult } from "./retriever.js";
 import type { MemoryBackend, SaveMemoryInput } from "../memory/store.js";
@@ -43,7 +44,6 @@ export class RAGPipeline {
   private readonly backend: MemoryBackend;
   private readonly embedFn: EmbedFunction | null;
   private readonly retriever: RAGRetriever;
-  private documentCounter = 0;
 
   constructor(backend: MemoryBackend, embedFn?: EmbedFunction) {
     this.backend = backend;
@@ -55,7 +55,11 @@ export class RAGPipeline {
    * Ingest a document: chunk → embed → store.
    */
   async ingest(text: string, options: IngestOptions): Promise<IngestResult> {
-    const documentId = `doc_${++this.documentCounter}_${Date.now()}`;
+    if (!options.agentId || options.agentId.trim() === "") {
+      throw new Error("agentId is required");
+    }
+
+    const documentId = `doc_${Date.now()}_${nanoid(8)}`;
 
     logger.info(
       { documentId, title: options.title, textLength: text.length },

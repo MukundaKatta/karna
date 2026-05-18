@@ -37,8 +37,8 @@ describe("RAG Pipeline", () => {
 
     it("respects custom chunk size", () => {
       const text = "Word. ".repeat(500); // ~500 words
-      const smallChunks = chunkText(text, { chunkSize: 50 });
-      const largeChunks = chunkText(text, { chunkSize: 500 });
+      const smallChunks = chunkText(text, { chunkSize: 100, overlap: 16 });
+      const largeChunks = chunkText(text, { chunkSize: 500, overlap: 64 });
       expect(smallChunks.length).toBeGreaterThan(largeChunks.length);
     });
 

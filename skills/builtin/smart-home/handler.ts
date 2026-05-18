@@ -401,6 +401,9 @@ export class SmartHomeHandler implements SkillHandler {
     if (!entity) {
       return { success: false, output: "Specify an entity or area to check status.", error: "Missing entity" };
     }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(entity)) {
+      return { success: false, output: "Invalid device ID format", error: "Invalid device ID" };
+    }
 
     // Resolve the entity if it's a short name
     const resolved = entity.includes(".") ? entity : null;
@@ -518,6 +521,9 @@ export class SmartHomeHandler implements SkillHandler {
     const entityId = input["entity"] as string;
     if (!entityId) {
       return { success: false, output: "Specify an entity to toggle.", error: "Missing entity" };
+    }
+    if (!/^[a-zA-Z0-9_.-]+$/.test(entityId)) {
+      return { success: false, output: "Invalid device ID format", error: "Invalid device ID" };
     }
 
     const resolved = entityId.includes(".") ? entityId : this.resolveEntity(entityId, "switch");

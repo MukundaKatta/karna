@@ -18,7 +18,8 @@
       "maxBandwidthBytesPerWindow": 62914560,
       "chatMessagesPerMinute": 10,
       "otherMessagesPerMinute": 30
-    }
+    },
+    "sessionTimeoutMs": 14400000
   },
   "agent": {
     "name": "Karna",
@@ -44,7 +45,8 @@
       "mediumRisk": "auto",
       "highRisk": "ask"
     },
-    "sandboxMode": "standard"
+    "sandboxMode": "standard",
+    "maxMessageHistory": 200
   },
   "channels": {
     "telegram": {

@@ -37,6 +37,11 @@ services:
       timeout: 5s
       start_period: 10s
       retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   # ─── Web Dashboard ──────────────────────────────────────────────────
   web:

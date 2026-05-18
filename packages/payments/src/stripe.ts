@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { createHash } from "node:crypto";
 import { createLogger } from "@karna/shared";
 import type {
   PaymentProvider,
@@ -16,6 +17,10 @@ import { STRIPE_PRICE_IDS, type PlanId } from "./plans.js";
 // ─── Logger ─────────────────────────────────────────────────────────────────
 
 const logger = createLogger({ name: "karna-payments-stripe" });
+
+function deriveIdempotencyKey(...parts: string[]): string {
+  return createHash("sha256").update(parts.join(":")).digest("hex").slice(0, 32);
+}
 
 // ─── Stripe Payment Provider ────────────────────────────────────────────────
 
@@ -48,7 +53,7 @@ export class StripePaymentProvider implements PaymentProvider {
       name: validated.name,
       metadata: validated.metadata ?? {},
     }, {
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: deriveIdempotencyKey("create-customer", params.email),
     });
 
     logger.info({ customerId: customer.id }, "Stripe customer created");
@@ -76,7 +81,7 @@ export class StripePaymentProvider implements PaymentProvider {
       payment_behavior: "default_incomplete",
       expand: ["latest_invoice.payment_intent"],
     }, {
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: deriveIdempotencyKey("create-subscription", params.customerId, params.priceId),
     });
 
     logger.info({ subscriptionId: subscription.id }, "Stripe subscription created");
@@ -180,7 +185,7 @@ export class StripePaymentProvider implements PaymentProvider {
     }
 
     const session = await this.stripe.checkout.sessions.create(sessionParams, {
-      idempotencyKey: crypto.randomUUID(),
+      idempotencyKey: deriveIdempotencyKey("create-checkout", priceId, successUrl, cancelUrl, customerId ?? ""),
     });
 
     logger.info({ sessionId: session.id }, "Stripe checkout session created");

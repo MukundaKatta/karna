@@ -194,6 +194,10 @@ export class AgentRuntime {
       throw new Error("Agent runtime is not running. Call init() first.");
     }
 
+    if (this.abortController && !this.abortController.signal.aborted) {
+      throw new Error("Agent turn already in progress");
+    }
+
     this.abortController = new AbortController();
 
     const startTime = Date.now();
@@ -582,6 +586,8 @@ export class AgentRuntime {
     response: string
   ): Promise<void> {
     if (!this.memoryStore) return;
+
+    if (response.length < 50) return;
 
     try {
       // Store the conversation turn as a memory

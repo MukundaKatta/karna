@@ -48,6 +48,10 @@ interface PendingResponse {
   streamComplete: boolean;
 }
 
+function stripIrcFormatting(text: string): string {
+  return text.replace(/[\x02\x1D\x1F\x16\x0F]|\x03(\d{1,2}(,\d{1,2})?)?/g, "");
+}
+
 // ─── IrcAdapter ─────────────────────────────────────────────────────────────
 
 export class IrcAdapter {
@@ -293,7 +297,7 @@ export class IrcAdapter {
       if (!mentioned) return;
     }
 
-    const cleanText = text
+    const cleanText = stripIrcFormatting(text)
       .replace(new RegExp(`^${this.config.nick}[:\\s,]+`, "i"), "")
       .replace(/^!\s*/, "")
       .trim();

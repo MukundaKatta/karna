@@ -84,11 +84,14 @@ export class ElevenLabsTTS {
       throw new Error("Text must not be empty");
     }
 
+    const resolvedVoiceId = voiceId ?? this.defaultVoiceId;
+    if (!/^[a-zA-Z0-9_-]+$/.test(resolvedVoiceId)) {
+      throw new Error("Invalid voice ID format");
+    }
+
     if (!this.apiKey) {
       return this.fallbackSay(text);
     }
-
-    const resolvedVoiceId = voiceId ?? this.defaultVoiceId;
 
     // For long text, synthesize in chunks and concatenate
     if (text.length > MAX_CHUNK_LENGTH) {

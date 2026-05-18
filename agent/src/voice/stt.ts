@@ -106,6 +106,11 @@ export class WhisperSTT {
       throw new Error("Audio buffer must not be empty");
     }
 
+    const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+    if (audioBuffer.length > MAX_AUDIO_BYTES) {
+      throw new Error(`Audio buffer exceeds maximum size of ${MAX_AUDIO_BYTES} bytes (got ${audioBuffer.length})`);
+    }
+
     this.validateFormat(format);
 
     const resolvedLanguage = language ?? this.defaultLanguage;

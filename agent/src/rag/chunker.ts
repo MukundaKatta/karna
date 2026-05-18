@@ -27,6 +27,8 @@ export interface TextChunk {
 
 // ─── Separators ─────────────────────────────────────────────────────────────
 
+const MAX_CHUNKS = 10_000;
+
 const SEPARATORS = [
   "\n\n",    // Paragraphs
   "\n",      // Lines
@@ -49,9 +51,17 @@ export function chunkText(text: string, options?: ChunkOptions): TextChunk[] {
   const overlap = options?.overlap ?? 64;
   const metadata = options?.metadata ?? {};
 
+  if (chunkSize <= 0) throw new Error("chunkSize must be positive");
+  if (overlap >= chunkSize) throw new Error("overlap must be less than chunkSize");
+
   if (!text || text.trim().length === 0) return [];
 
   const chunks = recursiveSplit(text, chunkSize, overlap, SEPARATORS);
+
+  if (chunks.length > MAX_CHUNKS) {
+    chunks.length = MAX_CHUNKS;
+    logger.warn({ MAX_CHUNKS, textLength: text.length }, "Chunk count exceeded MAX_CHUNKS, truncating");
+  }
 
   const result: TextChunk[] = chunks.map((content, index) => ({
     id: `chunk_${index}`,

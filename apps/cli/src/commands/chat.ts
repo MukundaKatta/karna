@@ -251,6 +251,13 @@ async function startChat(options: ChatOptions): Promise<void> {
       return;
     }
 
+    const MAX_INPUT_LENGTH = 32_000;
+    if (trimmed.length > MAX_INPUT_LENGTH) {
+      console.log(chalk.yellow(`Message too long (${trimmed.length} chars). Maximum is ${MAX_INPUT_LENGTH}.`));
+      rl.prompt();
+      return;
+    }
+
     if (trimmed.toLowerCase() === "/quit" || trimmed.toLowerCase() === "/exit") {
       console.log(chalk.dim("Goodbye!"));
       ws.close();

@@ -51,6 +51,7 @@ interface PendingResponse {
 
 const DISCORD_MAX_MESSAGE_LENGTH = 2000;
 const DISCORD_MAX_EMBED_DESCRIPTION_LENGTH = 3900;
+const MAX_EMBED_FIELD_LENGTH = 1024;
 const DISCORD_COLOR_INFO = 0x5865f2;
 const DISCORD_COLOR_SUCCESS = 0x2ecc71;
 const DISCORD_COLOR_ERROR = 0xe74c3c;
@@ -823,9 +824,10 @@ export function buildDiscordToolResultEmbed(
     });
   }
 
+  const resultValue = result || "(empty)";
   embed.addFields({
     name: "Result",
-    value: result.slice(0, 1024) || "(empty)",
+    value: resultValue.length > MAX_EMBED_FIELD_LENGTH ? resultValue.slice(0, MAX_EMBED_FIELD_LENGTH - 3) + "..." : resultValue,
   });
 
   return embed;
@@ -848,7 +850,7 @@ export function buildDiscordToolApprovalEmbed(
       { name: "Risk", value: riskLevel, inline: true },
       {
         name: "Description",
-        value: description ?? "No description provided.",
+        value: (() => { const v = description ?? "No description provided."; return v.length > MAX_EMBED_FIELD_LENGTH ? v.slice(0, MAX_EMBED_FIELD_LENGTH - 3) + "..." : v; })(),
       },
     )
     .setTimestamp();

@@ -80,7 +80,7 @@ export class LineAdapter {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private readonly sessionMap: PersistentSessionMap<string, string>;
   private pendingResponses = new Map<string, PendingResponse>(); // sessionId -> pending
-  private replyTokens = new Map<string, string>(); // sessionId -> replyToken
+  private replyTokens = new Map<string, { token: string; timestamp: number }>(); // sessionId -> replyToken
   private isShuttingDown = false;
 
   constructor(config: LineAdapterConfig) {
@@ -291,7 +291,7 @@ export class LineAdapter {
 
     // Store reply token for this session (they expire quickly)
     if (replyToken) {
-      this.replyTokens.set(sessionId, replyToken);
+      this.replyTokens.set(sessionId, { token: replyToken, timestamp: Date.now() });
     }
 
     const chatMessage = {
@@ -433,9 +433,10 @@ export class LineAdapter {
 
     let pending = this.pendingResponses.get(sessionId);
     if (!pending) {
+      const entry = this.replyTokens.get(sessionId);
       pending = {
         conversationId,
-        replyToken: this.replyTokens.get(sessionId) ?? null,
+        replyToken: entry ? entry.token : null,
         chunks: [],
         streamComplete: false,
       };
@@ -534,12 +535,16 @@ export class LineAdapter {
     text: string,
     sessionId?: string,
   ): Promise<void> {
-    // Try to use reply token first (faster and free), fall back to push
-    const replyToken = sessionId ? this.replyTokens.get(sessionId) : undefined;
+    const replyTokenEntry = sessionId ? this.replyTokens.get(sessionId) : undefined;
 
-    if (replyToken) {
+    if (replyTokenEntry) {
       this.replyTokens.delete(sessionId!);
-      await this.replyMessage(replyToken, text);
+      if (Date.now() - replyTokenEntry.timestamp > 55_000) {
+        this.logger.warn({ sessionId }, "Reply token expired, falling back to push API");
+        await this.pushMessage(conversationId, text);
+      } else {
+        await this.replyMessage(replyTokenEntry.token, text);
+      }
     } else {
       await this.pushMessage(conversationId, text);
     }

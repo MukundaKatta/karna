@@ -347,7 +347,8 @@ export default function ChatScreen() {
           {inputText.trim() ? (
             <Pressable
               onPress={handleSend}
-              style={[styles.sendButton, { backgroundColor: colors.primary }]}
+              disabled={isTyping}
+              style={[styles.sendButton, { backgroundColor: colors.primary, opacity: isTyping ? 0.5 : 1 }]}
             >
               <Feather name="send" size={18} color="#FFFFFF" />
             </Pressable>

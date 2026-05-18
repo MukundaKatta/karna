@@ -241,7 +241,8 @@ export class FileAuditBackend implements AuditBackend {
     try {
       const stats = await stat(this.filePath);
       if (stats.size >= MAX_FILE_SIZE_BYTES) {
-        await rename(this.filePath, this.filePath + ".bak");
+        const bakName = `${this.filePath}.${new Date().toISOString().replace(/[:.]/g, "-")}.bak`;
+        await rename(this.filePath, bakName);
       }
     } catch {
       // File may not exist yet — that's fine

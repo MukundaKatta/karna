@@ -220,8 +220,11 @@ export class HealthTrackerHandler implements SkillHandler {
 
       case "sleep": {
         const hours = this.parseNumber(value) ?? 0;
-        if (hours <= 0 || hours > 24) {
+        if (hours <= 0) {
           return { success: false, output: "Invalid sleep hours. Please provide a value between 0 and 24.", error: "Invalid value" };
+        }
+        if (hours > 24) {
+          return { success: false, output: "Sleep duration exceeds 24 hours. Please verify the value.", error: "Invalid value" };
         }
         entry.sleep = hours;
         const inRange = hours >= store.goals.sleepHoursMin && hours <= store.goals.sleepHoursMax;

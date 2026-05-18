@@ -186,7 +186,7 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
 
   // ─── POST /auth/refresh ──────────────────────────────────────────────
 
-  server.post("/auth/refresh", async (request, reply) => {
+  server.post("/auth/refresh", { config: AUTH_RATE_LIMIT_CONFIG }, async (request, reply) => {
     const parseResult = RefreshSchema.safeParse(request.body);
     if (!parseResult.success) {
       return reply.status(400).send({ error: "Refresh token is required" });
@@ -361,6 +361,13 @@ export function recordPasswordResetRequest(
 
   attempts.push(now);
   store.set(key, attempts);
+
+  if (store.size > 10_000) {
+    for (const [k, v] of store) {
+      if (v.every((t) => t <= windowStart)) store.delete(k);
+    }
+  }
+
   return {
     allowed: true,
     remaining: PASSWORD_RESET_REQUEST_LIMIT - attempts.length,

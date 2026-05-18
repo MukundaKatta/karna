@@ -323,36 +323,44 @@ export class DailyBriefingHandler implements SkillHandler {
         }>;
       };
 
-      const current = data.current_condition?.[0];
-      const area = data.nearest_area?.[0];
-      const todayForecast = data.weather?.[0];
+      try {
+        const current = data.current_condition?.[0];
+        const area = data.nearest_area?.[0];
+        const todayForecast = data.weather?.[0];
 
-      if (!current) return null;
+        if (!current || !current.temp_C || !current.weatherDesc) {
+          logger.warn("Weather response missing expected fields");
+          return null;
+        }
 
-      const areaName = area?.areaName?.[0]?.value ?? queryLoc;
-      const country = area?.country?.[0]?.value ?? "";
-      const resolvedLocation = country ? `${areaName}, ${country}` : areaName;
-      const conditions = current.weatherDesc?.[0]?.value ?? "Unknown";
-      const tempC = current.temp_C ?? "?";
-      const tempF = current.temp_F ?? "?";
-      const humidity = current.humidity ? `${current.humidity}%` : undefined;
-      const wind = current.windspeedKmph
-        ? `${current.windspeedKmph} km/h ${current.winddir16Point ?? ""}`
-        : undefined;
+        const areaName = area?.areaName?.[0]?.value ?? queryLoc;
+        const country = area?.country?.[0]?.value ?? "";
+        const resolvedLocation = country ? `${areaName}, ${country}` : areaName;
+        const conditions = current.weatherDesc?.[0]?.value ?? "Unknown";
+        const tempC = current.temp_C ?? "?";
+        const tempF = current.temp_F ?? "?";
+        const humidity = current.humidity ? `${current.humidity}%` : undefined;
+        const wind = current.windspeedKmph
+          ? `${current.windspeedKmph} km/h ${current.winddir16Point ?? ""}`
+          : undefined;
 
-      let forecast = "";
-      if (todayForecast) {
-        forecast = `High ${todayForecast.maxtempC}C/${todayForecast.maxtempF}F, Low ${todayForecast.mintempC}C/${todayForecast.mintempF}F`;
+        let forecast = "";
+        if (todayForecast) {
+          forecast = `High ${todayForecast.maxtempC}C/${todayForecast.maxtempF}F, Low ${todayForecast.mintempC}C/${todayForecast.mintempF}F`;
+        }
+
+        return {
+          location: resolvedLocation,
+          temperature: `${tempC}C (${tempF}F)`,
+          conditions,
+          forecast,
+          humidity,
+          wind,
+        };
+      } catch {
+        logger.warn("Failed to parse weather response fields");
+        return null;
       }
-
-      return {
-        location: resolvedLocation,
-        temperature: `${tempC}C (${tempF}F)`,
-        conditions,
-        forecast,
-        humidity,
-        wind,
-      };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logger.warn({ error: msg }, "Failed to fetch weather from wttr.in");

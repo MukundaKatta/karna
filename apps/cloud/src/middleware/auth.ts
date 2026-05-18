@@ -63,7 +63,7 @@ export function signAccessToken(payload: AuthUser): string {
       razorpayCustomerId: payload.razorpayCustomerId,
     },
     JWT_SECRET,
-    { issuer: JWT_ISSUER, expiresIn: JWT_EXPIRY },
+    { issuer: JWT_ISSUER, audience: "karna-cloud", expiresIn: JWT_EXPIRY },
   );
 }
 
@@ -75,7 +75,7 @@ export function signRefreshToken(userId: string): string {
 }
 
 export function verifyToken(token: string): jwt.JwtPayload {
-  return jwt.verify(token, JWT_SECRET, { issuer: JWT_ISSUER }) as jwt.JwtPayload;
+  return jwt.verify(token, JWT_SECRET, { issuer: JWT_ISSUER, audience: "karna-cloud" }) as jwt.JwtPayload;
 }
 
 // ─── Auth Middleware ────────────────────────────────────────────────────────
@@ -127,4 +127,5 @@ export async function apiKeyMiddleware(request: FastifyRequest, reply: FastifyRe
   // API key validation will be handled by the route handler
   // This middleware just extracts the key and sets a flag
   (request as FastifyRequest & { apiKey?: string }).apiKey = apiKey;
+  return authMiddleware(request, reply);
 }

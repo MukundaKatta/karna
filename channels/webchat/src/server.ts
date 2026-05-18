@@ -187,6 +187,17 @@ export class WebChatServer {
       this.wss = new WebSocketServer({
         server: this.server,
         path: "/ws",
+        verifyClient: (info: { origin: string; secure: boolean; req: import("node:http").IncomingMessage }) => {
+          const origin = info.origin || info.req.headers.origin;
+          if (!origin) return true;
+          try {
+            const url = new URL(origin);
+            const isLocal = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+            return isLocal || url.protocol === "https:";
+          } catch {
+            return false;
+          }
+        },
       });
 
       this.wss.on("connection", (ws: WebSocket) => {

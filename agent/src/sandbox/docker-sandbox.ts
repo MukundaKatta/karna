@@ -9,7 +9,7 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import { writeFile, unlink, mkdir } from "fs/promises";
+import { writeFile, mkdir, rm } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import pino from "pino";
@@ -190,7 +190,7 @@ export class DockerSandbox {
       }
     } finally {
       // Cleanup temp files
-      unlink(codePath).catch(() => {});
+      rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 

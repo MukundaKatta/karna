@@ -213,8 +213,17 @@ export class TeamsAdapter {
         return;
       }
 
+      const MAX_BODY_BYTES = 1_048_576;
+      let bodyBytes = 0;
       let body = "";
       req.on("data", (chunk: Buffer) => {
+        bodyBytes += chunk.length;
+        if (bodyBytes > MAX_BODY_BYTES) {
+          res.writeHead(413);
+          res.end("Payload too large");
+          req.destroy();
+          return;
+        }
         body += chunk.toString();
       });
 
@@ -600,10 +609,12 @@ export class TeamsAdapter {
       return;
     }
 
+    const MAX_MESSAGE_LENGTH = 25_000;
+    const truncatedText = text.length > MAX_MESSAGE_LENGTH ? text.slice(0, MAX_MESSAGE_LENGTH) + "\n\n[Message truncated]" : text;
     const activity = {
       type: "message",
       from: { id: ref.botId },
-      text,
+      text: truncatedText,
       textFormat: "markdown",
     };
 

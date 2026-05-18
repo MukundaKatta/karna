@@ -468,6 +468,7 @@ export default function ChatPage() {
           <button
             className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
             title="Attach file"
+            aria-label="Attach file"
           >
             <Paperclip size={18} />
           </button>
@@ -488,6 +489,7 @@ export default function ChatPage() {
             onClick={() => setVoiceMode(true)}
             className="p-2 sm:p-2.5 rounded-lg text-dark-400 hover:text-white hover:bg-dark-700 transition-colors shrink-0 hidden sm:flex"
             title="Voice input (Cmd/Ctrl Shift V)"
+            aria-label="Toggle voice input"
           >
             <Mic size={18} />
           </button>

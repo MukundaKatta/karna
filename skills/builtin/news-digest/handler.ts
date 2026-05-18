@@ -302,6 +302,23 @@ export class NewsDigestHandler implements SkillHandler {
         const title = (item["title"] as string) ?? "";
         const snippet = (item["snippet"] as string) ?? "";
 
+        if (url) {
+          try {
+            const parsed = new URL(url);
+            if (parsed.protocol !== "http:" && parsed.protocol !== "https:") continue;
+            const h = parsed.hostname;
+            if (
+              h === "localhost" ||
+              h.startsWith("127.") ||
+              h.startsWith("10.") ||
+              h.startsWith("192.168.") ||
+              /^172\.(1[6-9]|2[0-9]|3[01])\./.test(h)
+            ) continue;
+          } catch {
+            continue;
+          }
+        }
+
         // Filter out blocklisted domains
         const domain = this.extractDomain(url);
         if (BLOCKLIST_DOMAINS.has(domain)) continue;
