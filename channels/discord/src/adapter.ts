@@ -185,13 +185,21 @@ export class DiscordAdapter {
     // Ignore bot messages
     if (message.author.bot) return;
 
+    if (!this.client.user) return;
+
     const isDM = message.channel.type === ChannelType.DM;
-    const isMentioned = message.mentions.has(this.client.user!);
+    const isMentioned = message.mentions.has(this.client.user);
 
     // Only respond to DMs or mentions
     if (!isDM && !isMentioned) return;
 
     let content = message.content;
+
+    // Truncate excessively long messages
+    if (content.length > 10000) {
+      this.logger.warn({ channelId: message.channelId, originalLength: content.length }, "Truncating message content exceeding 10000 chars");
+      content = content.slice(0, 10000);
+    }
 
     // Remove bot mention from content
     if (isMentioned && this.client.user) {

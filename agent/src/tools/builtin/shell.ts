@@ -102,7 +102,8 @@ export const shellTool: ToolDefinitionRuntime = {
           timedOut: false,
         };
       }
-      command = `sudo ${command}`;
+      const escapedCommand = command.replace(/'/g, "'\\''");
+      command = `sudo sh -c '${escapedCommand}'`;
     }
 
     return new Promise((resolve, reject) => {

@@ -140,6 +140,11 @@ export class IrcAdapter {
   private connectToIrc(): void {
     const { server, port, useTls } = this.config;
 
+    if (port < 1 || port > 65535) {
+      this.logger.error({ port }, "Invalid IRC port: must be between 1 and 65535");
+      return;
+    }
+
     this.logger.info({ server, port, useTls }, "Connecting to IRC server");
 
     this.registered = false;
@@ -161,6 +166,15 @@ export class IrcAdapter {
 
     this.ircSocket.on("data", (data: string) => {
       this.ircBuffer += data;
+
+      // Prevent unbounded buffer growth (max 64KB)
+      if (this.ircBuffer.length > 65536) {
+        this.logger.error({ bufferSize: this.ircBuffer.length }, "IRC buffer exceeded 64KB, disconnecting");
+        this.ircBuffer = "";
+        this.ircSocket?.destroy();
+        return;
+      }
+
       const lines = this.ircBuffer.split("\r\n");
       this.ircBuffer = lines.pop() ?? "";
 
@@ -221,6 +235,15 @@ export class IrcAdapter {
         for (const channel of this.config.channels) {
           if (!channel.startsWith("#") || channel.includes(" ")) {
             this.logger.error({ channel }, "Invalid IRC channel name: must start with # and contain no spaces");
+            continue;
+          }
+          if (channel.length > 50) {
+            this.logger.error({ channel, length: channel.length }, "Invalid IRC channel name: exceeds 50 chars");
+            continue;
+          }
+          // eslint-disable-next-line no-control-regex
+          if (/[\x00-\x1f\x7f]/.test(channel)) {
+            this.logger.error({ channel }, "Invalid IRC channel name: contains control characters");
             continue;
           }
           this.ircSend(`JOIN ${channel}`);

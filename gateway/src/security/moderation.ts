@@ -156,7 +156,7 @@ export async function logModerationReport(event: ModerationReportEvent): Promise
   await appendFile(join(dir, "reports.jsonl"), JSON.stringify(event) + "\n", "utf-8");
 }
 
-export async function listModerationReviewItems(limit = 100): Promise<ModerationReviewItem[]> {
+export async function listModerationReviewItems(limit = 50): Promise<ModerationReviewItem[]> {
   const [filtered, reports] = await Promise.all([
     readJsonLines<ModerationLogEvent & { id?: string }>("filtered.jsonl"),
     readJsonLines<ModerationReportEvent>("reports.jsonl"),

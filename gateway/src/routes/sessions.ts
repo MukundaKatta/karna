@@ -103,7 +103,7 @@ export function registerSessionRoutes(
       }
 
       const totalMessages = await getTranscriptLength(request.params.sessionId);
-      if (!sessionManager.getSession(request.params.sessionId) && totalMessages === 0) {
+      if (!sessionManager.getSession(request.params.sessionId) && totalMessages === null) {
         return reply.status(404).send({ error: "Session transcript not found" });
       }
 
@@ -111,8 +111,8 @@ export function registerSessionRoutes(
       return reply.send({
         sessionId: request.params.sessionId,
         messages,
-        totalMessages,
-        hasMore: totalMessages > messages.length,
+        totalMessages: totalMessages ?? 0,
+        hasMore: (totalMessages ?? 0) > messages.length,
       });
     },
   );

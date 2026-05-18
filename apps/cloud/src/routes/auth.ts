@@ -101,7 +101,10 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
         email,
         name,
         plan: "free",
-        usage_reset_at: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1).toISOString(),
+        usage_reset_at: (() => {
+          const now = new Date();
+          return new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+        })(),
       });
 
     if (profileError) {

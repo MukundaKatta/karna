@@ -135,7 +135,13 @@ const SUPPORTED_API_VERSION = "1";
  */
 export function definePlugin(plugin: KarnaPlugin & { apiVersion?: string }): KarnaPlugin {
   if (plugin.apiVersion !== undefined) {
-    const major = plugin.apiVersion.split(".")[0];
+    const parts = plugin.apiVersion.split(".");
+    if (parts.length < 2) {
+      throw new Error(
+        `Plugin "${plugin.name}" declares invalid apiVersion "${plugin.apiVersion}". Expected semver format (e.g., "1.0").`,
+      );
+    }
+    const major = parts[0];
     if (major !== SUPPORTED_API_VERSION) {
       throw new Error(
         `Plugin "${plugin.name}" declares apiVersion "${plugin.apiVersion}" which is incompatible with SDK API version ${SUPPORTED_API_VERSION}.x`,

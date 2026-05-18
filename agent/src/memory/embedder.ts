@@ -40,8 +40,12 @@ export class Embedder {
   private readonly dimensions: number;
 
   constructor(config?: EmbedderConfig) {
+    const apiKey = config?.apiKey ?? process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      logger.warn("No OpenAI API key provided (config.apiKey or OPENAI_API_KEY env var). Embedding calls will fail.");
+    }
     this.client = new OpenAI({
-      apiKey: config?.apiKey ?? process.env.OPENAI_API_KEY,
+      apiKey,
     });
     this.model = config?.model ?? DEFAULT_MODEL;
     this.dimensions = config?.dimensions ?? DEFAULT_DIMENSIONS;

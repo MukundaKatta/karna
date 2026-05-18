@@ -126,11 +126,12 @@ export async function readTranscript(
 /**
  * Get the total message count for a session without loading all messages.
  */
-export async function getTranscriptLength(sessionId: string): Promise<number> {
+export async function getTranscriptLength(sessionId: string): Promise<number | null> {
   await ensureSessionsDir();
 
   try {
     const files = await listTranscriptFiles(sessionId);
+    if (files.length === 0) return null;
     let total = 0;
     for (const filePath of files) {
       const content = await readFile(filePath, "utf-8");
@@ -139,7 +140,7 @@ export async function getTranscriptLength(sessionId: string): Promise<number> {
     return total;
   } catch (error) {
     const err = error as NodeJS.ErrnoException;
-    if (err.code === "ENOENT") return 0;
+    if (err.code === "ENOENT") return null;
     throw error;
   }
 }

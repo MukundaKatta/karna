@@ -257,7 +257,7 @@ describe("channel routing metadata", () => {
     });
     const ws = createGatewaySocket();
     (adapter as any).ws = ws;
-    (adapter as any).sessionMap.set("C123:thread-1", {
+    (adapter as any).sessionMap.set("C123||thread-1", {
       sessionId: "session-1",
       threadTs: "thread-1",
     });

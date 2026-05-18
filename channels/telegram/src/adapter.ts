@@ -184,6 +184,14 @@ export class TelegramAdapter {
 
     try {
       const file = await ctx.api.getFile(photo.file_id);
+
+      // Validate file_path to prevent path traversal
+      if (file.file_path && (file.file_path.includes("..") || file.file_path.startsWith("/"))) {
+        this.logger.error({ chatId, filePath: file.file_path }, "Rejected file_path containing path traversal or absolute path");
+        await ctx.reply("Sorry, I could not process that photo due to an invalid file path.");
+        return;
+      }
+
       const fileUrl = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`;
       const caption = ctx.message?.caption ?? "User sent a photo.";
 
@@ -208,6 +216,14 @@ export class TelegramAdapter {
 
     try {
       const file = await ctx.api.getFile(doc.file_id);
+
+      // Validate file_path to prevent path traversal
+      if (file.file_path && (file.file_path.includes("..") || file.file_path.startsWith("/"))) {
+        this.logger.error({ chatId, filePath: file.file_path }, "Rejected file_path containing path traversal or absolute path");
+        await ctx.reply("Sorry, I could not process that document due to an invalid file path.");
+        return;
+      }
+
       const fileUrl = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`;
       const caption = ctx.message?.caption ?? `User sent a document: ${doc.file_name ?? "unknown"}`;
 
@@ -232,6 +248,14 @@ export class TelegramAdapter {
 
     try {
       const file = await ctx.api.getFile(voice.file_id);
+
+      // Validate file_path to prevent path traversal
+      if (file.file_path && (file.file_path.includes("..") || file.file_path.startsWith("/"))) {
+        this.logger.error({ chatId, filePath: file.file_path }, "Rejected file_path containing path traversal or absolute path");
+        await ctx.reply("Sorry, I could not process that voice message due to an invalid file path.");
+        return;
+      }
+
       const fileUrl = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`;
 
       this.logger.debug({ chatId, duration: voice.duration }, "Received voice message");
@@ -519,6 +543,14 @@ export class TelegramAdapter {
 
     let pending = this.pendingResponses.get(sessionId);
     if (!pending) {
+      // Enforce max size on pendingResponses to prevent memory leaks
+      if (this.pendingResponses.size > 1000) {
+        const oldestKey = this.pendingResponses.keys().next().value;
+        if (oldestKey) {
+          this.logger.warn({ sessionId: oldestKey }, "Evicting oldest pending response (map size exceeded 1000)");
+          this.pendingResponses.delete(oldestKey);
+        }
+      }
       pending = { chatId, chunks: [], streamComplete: false };
       this.pendingResponses.set(sessionId, pending);
     }

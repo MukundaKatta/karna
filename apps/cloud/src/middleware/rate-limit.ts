@@ -40,7 +40,10 @@ export async function registerRateLimit(server: FastifyInstance): Promise<void> 
     timeWindow: "1 minute",
     keyGenerator: (request: FastifyRequest) => {
       const user = request.user as AuthUser | undefined;
-      return user?.userId ?? request.ip;
+      if (user?.userId) return user.userId;
+      // Normalize IPv4-mapped IPv6 addresses (e.g. "::ffff:127.0.0.1" → "127.0.0.1")
+      const ip = request.ip;
+      return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
     },
     errorResponseBuilder: (_request: FastifyRequest, context: { max: number; after: string }) => {
       return {
@@ -68,6 +71,9 @@ export const AUTH_RATE_LIMIT_CONFIG = {
   rateLimit: {
     max: 10,
     timeWindow: "1 minute",
-    keyGenerator: (request: FastifyRequest) => request.ip,
+    keyGenerator: (request: FastifyRequest) => {
+      const ip = request.ip;
+      return ip.startsWith("::ffff:") ? ip.slice(7) : ip;
+    },
   },
 };

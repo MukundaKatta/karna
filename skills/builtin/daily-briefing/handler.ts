@@ -346,7 +346,7 @@ export class DailyBriefingHandler implements SkillHandler {
 
         let forecast = "";
         if (todayForecast) {
-          forecast = `High ${todayForecast.maxtempC}C/${todayForecast.maxtempF}F, Low ${todayForecast.mintempC}C/${todayForecast.mintempF}F`;
+          forecast = `High ${todayForecast.maxtempC ?? "N/A"}C/${todayForecast.maxtempF ?? "N/A"}F, Low ${todayForecast.mintempC ?? "N/A"}C/${todayForecast.mintempF ?? "N/A"}F`;
         }
 
         return {
@@ -411,14 +411,24 @@ export class DailyBriefingHandler implements SkillHandler {
         });
       }
 
-      // Sort chronologically
-      parsed.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      // Sort chronologically using numeric time comparison
+      const timeToMinutes = (t: string): number => {
+        const match = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (!match) return 0;
+        let hours = parseInt(match[1]!, 10);
+        const minutes = parseInt(match[2]!, 10);
+        const period = match[3]!.toUpperCase();
+        if (period === "AM" && hours === 12) hours = 0;
+        if (period === "PM" && hours !== 12) hours += 12;
+        return hours * 60 + minutes;
+      };
+      parsed.sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
       // Detect scheduling conflicts
       for (let i = 1; i < parsed.length; i++) {
         const prev = parsed[i - 1]!;
         const curr = parsed[i]!;
-        if (curr.startTime < prev.endTime) {
+        if (timeToMinutes(curr.startTime) < timeToMinutes(prev.endTime)) {
           curr.isConflict = true;
           prev.isConflict = true;
         }

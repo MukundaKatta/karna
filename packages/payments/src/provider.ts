@@ -23,8 +23,8 @@ export const CreateCheckoutParamsSchema = z.object({
 });
 
 export const CreateOrderParamsSchema = z.object({
-  amount: z.number().int().positive(),
-  currency: z.string().length(3),
+  amount: z.number().int().positive().max(1_000_000),
+  currency: z.string().length(3).toUpperCase().regex(/^[A-Z]{3}$/),
   receipt: z.string().min(1),
   metadata: z.record(z.string()).optional(),
 });

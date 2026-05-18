@@ -167,7 +167,7 @@ export function getModelPricing(model: string): ModelPricing | undefined {
   // Partial match: find the longest key that the model string starts with
   let bestMatch: string | undefined;
   for (const key of Object.keys(MODEL_PRICING)) {
-    if (model.startsWith(key) || key.startsWith(model)) {
+    if (key.startsWith(model)) {
       if (!bestMatch || key.length > bestMatch.length) {
         bestMatch = key;
       }

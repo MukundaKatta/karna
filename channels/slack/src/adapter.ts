@@ -286,7 +286,7 @@ export class SlackAdapter {
       return;
     }
 
-    const sessionKey = `${channel}:${threadTs ?? "root"}`;
+    const sessionKey = `${channel}||${threadTs ?? "root"}`;
     let session = this.sessionMap.get(sessionKey);
 
     if (!session) {
@@ -540,6 +540,7 @@ export class SlackAdapter {
   ): Promise<void> {
     // Slack message payload limit is ~40KB; truncate if needed
     if (content.length > 39_000) {
+      this.logger.warn({ channel, originalLength: content.length }, "Truncating Slack message exceeding 39000 chars");
       content = content.slice(0, 39_000) + "... [truncated]";
     }
 
@@ -671,7 +672,7 @@ export class SlackAdapter {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
     for (const [sessionKey, session] of this.sessionMap.entries()) {
-      const [channel] = sessionKey.split(":");
+      const [channel] = sessionKey.split("||");
       if (!channel) continue;
 
       const connectMsg: ProtocolMessage = {
@@ -706,7 +707,7 @@ export class SlackAdapter {
 
     for (const [key, session] of this.sessionMap.entries()) {
       if (session.sessionId === sessionId) {
-        const channel = key.split(":")[0]!;
+        const channel = key.split("||")[0]!;
         return { channel, threadTs: session.threadTs };
       }
     }
@@ -719,11 +720,11 @@ export class SlackAdapter {
     threadTs: string | undefined,
   ): boolean {
     if (!channel || !threadTs) return false;
-    return this.sessionMap.has(`${channel}:${threadTs}`);
+    return this.sessionMap.has(`${channel}||${threadTs}`);
   }
 
   resetSession(channel: string, threadTs?: string): void {
-    const sessionKey = `${channel}:${threadTs ?? "root"}`;
+    const sessionKey = `${channel}||${threadTs ?? "root"}`;
     this.sessionMap.delete(sessionKey);
     this.logger.info({ channel, threadTs }, "Session reset");
   }

@@ -79,7 +79,13 @@ async function startChat(options: ChatOptions): Promise<void> {
     let message: ProtocolMessage;
     try {
       message = JSON.parse(data.toString()) as ProtocolMessage;
-    } catch {
+    } catch (parseError) {
+      console.error(chalk.red(`Failed to parse WebSocket message: ${parseError instanceof Error ? parseError.message : String(parseError)}`));
+      return;
+    }
+
+    if (!message || typeof message.type !== "string") {
+      console.error(chalk.red("Received malformed message: missing or invalid 'type' field"));
       return;
     }
 

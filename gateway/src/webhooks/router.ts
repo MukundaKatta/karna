@@ -176,7 +176,13 @@ export class WebhookRouter {
 
     const headers = request.headers as Record<string, string | undefined>;
     const body = request.body as Record<string, unknown>;
-    const rawBody = request.rawBody ?? JSON.stringify(body);
+
+    if (!request.rawBody) {
+      reply.code(400).send({ error: "Missing raw body" });
+      return;
+    }
+
+    const rawBody = request.rawBody;
 
     let event: GitHubEvent;
     try {
@@ -235,7 +241,13 @@ export class WebhookRouter {
 
     const headers = request.headers as Record<string, string | undefined>;
     const body = request.body as Record<string, unknown>;
-    const rawBody = request.rawBody ?? JSON.stringify(body);
+
+    if (!request.rawBody) {
+      reply.code(400).send({ error: "Missing raw body" });
+      return;
+    }
+
+    const rawBody = request.rawBody;
 
     let event: StripeEvent;
     try {

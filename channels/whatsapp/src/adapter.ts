@@ -236,7 +236,11 @@ export class WhatsAppAdapter {
 
     // Handle image messages
     if (messageContent.imageMessage) {
-      const caption = messageContent.imageMessage.caption ?? "User sent an image.";
+      let caption = messageContent.imageMessage.caption ?? "User sent an image.";
+      if (caption.length > 1024) {
+        this.logger.warn({ jid, captionLength: caption.length }, "Truncating image caption exceeding 1024 chars");
+        caption = caption.slice(0, 1024);
+      }
       this.logger.debug({ jid }, "Received image message");
       await this.forwardToGateway(jid, caption, [
         { type: "image", name: "image" },
@@ -246,7 +250,11 @@ export class WhatsAppAdapter {
 
     // Handle video messages
     if (messageContent.videoMessage) {
-      const caption = messageContent.videoMessage.caption ?? "User sent a video.";
+      let caption = messageContent.videoMessage.caption ?? "User sent a video.";
+      if (caption.length > 1024) {
+        this.logger.warn({ jid, captionLength: caption.length }, "Truncating video caption exceeding 1024 chars");
+        caption = caption.slice(0, 1024);
+      }
       this.logger.debug({ jid }, "Received video message");
       await this.forwardToGateway(jid, caption, [
         { type: "video", name: "video" },
@@ -511,7 +519,7 @@ export class WhatsAppAdapter {
   // ─── Send with Retry ─────────────────────────────────────────────────
 
   private async sendWhatsAppMessage(jid: string, text: string): Promise<void> {
-    const maxRetries = this.config.maxRetries ?? 3;
+    const maxRetries = Math.min(this.config.maxRetries ?? 3, 10);
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {

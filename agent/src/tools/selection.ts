@@ -104,5 +104,5 @@ function resolveMaxTools(): number {
   if (!Number.isInteger(parsed) || parsed < 1) {
     return DEFAULT_MAX_TOOLS;
   }
-  return parsed;
+  return Math.min(parsed, 50);
 }

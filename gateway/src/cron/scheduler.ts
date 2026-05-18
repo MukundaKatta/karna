@@ -210,6 +210,13 @@ export class CronScheduler {
   // ─── Internal ───────────────────────────────────────────────────────────
 
   private scheduleJob(job: CronJob): void {
+    const existingTimer = this.timers.get(job.id);
+    if (existingTimer) {
+      clearTimeout(existingTimer as ReturnType<typeof setTimeout>);
+      clearInterval(existingTimer as ReturnType<typeof setInterval>);
+      this.timers.delete(job.id);
+    }
+
     const { type } = job.schedule;
 
     if (type === "at" && job.schedule.at) {

@@ -129,7 +129,7 @@ export class PersistentSessionMap<
       const raw = await readFile(this.storagePath, "utf-8");
       const parsed = JSON.parse(raw) as SessionMapSnapshot<TSerialized>;
 
-      if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) {
+      if (parsed?.version !== 1 || !parsed.entries || !Array.isArray(parsed.entries)) {
         this.logger?.warn?.(
           { storagePath: this.storagePath },
           "Ignoring malformed session map snapshot",
@@ -167,6 +167,14 @@ export class PersistentSessionMap<
     } catch (error) {
       const err = error as NodeJS.ErrnoException;
       if (err.code === "ENOENT") return;
+
+      if (err.code === "EACCES") {
+        this.logger?.error?.(
+          { storagePath: this.storagePath, error: String(error) },
+          "Permission denied reading persisted session map",
+        );
+        return;
+      }
 
       this.logger?.warn?.(
         { storagePath: this.storagePath, error: String(error) },

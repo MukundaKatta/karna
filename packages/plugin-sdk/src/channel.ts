@@ -151,10 +151,11 @@ export abstract class BaseChannelAdapter implements ChannelAdapter {
    */
   protected async emitMessage(message: IncomingMessage): Promise<void> {
     if (!this.messageHandler) {
-      throw new Error(
+      console.warn(
         `No message handler registered for channel adapter "${this.name}". ` +
-          "Call onMessage() before start().",
+          "Call onMessage() before start(). Message was dropped.",
       );
+      return;
     }
     await this.messageHandler(message);
   }

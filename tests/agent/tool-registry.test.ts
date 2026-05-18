@@ -30,7 +30,7 @@ describe("ToolRegistry", () => {
   it("registers and retrieves a tool", () => {
     const tool = createMockTool();
     registry.register(tool);
-    expect(registry.get("test_tool")).toBe(tool);
+    expect(registry.get("test_tool")).toStrictEqual(tool);
     expect(registry.has("test_tool")).toBe(true);
     expect(registry.size).toBe(1);
   });

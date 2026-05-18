@@ -5,6 +5,7 @@
 //
 // ──────────────────────────────────────────────────────────────────────────
 
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import pino from "pino";
 
@@ -100,7 +101,7 @@ export function registerSecurityMiddleware(app: FastifyInstance): void {
 
   // Request ID tracking
   app.addHook("onRequest", async (req: FastifyRequest) => {
-    const rawRequestId = req.headers["x-request-id"] || crypto.randomUUID();
+    const rawRequestId = req.headers["x-request-id"] || randomUUID();
     const requestId = typeof rawRequestId === "string" ? rawRequestId.slice(0, 128) : rawRequestId;
     (req as any).requestId = requestId;
   });

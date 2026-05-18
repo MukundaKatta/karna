@@ -47,7 +47,7 @@ export async function searchRelevantMemories(
   embedder?: Embedder
 ): Promise<MemoryEntry[]> {
   const limit = config?.limit ?? DEFAULT_LIMIT;
-  const minRelevance = config?.minRelevance ?? DEFAULT_MIN_RELEVANCE;
+  const minRelevance = Math.max(0, Math.min(1, config?.minRelevance ?? DEFAULT_MIN_RELEVANCE));
 
   logger.debug({ agentId, query: query.slice(0, 100), limit }, "Searching relevant memories");
 

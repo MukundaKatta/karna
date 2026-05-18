@@ -351,21 +351,29 @@ export class CodeReviewerHandler implements SkillHandler {
     const findings: ReviewFinding[] = [];
     const lines = code.split("\n");
 
-    for (const pattern of ALL_PATTERNS) {
-      // Skip patterns not applicable to this language
-      if (
-        pattern.languages &&
-        language !== "unknown" &&
-        !pattern.languages.includes(language)
-      ) {
-        continue;
-      }
+    // Pre-compile regexes outside the per-match loop for performance
+    const applicablePatterns = ALL_PATTERNS
+      .filter((pattern) => {
+        if (
+          pattern.languages &&
+          language !== "unknown" &&
+          !pattern.languages.includes(language)
+        ) {
+          return false;
+        }
+        return true;
+      })
+      .map((pattern) => ({
+        ...pattern,
+        compiledRegex: new RegExp(pattern.pattern.source, pattern.pattern.flags),
+      }));
 
+    for (const pattern of applicablePatterns) {
       // Reset regex state
-      const regex = new RegExp(pattern.pattern.source, pattern.pattern.flags);
+      pattern.compiledRegex.lastIndex = 0;
       let match: RegExpExecArray | null;
 
-      while ((match = regex.exec(code)) !== null) {
+      while ((match = pattern.compiledRegex.exec(code)) !== null) {
         // Find the line number
         const beforeMatch = code.slice(0, match.index);
         const lineNumber = beforeMatch.split("\n").length;
@@ -388,7 +396,7 @@ export class CodeReviewerHandler implements SkillHandler {
       medium: 2,
       low: 3,
     };
-    findings.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+    findings.sort((a, b) => (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4));
 
     return findings;
   }

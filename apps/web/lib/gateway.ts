@@ -48,6 +48,17 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   if (!res.ok) {
+    const errorContentType = res.headers.get("content-type");
+    if (errorContentType?.includes("application/json")) {
+      const errorBody = await res.json().catch(() => null);
+      const message =
+        typeof errorBody?.message === "string"
+          ? errorBody.message
+          : typeof errorBody?.error === "string"
+            ? errorBody.error
+            : JSON.stringify(errorBody);
+      throw new GatewayError(res.status, message, errorBody);
+    }
     const text = await res.text().catch(() => "Unknown error");
     throw new GatewayError(res.status, text);
   }

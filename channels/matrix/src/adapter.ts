@@ -693,6 +693,12 @@ export class MatrixAdapter {
     const cached = this.roomDirectness.get(roomId);
     if (cached !== undefined) return cached;
 
+    // Prevent unbounded growth of the roomDirectness cache
+    if (this.roomDirectness.size > 10000) {
+      this.logger.warn({ size: this.roomDirectness.size }, "roomDirectness cache exceeded 10000 entries, clearing old entries");
+      this.roomDirectness.clear();
+    }
+
     try {
       const response = await this.matrixRequest<{ joined?: Record<string, unknown> }>(
         "GET",

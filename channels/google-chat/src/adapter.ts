@@ -173,6 +173,12 @@ export class GoogleChatAdapter {
     try {
       const raw = fs.readFileSync(this.config.serviceAccountPath, "utf-8");
       this.credentials = JSON.parse(raw) as ServiceAccountCredentials;
+
+      // Validate private key format
+      if (!this.credentials.private_key || !this.credentials.private_key.includes("BEGIN") || !this.credentials.private_key.includes("PRIVATE KEY")) {
+        throw new Error("Invalid private_key format: must contain 'BEGIN' and 'PRIVATE KEY'");
+      }
+
       this.logger.info(
         { clientEmail: this.credentials.client_email },
         "Loaded service account credentials",
@@ -297,7 +303,7 @@ export class GoogleChatAdapter {
     }
 
     const message = event.message;
-    const senderName = message.sender.name;
+    const senderName = message?.sender?.name || "unknown";
     const text = message.argumentText ?? message.text;
     const spaceName = message.space.name;
     const threadName = message.thread?.name;

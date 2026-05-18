@@ -480,7 +480,7 @@ export class ExpenseTrackerHandler implements SkillHandler {
     const weekTotals = new Map<number, number>();
     for (const expense of monthExpenses) {
       const d = new Date(expense.date);
-      const weekNum = Math.ceil(d.getDate() / 7);
+      const weekNum = Math.min(Math.ceil(d.getDate() / 7), 5);
       weekTotals.set(weekNum, (weekTotals.get(weekNum) ?? 0) + expense.amount);
     }
     for (const [week, weekTotal] of [...weekTotals.entries()].sort((a, b) => a[0] - b[0])) {
@@ -495,7 +495,7 @@ export class ExpenseTrackerHandler implements SkillHandler {
     const prevTotal = prevExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     if (prevTotal > 0) {
-      const change = ((total - prevTotal) / prevTotal) * 100;
+      const change = prevTotal === 0 ? 0 : ((total - prevTotal) / prevTotal) * 100;
       const direction = change >= 0 ? "up" : "down";
       lines.push("");
       lines.push(
@@ -595,6 +595,10 @@ export class ExpenseTrackerHandler implements SkillHandler {
       const match = normalized.match(pattern);
       if (match?.[1]) {
         amount = parseFloat(match[1]);
+        if (isNaN(amount)) {
+          amount = null;
+          continue;
+        }
         break;
       }
     }

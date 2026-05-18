@@ -148,6 +148,11 @@ export class SignalAdapter {
         "Signal API connection closed",
       );
       if (!this.isShuttingDown) {
+        const maxSignalReconnectAttempts = this.config.maxReconnectAttempts ?? 20;
+        if (this.signalReconnectAttempt >= maxSignalReconnectAttempts) {
+          this.logger.error({ attempts: this.signalReconnectAttempt }, "Max Signal API reconnect attempts reached, resetting counter");
+          this.signalReconnectAttempt = 0;
+        }
         this.signalReconnectAttempt = (this.signalReconnectAttempt ?? 0) + 1;
         const baseDelay = 5_000;
         const maxDelay = 60_000;
@@ -176,6 +181,12 @@ export class SignalAdapter {
 
     const senderNumber = envelope.sourceNumber ?? envelope.source;
     const text = envelope.dataMessage.message;
+
+    // Validate phone number format (E.164)
+    if (!/^\+[1-9]\d{1,14}$/.test(senderNumber)) {
+      this.logger.warn({ senderNumber }, "Rejected Signal message from invalid phone number format (not E.164)");
+      return;
+    }
 
     this.logger.debug({ senderNumber, textLength: text.length }, "Received Signal message");
 

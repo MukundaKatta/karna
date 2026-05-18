@@ -470,8 +470,24 @@ export function clearFileAuditLog(): void {
 function resolvePath(path: string, context: ToolExecutionContext): string {
   const workingDirectory = resolve(context.workingDirectory ?? process.cwd());
   const filePath = isAbsolute(path) ? resolve(path) : resolve(workingDirectory, path);
+
   assertAllowedPath(filePath, context);
   assertNotSensitivePath(filePath);
+
+  // Final path traversal guard: verify the resolved path stays within at least one
+  // allowed directory using path.relative() — catches edge cases where symlinks or
+  // unusual path constructions could bypass earlier checks.
+  const allowedDirs = getAllowedDirectories(context);
+  const insideAllowed = allowedDirs.some((dir) => {
+    const rel = relative(dir, filePath);
+    return !rel.startsWith("..") && !isAbsolute(rel);
+  });
+  if (!insideAllowed) {
+    throw new Error(
+      `Path is outside allowed directories. Configure KARNA_FILE_ALLOWED_DIRS or use the session working directory.`
+    );
+  }
+
   return filePath;
 }
 

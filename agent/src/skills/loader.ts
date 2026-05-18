@@ -6,7 +6,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import pino from "pino";
 import type { SkillMetadata } from "@karna/shared/types/skill.js";
 
@@ -386,7 +386,7 @@ function toSkillMetadata(id: string, fm: SkillFrontmatter): SkillMetadata {
  */
 export async function loadSkill(skillPath: string): Promise<LoadedSkill> {
   const resolvedPath = resolve(skillPath);
-  const skillId = resolvedPath.split("/").pop()!;
+  const skillId = basename(resolvedPath);
 
   logger.debug({ skillPath: resolvedPath, skillId }, "Loading skill");
 

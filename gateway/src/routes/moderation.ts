@@ -22,7 +22,7 @@ interface ModerationQuerystring {
 
 export function registerModerationRoutes(app: FastifyInstance): void {
   app.get<{ Querystring: ModerationQuerystring }>("/api/moderation", async (request, reply) => {
-    const limit = parsePositiveInt(request.query?.limit, 100);
+    const limit = parsePositiveInt(request.query?.limit, 50);
     if (limit === null) {
       return reply.status(400).send({ error: "limit must be a positive integer" });
     }

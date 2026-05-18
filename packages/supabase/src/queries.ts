@@ -11,7 +11,15 @@ export async function getAgent(client: SupabaseClient, agentId: string) {
     .eq('id', agentId)
     .single();
 
-  if (error) throw error;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      throw new Error(`No agent found with id "${agentId}"`);
+    }
+    if (error.code === 'PGRST102') {
+      throw new Error(`Multiple agents found with id "${agentId}" — expected exactly one`);
+    }
+    throw error;
+  }
   return data;
 }
 

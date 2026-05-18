@@ -193,7 +193,7 @@ export class MemoryManager {
    */
   async promoteToLongTerm(sessionId: string, agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
-    if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+    if (!agentId || !/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(agentId)) {
       logger.warn({ agentId }, "Invalid agentId format");
       return 0;
     }
@@ -245,7 +245,7 @@ export class MemoryManager {
    */
   async consolidateLongTerm(agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
-    if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+    if (!agentId || !/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(agentId)) {
       logger.warn({ agentId }, "Invalid agentId format");
       return 0;
     }
@@ -302,7 +302,7 @@ export class MemoryManager {
    */
   async enforceRetention(agentId: string): Promise<number> {
     if (!this.longTerm) return 0;
-    if (!agentId || !/^[a-zA-Z0-9_-]+$/.test(agentId)) {
+    if (!agentId || !/^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(agentId)) {
       logger.warn({ agentId }, "Invalid agentId format");
       return 0;
     }

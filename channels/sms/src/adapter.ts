@@ -170,6 +170,13 @@ export class SMSAdapter {
       return;
     }
 
+    // Validate E.164 phone number format
+    if (!/^\+[1-9]\d{1,14}$/.test(from)) {
+      this.logger.warn({ from }, "Rejected SMS from invalid phone number format (not E.164)");
+      res.status(400).send("Invalid phone number format");
+      return;
+    }
+
     this.logger.debug(
       { from, bodyLength: body.length, numMedia },
       "Received incoming SMS",

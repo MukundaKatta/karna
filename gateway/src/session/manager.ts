@@ -370,9 +370,6 @@ export class SessionManager {
       }
     }
 
-    // Flush to storage BEFORE deleting from map, so the terminated
-    // status is persisted. Remove from dirtySessionIds after delete
-    // to prevent stale entries.
     this.dirtySessionIds.delete(sessionId);
     this.sessions.delete(sessionId);
     logger.info({ sessionId }, "Session terminated");

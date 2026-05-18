@@ -190,8 +190,8 @@ export class UsageMeter {
       }
     }
 
-    // Rough cost estimation: $3/1M input tokens, $15/1M output tokens
-    const costCents = Math.ceil((totalTokensIn * 0.3 + totalTokensOut * 1.5) / 100_000);
+    // Fallback estimates only — rough cost estimation: $3/1M input tokens, $15/1M output tokens
+    const costCents = Math.ceil((totalTokensIn * 0.3 + totalTokensOut * 1.5) / 1_000_000);
 
     return {
       agentId,
@@ -240,7 +240,8 @@ export class UsageMeter {
       }
     }
 
-    const costCents = Math.ceil((totalTokensIn * 0.3 + totalTokensOut * 1.5) / 100_000);
+    // Fallback estimates only — rough cost estimation: $3/1M input tokens, $15/1M output tokens
+    const costCents = Math.ceil((totalTokensIn * 0.3 + totalTokensOut * 1.5) / 1_000_000);
 
     return {
       agentId,
@@ -261,6 +262,9 @@ export class UsageMeter {
     if (!agentId) throw new Error("Agent ID is required");
 
     const planConfig = PLANS[plan];
+    if (!planConfig.messagesPerMonth || planConfig.messagesPerMonth <= 0) {
+      throw new Error("Plan message limit must be a positive number");
+    }
     const now = new Date();
     const dates = this.getMonthDates(now);
 

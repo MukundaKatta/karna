@@ -8,6 +8,7 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  Alert,
   type ListRenderItemInfo,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -88,6 +89,11 @@ export default function ChatScreen() {
   const handleSend = useCallback(async () => {
     const text = inputText.trim();
     if (!text) return;
+
+    if (text.length > 5000) {
+      Alert.alert("Message too long", "Please keep your message under 5000 characters.");
+      return;
+    }
 
     await playHaptic("messageSent");
     setInputText("");

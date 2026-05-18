@@ -66,7 +66,7 @@ export class ShortTermMemory {
       sessionId: params.sessionId,
       content: params.content,
       category: params.category,
-      importance: params.importance ?? 0.5,
+      importance: Math.max(0, Math.min(1, params.importance ?? 0.5)),
       createdAt: now,
       expiresAt: now + (params.ttlMs ?? this.defaultTtlMs),
       tags: params.tags ?? [],

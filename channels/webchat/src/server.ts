@@ -288,6 +288,15 @@ export class WebChatServer {
     }
 
     if (parsed.type === "message" && parsed.content) {
+      if (parsed.content.length > 10000) {
+        this.logger.warn({ clientId, contentLength: parsed.content.length }, "Rejecting webchat message exceeding 10000 chars");
+        this.sendToClient(session.clientWs, {
+          type: "error",
+          message: "Message too long. Please limit to 10000 characters.",
+          timestamp: Date.now(),
+        });
+        return;
+      }
       this.forwardToGateway(session, parsed.content);
     } else if (parsed.type === "ping") {
       this.sendToClient(session.clientWs, {

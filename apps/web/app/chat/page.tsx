@@ -77,6 +77,7 @@ export default function ChatPage() {
           break;
 
         case "agent.response": {
+          if (payload.content == null) break;
           const id = (msg.id as string) ?? `msg-${Date.now()}`;
           const chatMsg: ChatMessageUI = {
             id,
@@ -297,6 +298,13 @@ export default function ChatPage() {
       timestamp: Date.now(),
     };
     addMessage(msg);
+
+    // Cap messages at 1000 to prevent unbounded memory growth
+    const currentMessages = useChatStore.getState().messages;
+    if (currentMessages.length > 1000) {
+      setMessages(currentMessages.slice(currentMessages.length - 1000));
+    }
+
     setInput("");
     setAgentState("thinking");
 

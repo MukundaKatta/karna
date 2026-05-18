@@ -5,6 +5,7 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { randomUUID } from "node:crypto";
 import pino from "pino";
 
 const logger = pino({ name: "webhook-store" });
@@ -67,8 +68,17 @@ export function renderTemplate(template: string, data: Record<string, unknown>):
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_match, path: string) => {
     const value = resolvePath(data, path);
     if (value === undefined || value === null) return "";
-    return String(value);
+    return escapeHtml(String(value));
   });
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function resolvePath(obj: Record<string, unknown>, path: string): unknown {
@@ -113,7 +123,7 @@ export class WebhookStore {
 
     const now = Date.now();
     const webhook: Webhook = {
-      id: `whk_${now}_${Math.random().toString(36).slice(2, 8)}`,
+      id: `whk_${randomUUID()}`,
       agentId: input.agentId,
       name: input.name,
       urlPath: input.urlPath,

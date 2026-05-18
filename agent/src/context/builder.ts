@@ -261,8 +261,11 @@ function normalizeConfig(config?: Partial<ContextBuilderConfig>): ContextBuilder
 
 function resolveEnvMaxContextMessages(): number {
   const raw = process.env["MAX_CONTEXT_MESSAGES"] ?? process.env["KARNA_MAX_CONTEXT_MESSAGES"];
-  const parsed = raw ? Number(raw) : DEFAULT_CONFIG.maxMessages;
-  if (!Number.isInteger(parsed) || parsed < 1) {
+  if (raw === undefined || raw === null || raw === "") {
+    return DEFAULT_CONFIG.maxMessages;
+  }
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
     return DEFAULT_CONFIG.maxMessages;
   }
   return parsed;

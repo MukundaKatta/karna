@@ -14,7 +14,7 @@ const RISK_TIMEOUT_MS = {
   critical: 120_000,
 } as const;
 
-const toolTimeoutCounts = new Map<string, number>();
+const toolTimeoutCounts = new Map<string, { count: number; timestamp: number }>();
 
 /**
  * Execute a tool with timeout handling, input validation, and error wrapping.
@@ -78,11 +78,24 @@ export async function executeTool(
     );
 
     if (error instanceof ToolTimeoutError) {
-      if (toolTimeoutCounts.size >= 1000) {
-        logger.warn("toolTimeoutCounts map exceeded max size, clearing old entries");
-        toolTimeoutCounts.clear();
+      if (toolTimeoutCounts.size > 500) {
+        const oneHourAgo = Date.now() - 60 * 60 * 1000;
+        for (const [key, entry] of toolTimeoutCounts) {
+          if (entry.timestamp < oneHourAgo) {
+            toolTimeoutCounts.delete(key);
+          }
+        }
+        // If still over limit after age-based eviction, clear entirely
+        if (toolTimeoutCounts.size > 500) {
+          logger.warn("toolTimeoutCounts map exceeded max size after eviction, clearing");
+          toolTimeoutCounts.clear();
+        }
       }
-      toolTimeoutCounts.set(tool.name, (toolTimeoutCounts.get(tool.name) ?? 0) + 1);
+      const existing = toolTimeoutCounts.get(tool.name);
+      toolTimeoutCounts.set(tool.name, {
+        count: (existing?.count ?? 0) + 1,
+        timestamp: Date.now(),
+      });
     }
 
     return {
@@ -96,7 +109,11 @@ export async function executeTool(
 }
 
 export function getToolTimeoutMetrics(): Record<string, number> {
-  return Object.fromEntries(toolTimeoutCounts);
+  const result: Record<string, number> = {};
+  for (const [key, entry] of toolTimeoutCounts) {
+    result[key] = entry.count;
+  }
+  return result;
 }
 
 export function resetToolTimeoutMetricsForTests(): void {

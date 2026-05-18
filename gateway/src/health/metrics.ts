@@ -65,7 +65,7 @@ export class MetricsCollector {
     this.totalInputTokens += inputTokens;
     this.totalOutputTokens += outputTokens;
     this.totalRequests++;
-    this.totalCostUsd += cost;
+    this.totalCostUsd = Math.round((this.totalCostUsd + cost) * 1_000_000) / 1_000_000;
 
     // Update per-model totals
     let modelUsage = this.byModel.get(model);
@@ -84,7 +84,7 @@ export class MetricsCollector {
     modelUsage.outputTokens += outputTokens;
     modelUsage.totalTokens += inputTokens + outputTokens;
     modelUsage.requestCount++;
-    modelUsage.costUsd += cost;
+    modelUsage.costUsd = Math.round((modelUsage.costUsd + cost) * 1_000_000) / 1_000_000;
 
     logger.debug(
       { model, inputTokens, outputTokens, cost: cost.toFixed(6) },

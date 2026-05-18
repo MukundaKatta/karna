@@ -348,8 +348,18 @@ export class MeetingPrepHandler implements SkillHandler {
         });
       }
 
-      // Sort by start time
-      meetings.sort((a, b) => a.startTime.localeCompare(b.startTime));
+      // Sort by start time using numeric comparison (parse to minutes since midnight)
+      const timeToMinutes = (t: string): number => {
+        const match = t.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+        if (!match) return 0;
+        let hours = parseInt(match[1]!, 10);
+        const minutes = parseInt(match[2]!, 10);
+        const period = match[3]!.toUpperCase();
+        if (period === "AM" && hours === 12) hours = 0;
+        if (period === "PM" && hours !== 12) hours += 12;
+        return hours * 60 + minutes;
+      };
+      meetings.sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
       return meetings;
     } catch (error) {
@@ -711,13 +721,15 @@ export class MeetingPrepHandler implements SkillHandler {
       const obj = raw as Record<string, unknown>;
       const dateTime = obj["dateTime"] ?? obj["date"];
       if (dateTime) return this.extractTimeStr(dateTime);
+      return JSON.stringify(raw);
     }
     return String(raw);
   }
 
   private truncate(text: string, maxLen: number): string {
     if (text.length <= maxLen) return text;
-    return text.slice(0, maxLen - 3) + "...";
+    const end = Math.max(0, maxLen - 3);
+    return text.slice(0, end) + "...";
   }
 }
 

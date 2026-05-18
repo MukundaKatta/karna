@@ -249,13 +249,13 @@ export class TeamsAdapter {
       return;
     }
 
-    if (activity.type !== "message" || !activity.text) {
+    if (activity.type !== "message" || !activity?.text) {
       this.logger.debug({ type: activity.type }, "Ignoring non-message activity");
       return;
     }
 
     const conversationId = activity.conversation.id;
-    const senderName = activity.from.name;
+    const senderName = activity?.from?.name ?? "unknown";
     const text = activity.text;
 
     const conversationRef: ConversationReference = {
@@ -263,7 +263,7 @@ export class TeamsAdapter {
       conversationId,
       activityId: activity.id,
       botId: activity.recipient.id,
-      userId: activity.from.id,
+      userId: activity?.from?.id ?? "unknown",
     };
 
     this.logger.debug(
