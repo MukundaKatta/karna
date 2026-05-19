@@ -42,7 +42,7 @@ describe("Configuration Validation - Security", () => {
       gateway: {
         port: 8080,
         host: "localhost",
-        authToken: "my-token",
+        authToken: "my-secure-token-for-testing",
         maxConnections: 500,
         heartbeatIntervalMs: 15_000,
         sessionTimeoutMs: 1_800_000,

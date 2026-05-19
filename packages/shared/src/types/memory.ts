@@ -46,7 +46,7 @@ export const MemoryEntrySchema = z.object({
   // Lifecycle
   createdAt: z.number().int().positive(),
   updatedAt: z.number().int().positive(),
-  accessedAt: z.number().int().positive(),
+  accessedAt: z.number().int().nonnegative(),
   expiresAt: z.number().int().positive().optional(),
   accessCount: z.number().int().nonnegative().default(0),
 
@@ -69,7 +69,7 @@ export const MemoryQuerySchema = z.object({
   source: MemorySourceSchema.optional(),
   priority: MemoryPrioritySchema.optional(),
   minRelevance: z.number().min(0).max(1).optional(),
-  limit: z.number().int().positive().max(100).default(10),
+  limit: z.number().int().min(1).max(100).default(10),
   offset: z.number().int().nonnegative().default(0),
   sortBy: z.enum(["relevance", "recency", "priority", "access_count"]).default("relevance"),
 });

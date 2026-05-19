@@ -192,7 +192,7 @@ export class MatrixAdapter {
         if (response.rooms?.invite) {
           for (const roomId of Object.keys(response.rooms.invite)) {
             if (!this.isValidRoomIdOrAlias(roomId)) {
-              this.logger.error({ roomId }, "Invalid Matrix room ID or alias format, skipping");
+              this.logger.error({ roomId }, "Invalid Matrix room ID or alias format, skipping join");
               continue;
             }
             this.logger.info({ roomId }, "Auto-joining invited room");
@@ -695,8 +695,12 @@ export class MatrixAdapter {
 
     // Prevent unbounded growth of the roomDirectness cache
     if (this.roomDirectness.size > 10000) {
-      this.logger.warn({ size: this.roomDirectness.size }, "roomDirectness cache exceeded 10000 entries, clearing old entries");
-      this.roomDirectness.clear();
+      this.logger.warn({ size: this.roomDirectness.size }, "roomDirectness cache exceeded 10000 entries, evicting oldest 50%");
+      const entries = Array.from(this.roomDirectness.keys());
+      const deleteCount = Math.floor(entries.length / 2);
+      for (let i = 0; i < deleteCount; i++) {
+        this.roomDirectness.delete(entries[i]!);
+      }
     }
 
     try {

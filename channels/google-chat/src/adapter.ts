@@ -641,7 +641,7 @@ export class GoogleChatAdapter {
           if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
             res.resume();
             resolve();
-          } else if (res.statusCode && res.statusCode >= 500 && retryCount < 3) {
+          } else if (res.statusCode !== undefined && res.statusCode >= 500 && retryCount < 3) {
             res.resume();
             const delay = 1000 * Math.pow(2, retryCount);
             this.logger.warn({ statusCode: res.statusCode, retryCount, delay }, "Retrying Google Chat API call after 5xx error");

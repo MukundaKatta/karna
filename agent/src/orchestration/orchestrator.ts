@@ -237,6 +237,13 @@ export class Orchestrator {
         context?: string;
       };
 
+      if (!this.agentDefinitions.has(delegateInput.agentId)) {
+        throw new Error(
+          `Delegation target agent "${delegateInput.agentId}" not found in agent definitions. ` +
+          `Available agents: ${Array.from(this.agentDefinitions.keys()).join(", ")}`
+        );
+      }
+
       const record: DelegationRecord = {
         fromAgentId: targetAgentId,
         toAgentId: delegateInput.agentId,

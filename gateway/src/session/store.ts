@@ -13,6 +13,28 @@ const DEFAULT_MAX_TRANSCRIPT_BYTES = 10 * 1024 * 1024;
 const DEFAULT_RETENTION_DAYS = 30;
 const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+// ─── Write Lock ────────────────────────────────────────────────────────────
+
+/**
+ * Simple per-session write lock to prevent concurrent transcript writes
+ * from interleaving or corrupting JSONL files.
+ */
+const writeLocks = new Map<string, Promise<void>>();
+
+async function withWriteLock(sessionId: string, fn: () => Promise<void>): Promise<void> {
+  const previous = writeLocks.get(sessionId) ?? Promise.resolve();
+  const current = previous.then(fn, fn);
+  writeLocks.set(sessionId, current);
+  try {
+    await current;
+  } finally {
+    // Clean up the lock entry if it's still pointing to our promise
+    if (writeLocks.get(sessionId) === current) {
+      writeLocks.delete(sessionId);
+    }
+  }
+}
+
 // ─── Directory Initialization ───────────────────────────────────────────────
 
 const initializedDirs = new Set<string>();
@@ -50,21 +72,23 @@ export async function appendToTranscript(
 ): Promise<void> {
   await ensureSessionsDir();
 
-  const filePath = getTranscriptPath(sessionId);
+  await withWriteLock(sessionId, async () => {
+    const filePath = getTranscriptPath(sessionId);
 
-  try {
-    const line = JSON.stringify(message) + "\n";
-    await rotateTranscriptIfNeeded(filePath, Buffer.byteLength(line, "utf-8"));
-    await appendFile(filePath, line, "utf-8");
-    cleanupExpiredTranscriptsSoon();
-    logger.debug({ sessionId, messageId: message.id }, "Appended message to transcript");
-  } catch (error) {
-    logger.error(
-      { sessionId, error: String(error), filePath },
-      "Failed to append to transcript",
-    );
-    throw error;
-  }
+    try {
+      const line = JSON.stringify(message) + "\n";
+      await rotateTranscriptIfNeeded(filePath, Buffer.byteLength(line, "utf-8"));
+      await appendFile(filePath, line, "utf-8");
+      cleanupExpiredTranscriptsSoon();
+      logger.debug({ sessionId, messageId: message.id }, "Appended message to transcript");
+    } catch (error) {
+      logger.error(
+        { sessionId, error: String(error), filePath },
+        "Failed to append to transcript",
+      );
+      throw error;
+    }
+  });
 }
 
 // ─── Read Operations ────────────────────────────────────────────────────────

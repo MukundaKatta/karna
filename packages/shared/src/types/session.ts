@@ -52,8 +52,8 @@ export const SessionSchema = z.object({
   channelId: z.string().min(1),
   userId: z.string().min(1).optional(),
   status: SessionStatusSchema,
-  createdAt: z.number().int().positive(),
-  updatedAt: z.number().int().positive(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
   expiresAt: z.number().int().positive().optional(),
   metadata: z.record(z.unknown()).optional(),
   context: z

@@ -5,7 +5,7 @@ import { z } from "zod";
 export const GatewayConfigSchema = z.object({
   port: z.number().int().positive().default(18789),
   host: z.string().default("0.0.0.0"),
-  authToken: z.string().min(1).optional(),
+  authToken: z.string().min(16).optional(),
   maxConnections: z.number().int().positive().default(100),
   heartbeatIntervalMs: z.number().int().positive().default(30_000),
   sessionTimeoutMs: z.number().int().positive().default(3_600_000),
@@ -75,7 +75,7 @@ export const ModelConfigSchema = z.object({
   provider: z.enum(["anthropic", "openai", "local"]),
   model: z.string().min(1),
   apiKey: z.string().optional(),
-  baseUrl: z.string().url().optional(),
+  baseUrl: z.string().url().or(z.literal("")).optional(),
   maxTokens: z.number().int().positive().optional(),
   costPer1kInput: z.number().nonnegative().default(0),
   costPer1kOutput: z.number().nonnegative().default(0),

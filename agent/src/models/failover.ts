@@ -44,7 +44,7 @@ export class ModelFailover {
    * Tries the primary model first, then falls back to alternatives.
    */
   async *chat(params: ChatParams): AsyncGenerator<StreamEvent> {
-    const chain = [this.config.primary, ...this.config.fallbacks];
+    const chain = Object.freeze([this.config.primary, ...this.config.fallbacks]);
     const attemptedModels: string[] = [];
 
     for (let i = 0; i < chain.length; i++) {

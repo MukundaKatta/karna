@@ -56,14 +56,14 @@ export const AgentConfigSchema = z.object({
     .object({
       anthropic: z
         .object({
-          apiKey: z.string().min(1),
+          apiKey: z.string().min(8),
           baseUrl: z.string().url().optional(),
           maxRetries: z.number().int().nonnegative().default(3),
         })
         .optional(),
       openai: z
         .object({
-          apiKey: z.string().min(1),
+          apiKey: z.string().min(8),
           baseUrl: z.string().url().optional(),
           organization: z.string().optional(),
           maxRetries: z.number().int().nonnegative().default(3),

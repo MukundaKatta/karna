@@ -541,7 +541,7 @@ export class SlackAdapter {
     // Slack message payload limit is ~40KB; truncate if needed
     if (content.length > 39_000) {
       this.logger.warn({ channel, originalLength: content.length }, "Truncating Slack message exceeding 39000 chars");
-      content = content.slice(0, 39_000) + "... [truncated]";
+      content = content.slice(0, 39_000 - 16) + " ... [truncated]";
     }
 
     try {

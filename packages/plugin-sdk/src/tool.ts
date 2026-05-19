@@ -157,7 +157,16 @@ export interface ToolPlugin {
  * });
  * ```
  */
+/** Regex pattern for valid tool names (must match the pattern in @karna/shared). */
+const TOOL_NAME_REGEX = /^[a-zA-Z_][a-zA-Z0-9_.-]*$/;
+
 export function defineTool(tool: ToolPlugin): ToolPlugin {
+  if (!TOOL_NAME_REGEX.test(tool.name)) {
+    throw new Error(
+      `Invalid tool name "${tool.name}". Tool names must match ${TOOL_NAME_REGEX} (start with a letter or underscore, followed by alphanumerics, underscores, dots, or hyphens).`,
+    );
+  }
+
   return {
     requiresApproval: false,
     timeout: 30_000,

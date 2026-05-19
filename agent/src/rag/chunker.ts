@@ -52,6 +52,7 @@ export function chunkText(text: string, options?: ChunkOptions): TextChunk[] {
   const metadata = options?.metadata ?? {};
 
   if (chunkSize <= 0) throw new Error("chunkSize must be positive");
+  if (overlap < 0) throw new Error("overlap cannot be negative");
   if (overlap >= chunkSize) throw new Error("overlap must be less than chunkSize");
 
   if (!text || text.trim().length === 0) return [];

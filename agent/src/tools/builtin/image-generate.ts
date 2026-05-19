@@ -56,10 +56,11 @@ export const imageGenerateTool: ToolDefinitionRuntime = {
       const { default: OpenAI } = await import("openai");
       const client = new OpenAI({ apiKey });
 
+      const size = (params.size ?? "1024x1024") as "1024x1024";
       const response = await client.images.generate({
         model: "dall-e-3",
         prompt: params.prompt,
-        size: (params.size as "1024x1024") ?? "1024x1024",
+        size,
         quality: params.quality ?? "standard",
         style: params.style ?? "vivid",
         n: params.n ?? 1,

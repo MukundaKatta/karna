@@ -75,7 +75,14 @@ export function signRefreshToken(userId: string): string {
 }
 
 export function verifyToken(token: string): jwt.JwtPayload {
-  return jwt.verify(token, JWT_SECRET, { issuer: JWT_ISSUER, audience: "karna-cloud" }) as jwt.JwtPayload;
+  const decoded = jwt.verify(token, JWT_SECRET, { issuer: JWT_ISSUER, audience: "karna-cloud" }) as jwt.JwtPayload;
+
+  // Reject tokens with an empty audience string
+  if (decoded.aud === "") {
+    throw new Error("Token audience must not be empty");
+  }
+
+  return decoded;
 }
 
 // ─── Auth Middleware ────────────────────────────────────────────────────────

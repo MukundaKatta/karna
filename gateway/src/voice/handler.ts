@@ -5,6 +5,8 @@
 //
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import type { WebSocket } from "@fastify/websocket";
 import { nanoid } from "nanoid";
 import pino from "pino";
@@ -43,6 +45,56 @@ function getVoiceProcessor(): VoiceProcessor {
     });
   }
   return voiceProcessor;
+}
+
+// ─── Agent Config Defaults ─────────────────────────────────────────────────
+
+const DEFAULT_AGENT_NAME = "Karna";
+const DEFAULT_AGENT_DESCRIPTION = "A loyal and capable AI assistant.";
+const DEFAULT_AGENT_PERSONALITY = "Helpful, accurate, and concise.";
+const DEFAULT_AGENT_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_AGENT_PROVIDER = "anthropic";
+
+interface VoiceAgentConfig {
+  name: string;
+  description: string;
+  personality: string;
+  defaultModel: string;
+  defaultProvider: string;
+}
+
+let cachedAgentConfig: VoiceAgentConfig | null = null;
+
+async function loadAgentConfig(): Promise<VoiceAgentConfig> {
+  if (cachedAgentConfig) return cachedAgentConfig;
+
+  try {
+    const configPath = resolve(import.meta.dirname, "../../../../config/default.json");
+    const raw = await readFile(configPath, "utf-8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const agent = parsed["agent"] as Record<string, unknown> | undefined;
+    const models = agent?.["models"] as Record<string, unknown> | undefined;
+    const primary = models?.["primary"] as Record<string, unknown> | undefined;
+
+    cachedAgentConfig = {
+      name: (agent?.["name"] as string) ?? DEFAULT_AGENT_NAME,
+      description: DEFAULT_AGENT_DESCRIPTION,
+      personality: (agent?.["persona"] as string) ?? DEFAULT_AGENT_PERSONALITY,
+      defaultModel: (primary?.["model"] as string) ?? DEFAULT_AGENT_MODEL,
+      defaultProvider: (primary?.["provider"] as string) ?? DEFAULT_AGENT_PROVIDER,
+    };
+  } catch {
+    logger.warn("Failed to load agent config from default.json, using built-in defaults");
+    cachedAgentConfig = {
+      name: DEFAULT_AGENT_NAME,
+      description: DEFAULT_AGENT_DESCRIPTION,
+      personality: DEFAULT_AGENT_PERSONALITY,
+      defaultModel: DEFAULT_AGENT_MODEL,
+      defaultProvider: DEFAULT_AGENT_PROVIDER,
+    };
+  }
+
+  return cachedAgentConfig;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -152,7 +204,6 @@ export async function handleVoiceEnd(
     return;
   }
 
-  const sessionId = context.auth ? undefined : undefined;
   // Try to find a sessionId from the context's connected clients
   let resolvedSessionId: string | undefined;
   for (const [, client] of context.connectedClients) {
@@ -275,17 +326,20 @@ export async function handleVoiceEnd(
     // Load conversation history
     const history = await readTranscript(resolvedSessionId, 50);
 
+    // Load agent config from config/default.json (or use defaults)
+    const agentConfig = await loadAgentConfig();
+
     // Execute agent turn
     const result = await runtime.run({
       message: transcribedText,
       session: chatSession,
       agent: {
         id: chatSession.channelId,
-        name: "Karna",
-        description: "A loyal and capable AI assistant.",
-        personality: "Helpful, accurate, and concise.",
-        defaultModel: "claude-sonnet-4-20250514",
-        defaultProvider: "anthropic",
+        name: agentConfig.name,
+        description: agentConfig.description,
+        personality: agentConfig.personality,
+        defaultModel: agentConfig.defaultModel,
+        defaultProvider: agentConfig.defaultProvider,
       },
       conversationHistory: history,
     });

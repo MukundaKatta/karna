@@ -538,7 +538,9 @@ export class LineAdapter {
     const replyTokenEntry = sessionId ? this.replyTokens.get(sessionId) : undefined;
 
     if (replyTokenEntry) {
-      this.replyTokens.delete(sessionId!);
+      if (sessionId != null) {
+        this.replyTokens.delete(sessionId);
+      }
       if (Date.now() - replyTokenEntry.timestamp > 55_000) {
         this.logger.warn({ sessionId }, "Reply token expired, falling back to push API");
         await this.pushMessage(conversationId, text);

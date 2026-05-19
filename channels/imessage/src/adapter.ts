@@ -218,6 +218,8 @@ export class IMessageAdapter {
 
   private async pollNewMessages(): Promise<void> {
     try {
+      // Sanitize ROWID as integer to prevent SQL injection
+      const safeRowId = Number.isFinite(this.lastProcessedRowId) ? Math.floor(this.lastProcessedRowId) : 0;
       const query = `
         SELECT
           m.ROWID as rowid,
@@ -228,7 +230,7 @@ export class IMessageAdapter {
           m.service as service
         FROM message m
         JOIN handle h ON m.handle_id = h.ROWID
-        WHERE m.ROWID > ${this.lastProcessedRowId}
+        WHERE m.ROWID > ${safeRowId}
           AND m.is_from_me = 0
           AND m.text IS NOT NULL
           AND m.text != ''
@@ -261,10 +263,12 @@ export class IMessageAdapter {
   // ─── Send Message via AppleScript ─────────────────────────────────────
 
   private async sendIMessage(handle: string, text: string): Promise<void> {
-    // Escape single quotes and backslashes for AppleScript
+    // Escape backslashes, double quotes, newlines, and backticks for AppleScript
     const escapedText = text
       .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"');
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, "\\n")
+      .replace(/`/g, "\\`");
 
     const script = `
       tell application "Messages"

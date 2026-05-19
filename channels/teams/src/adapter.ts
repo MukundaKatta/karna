@@ -610,7 +610,8 @@ export class TeamsAdapter {
     }
 
     const MAX_MESSAGE_LENGTH = 25_000;
-    const truncatedText = text.length > MAX_MESSAGE_LENGTH ? text.slice(0, MAX_MESSAGE_LENGTH) + "\n\n[Message truncated]" : text;
+    const TRUNCATION_SUFFIX = "\n\n[truncated]";
+    const truncatedText = text.length > MAX_MESSAGE_LENGTH ? text.slice(0, MAX_MESSAGE_LENGTH - TRUNCATION_SUFFIX.length) + TRUNCATION_SUFFIX : text;
     const activity = {
       type: "message",
       from: { id: ref.botId },

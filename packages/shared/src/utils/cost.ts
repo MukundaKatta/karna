@@ -12,6 +12,8 @@ export interface ModelPricing {
  * Pricing table for supported models.
  * Prices are in USD per 1 million tokens.
  * Updated as of 2025.
+ *
+ * // Fallback estimates — update when pricing changes
  */
 const MODEL_PRICING: Record<string, ModelPricing> = {
   // Anthropic Claude models

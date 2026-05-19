@@ -19,7 +19,6 @@ import type { AuthContext } from "./auth.js";
 import {
   validateToken,
   generateChallenge,
-  verifyChallenge,
   createAuthContext,
 } from "./auth.js";
 import type { SessionManager } from "../session/manager.js";
@@ -45,6 +44,26 @@ import {
 } from "../security/moderation.js";
 
 const logger = pino({ name: "message-handler" });
+
+const MAX_RAW_MESSAGE_BYTES = 1_048_576; // 1 MB
+
+/**
+ * Pre-parsing size check for raw WebSocket messages.
+ * Returns an error string if the message exceeds the limit, or null if OK.
+ */
+export function checkRawMessageSize(raw: string | Buffer | ArrayBuffer): string | null {
+  const size =
+    typeof raw === "string"
+      ? Buffer.byteLength(raw, "utf-8")
+      : raw instanceof ArrayBuffer
+        ? raw.byteLength
+        : raw.length;
+  if (size > MAX_RAW_MESSAGE_BYTES) {
+    return `Message size ${size} bytes exceeds maximum of ${MAX_RAW_MESSAGE_BYTES} bytes`;
+  }
+  return null;
+}
+
 const ACCESS_CONTROLLED_CHANNELS = new Set([
   "discord",
   "google-chat",

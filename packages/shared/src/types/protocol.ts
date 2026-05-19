@@ -249,7 +249,7 @@ export const MemoryListMessageSchema = BaseMessageSchema.extend({
     entries: z.array(MobileMemoryEntrySchema).optional(),
     query: z.string().optional(),
     category: z.string().optional(),
-    limit: z.number().int().positive().optional(),
+    limit: z.number().int().min(1).max(100).optional(),
   }).optional(),
 });
 

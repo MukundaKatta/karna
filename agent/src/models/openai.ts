@@ -129,7 +129,8 @@ export class OpenAIProvider implements ModelProvider {
 
   countTokens(text: string): number {
     // Rough approximation. Use tiktoken for precision in production.
-    return Math.ceil(text.length / 4);
+    // Add overhead constant to account for message framing tokens.
+    return Math.ceil(text.length / 4) + 50;
   }
 
   // ─── Private Helpers ────────────────────────────────────────────────────────
@@ -185,18 +186,26 @@ export class OpenAIProvider implements ModelProvider {
   }
 
   private buildTools(tools: ChatTool[]): ChatCompletionTool[] {
-    return tools.map((tool) => ({
-      type: "function" as const,
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: {
-          type: "object" as const,
-          properties: tool.parameters.properties ?? {},
-          required: tool.parameters.required ?? [],
+    return tools
+      .filter((tool) => {
+        if (!tool.name || !tool.description) {
+          logger.warn({ tool: tool.name ?? "<unnamed>" }, "Skipping tool with missing required fields (name or description)");
+          return false;
+        }
+        return true;
+      })
+      .map((tool) => ({
+        type: "function" as const,
+        function: {
+          name: tool.name,
+          description: tool.description,
+          parameters: {
+            type: "object" as const,
+            properties: tool.parameters.properties ?? {},
+            required: tool.parameters.required ?? [],
+          },
         },
-      },
-    }));
+      }));
   }
 
   private async *processStream(

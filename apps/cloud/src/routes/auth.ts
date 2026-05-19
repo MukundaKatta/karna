@@ -324,7 +324,8 @@ export async function authRoutes(server: FastifyInstance): Promise<void> {
   // ─── GET /auth/me ────────────────────────────────────────────────────
 
   server.get("/auth/me", { preHandler: [authMiddleware] }, async (request, reply) => {
-    const user = request.user!;
+    if (!request.user) return reply.status(401).send({ error: "Unauthorized" });
+    const user = request.user;
     const sb = requireSupabase();
 
     const { data: profile } = await sb

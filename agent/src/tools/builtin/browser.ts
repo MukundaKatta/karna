@@ -31,7 +31,7 @@ async function getPlaywright() {
 }
 
 async function ensureBrowser(): Promise<BrowserState> {
-  if (browserState?.browser?.isConnected()) {
+  if (browserState && (browserState.browser?.isConnected?.() ?? false)) {
     return browserState;
   }
 
@@ -65,11 +65,13 @@ async function getOrCreatePage(state: BrowserState, url?: string): Promise<{ pag
 
   // Enforce page pool limit
   if (state.pages.size >= MAX_PAGES) {
-    const oldestKey = state.pages.keys().next().value!;
-    const oldPage = state.pages.get(oldestKey);
-    await oldPage?.close().catch(() => {});
-    state.pages.delete(oldestKey);
-    logger.debug({ pageId: oldestKey }, "Closed oldest page (pool limit reached)");
+    if (state.pages.size > 0) {
+      const oldestKey = state.pages.keys().next().value!;
+      const oldPage = state.pages.get(oldestKey);
+      await oldPage?.close().catch(() => {});
+      state.pages.delete(oldestKey);
+      logger.debug({ pageId: oldestKey }, "Closed oldest page (pool limit reached)");
+    }
   }
 
   const page = await state.context.newPage();

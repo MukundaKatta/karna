@@ -33,7 +33,7 @@ describe("runtime routes", () => {
       gateway: {
         host: "127.0.0.1",
         port: 4100,
-        authToken: "gateway-secret",
+        authToken: "gateway-secret-long-enough-for-min16",
         maxConnections: 25,
         heartbeatIntervalMs: 20_000,
         sessionTimeoutMs: 8_000,

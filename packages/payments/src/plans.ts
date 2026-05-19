@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+// ─── Constants ─────────────────────────────────────────────────────────────
+
+/** Sentinel value representing an unlimited quota. */
+export const UNLIMITED = -1 as const;
+
 // ─── Plan Definitions ───────────────────────────────────────────────────────
 
 export const PLANS = {
@@ -25,7 +30,7 @@ export const PLANS = {
     name: "Karna Cloud Pro",
     price: 29,
     agents: 3,
-    channels: -1,
+    channels: UNLIMITED,
     messagesPerMonth: 50000,
     voice: true,
     api: false,
@@ -34,7 +39,7 @@ export const PLANS = {
     name: "Karna Cloud Team",
     price: 49,
     agents: 10,
-    channels: -1,
+    channels: UNLIMITED,
     messagesPerMonth: 200000,
     voice: true,
     api: true,
@@ -91,5 +96,5 @@ export function getPlanByRazorpayPlanId(planId: string): PlanId | null {
 }
 
 export function isUnlimited(value: number): boolean {
-  return value === -1;
+  return value === UNLIMITED;
 }

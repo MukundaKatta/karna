@@ -16,6 +16,14 @@ interface AnalyticsHistoryQuery {
   period?: string;
 }
 
+interface TraceCollectionQuery {
+  offset?: string;
+  limit?: string;
+}
+
+const DEFAULT_TRACE_LIMIT = 100;
+const MAX_TRACE_LIMIT = 1000;
+
 interface AgentParams {
   id: string;
 }
@@ -61,9 +69,11 @@ export function registerApiRoutes(
     auditLogger: AuditLogger;
   },
 ): void {
-  app.get("/api/agents", async () => {
+  app.get<{ Querystring: TraceCollectionQuery }>("/api/agents", async (request) => {
+    const offset = Math.max(0, parseInt(request.query?.offset ?? "0", 10) || 0);
+    const limit = parseInt(request.query?.limit ?? String(DEFAULT_TRACE_LIMIT), 10) || DEFAULT_TRACE_LIMIT;
     return {
-      agents: buildAgentCatalog(services.traceCollector),
+      agents: buildAgentCatalog(services.traceCollector, offset, limit),
     };
   });
 
@@ -79,9 +89,11 @@ export function registerApiRoutes(
     return reply.send({ agent });
   });
 
-  app.get("/api/tools", async () => {
+  app.get<{ Querystring: TraceCollectionQuery }>("/api/tools", async (request) => {
+    const offset = Math.max(0, parseInt(request.query?.offset ?? "0", 10) || 0);
+    const limit = parseInt(request.query?.limit ?? String(DEFAULT_TRACE_LIMIT), 10) || DEFAULT_TRACE_LIMIT;
     return {
-      tools: buildToolCatalog(services.traceCollector),
+      tools: buildToolCatalog(services.traceCollector, offset, limit),
     };
   });
 
@@ -121,9 +133,11 @@ export function registerApiRoutes(
   logger.info("Catalog API routes registered");
 }
 
-function buildAgentCatalog(traceCollector: TraceCollector) {
+function buildAgentCatalog(traceCollector: TraceCollector, offset = 0, limit = DEFAULT_TRACE_LIMIT) {
+  const clampedLimit = Math.min(Math.max(1, limit), MAX_TRACE_LIMIT);
   const traces = traceCollector.queryTraces({
-    limit: 10_000,
+    limit: clampedLimit,
+    offset,
     includeActive: true,
   }).traces;
 
@@ -152,9 +166,11 @@ function buildAgentCatalog(traceCollector: TraceCollector) {
   });
 }
 
-function buildToolCatalog(traceCollector: TraceCollector) {
+function buildToolCatalog(traceCollector: TraceCollector, offset = 0, limit = DEFAULT_TRACE_LIMIT) {
+  const clampedLimit = Math.min(Math.max(1, limit), MAX_TRACE_LIMIT);
   const traces = traceCollector.queryTraces({
-    limit: 10_000,
+    limit: clampedLimit,
+    offset,
     includeActive: true,
   }).traces;
 
@@ -560,14 +576,24 @@ async function buildAnalyticsHistory(
   startOfToday.setHours(0, 0, 0, 0);
 
   const start = startOfToday.getTime() - (days - 1) * 86_400_000;
-  const traces = traceCollector.queryTraces({
-    limit: 10_000,
-    since: start,
-  }).traces;
+  // Paginate through all traces for the period
+  const traces: ReturnType<typeof traceCollector.queryTraces>["traces"] = [];
+  let traceOffset = 0;
+  const pageSize = DEFAULT_TRACE_LIMIT;
+  for (;;) {
+    const page = traceCollector.queryTraces({
+      limit: pageSize,
+      offset: traceOffset,
+      since: start,
+    });
+    traces.push(...page.traces);
+    if (traces.length >= page.total || page.traces.length < pageSize) break;
+    traceOffset += pageSize;
+  }
   const sessionEvents = await auditLogger.query({
     eventType: "session.created",
     since: start,
-    limit: 10_000,
+    limit: DEFAULT_TRACE_LIMIT,
   });
 
   const buckets = new Map<string, {

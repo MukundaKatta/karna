@@ -188,9 +188,18 @@ export class SignalAdapter {
       return;
     }
 
-    this.logger.debug({ senderNumber, textLength: text.length }, "Received Signal message");
+    const MAX_SIGNAL_MESSAGE_LENGTH = 2000;
+    if (text.length > MAX_SIGNAL_MESSAGE_LENGTH) {
+      this.logger.warn(
+        { senderNumber, textLength: text.length, maxLength: MAX_SIGNAL_MESSAGE_LENGTH },
+        "Incoming Signal message exceeds maximum length, truncating",
+      );
+    }
+    const validatedText = text.length > MAX_SIGNAL_MESSAGE_LENGTH ? text.slice(0, MAX_SIGNAL_MESSAGE_LENGTH) : text;
 
-    void this.forwardToGateway(senderNumber, text);
+    this.logger.debug({ senderNumber, textLength: validatedText.length }, "Received Signal message");
+
+    void this.forwardToGateway(senderNumber, validatedText);
   }
 
   // ─── Gateway Communication ─────────────────────────────────────────────

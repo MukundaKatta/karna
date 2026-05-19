@@ -135,11 +135,12 @@ export async function searchMemories(
     category?: string;
   },
 ) {
+  const threshold = Math.min(1, Math.max(0, params.matchThreshold ?? 0.7));
   const { data, error } = await client.rpc('match_memories', {
     p_agent_id: params.agentId,
     p_embedding: params.embedding,
     p_match_count: params.matchCount ?? 10,
-    p_match_threshold: params.matchThreshold ?? 0.7,
+    p_match_threshold: threshold,
     p_category: params.category ?? null,
   });
 

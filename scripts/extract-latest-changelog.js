@@ -7,7 +7,7 @@ const [, , changelogPath = "CHANGELOG.md", outputPath = "RELEASE_NOTES.md"] =
 
 const changelog = readFileSync(changelogPath, "utf8");
 const sections = changelog.split(/\n(?=##\s)/);
-const latest = sections.find((section) => /^##\s/.test(section.trimStart()));
+const latest = sections.find((section) => /^\s*##\s/.test(section));
 
 if (!latest) {
   throw new Error(`No release section found in ${changelogPath}`);

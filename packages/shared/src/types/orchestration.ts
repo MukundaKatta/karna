@@ -104,9 +104,9 @@ export type TaskAssignment = z.infer<typeof TaskAssignmentSchema>;
 
 export const DelegationRecordSchema = z.object({
   /** Which agent delegated. */
-  fromAgentId: z.string(),
+  fromAgentId: z.string().min(1),
   /** Which agent received the delegation. */
-  toAgentId: z.string(),
+  toAgentId: z.string().min(1),
   /** Why delegation happened. */
   reason: z.string(),
   /** The task that was delegated. */

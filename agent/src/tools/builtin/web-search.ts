@@ -371,18 +371,26 @@ async function searchTavilyImages(
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey) throw new Error("TAVILY_API_KEY not set");
 
-  const response = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      api_key: apiKey,
-      query,
-      max_results: maxResults,
-      include_answer: false,
-      include_images: true,
-      safe_search: safeSearch,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  let response: Response;
+  try {
+    response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        max_results: maxResults,
+        include_answer: false,
+        include_images: true,
+        safe_search: safeSearch,
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Tavily API error: ${response.status} ${response.statusText}`);
@@ -415,7 +423,16 @@ async function searchSerpApiImages(
     engine: "google_images",
     safe: safeSearch ? "active" : "off",
   });
-  const response = await fetch(`https://serpapi.com/search?${params.toString()}`);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  let response: Response;
+  try {
+    response = await fetch(`https://serpapi.com/search?${params.toString()}`, {
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`SerpAPI error: ${response.status} ${response.statusText}`);

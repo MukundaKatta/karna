@@ -25,6 +25,17 @@ export function startWebSocketPingPong(
   socket: PingableWebSocket,
   options: WebSocketPingPongOptions = {},
 ): WebSocketPingPongController {
+  if (options.pingIntervalMs != null && options.pingIntervalMs <= 0) {
+    throw new Error(
+      `pingIntervalMs must be a positive number, got ${options.pingIntervalMs}`,
+    );
+  }
+  if (options.pongTimeoutMs != null && options.pongTimeoutMs <= 0) {
+    throw new Error(
+      `pongTimeoutMs must be a positive number, got ${options.pongTimeoutMs}`,
+    );
+  }
+
   const pingIntervalMs = options.pingIntervalMs ?? DEFAULT_WS_PING_INTERVAL_MS;
   const pongTimeoutMs = options.pongTimeoutMs ?? DEFAULT_WS_PONG_TIMEOUT_MS;
   const setIntervalFn = options.setIntervalFn ?? setInterval;

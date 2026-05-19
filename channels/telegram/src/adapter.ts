@@ -685,7 +685,7 @@ export class TelegramAdapter {
     }
 
     const delay = Math.min(
-      (this.config.reconnectIntervalMs ?? 5_000) * Math.pow(2, this.reconnectAttempts),
+      (this.config.reconnectIntervalMs ?? 5_000) * Math.min(Math.pow(2, Math.min(this.reconnectAttempts, 10)), 60_000),
       60_000,
     );
 
@@ -736,7 +736,18 @@ export class TelegramAdapter {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     if (this.reconnectQueue.length === 0) return;
 
-    const queued = this.reconnectQueue.splice(0);
+    const now = Date.now();
+    const MAX_MESSAGE_AGE_MS = 5 * 60 * 1000; // 5 minutes
+    const queued = this.reconnectQueue.splice(0).filter((msg) => {
+      if (now - msg.queuedAt > MAX_MESSAGE_AGE_MS) {
+        this.logger.warn(
+          { chatId: msg.chatId, queuedAt: msg.queuedAt, ageMs: now - msg.queuedAt },
+          "Discarding stale queued message older than 5 minutes",
+        );
+        return false;
+      }
+      return true;
+    });
     this.logger.info(
       {
         queuedMessages: queued.length,

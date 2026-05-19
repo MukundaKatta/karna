@@ -225,7 +225,10 @@ export function evaluateExpression(expression: string): number {
       const right = stack.pop();
       const left = stack.pop();
       if (left === undefined || right === undefined) throw new Error(`Operator ${token.value} is missing operands`);
-      stack.push(OPERATORS[token.value]!.apply(left, right));
+      if (token.value === "/" && right === 0) throw new Error("Division by zero");
+      const operatorResult = OPERATORS[token.value]!.apply(left, right);
+      if (!Number.isFinite(operatorResult)) throw new Error("Result is not a finite number (possible division by zero or overflow)");
+      stack.push(operatorResult);
     }
   }
 

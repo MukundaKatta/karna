@@ -521,7 +521,7 @@ export class WhatsAppAdapter {
   private async sendWhatsAppMessage(jid: string, text: string): Promise<void> {
     const maxRetries = Math.min(this.config.maxRetries ?? 3, 10);
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         if (!this.sock) {
           throw new Error("WhatsApp socket not connected");

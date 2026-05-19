@@ -80,7 +80,12 @@ async function startChat(options: ChatOptions): Promise<void> {
     try {
       message = JSON.parse(data.toString()) as ProtocolMessage;
     } catch (parseError) {
-      console.error(chalk.red(`Failed to parse WebSocket message: ${parseError instanceof Error ? parseError.message : String(parseError)}`));
+      if (parseError instanceof SyntaxError) {
+        const preview = data.toString().slice(0, 120);
+        console.error(chalk.red(`Received non-JSON message from gateway (${parseError.message}): ${preview}`));
+      } else {
+        console.error(chalk.red(`Failed to parse WebSocket message: ${parseError instanceof Error ? parseError.message : String(parseError)}`));
+      }
       return;
     }
 

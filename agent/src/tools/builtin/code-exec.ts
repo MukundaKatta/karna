@@ -1,7 +1,7 @@
 // ─── Sandboxed Code Execution Tool ────────────────────────────────────────
 
 import { fork } from "node:child_process";
-import { writeFile, unlink, mkdtemp } from "node:fs/promises";
+import { writeFile, rm, mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
@@ -120,8 +120,8 @@ __execute()
     try {
       return await executeInChildProcess(codePath, parsed.timeout, parsed.memoryMB, parsed.language);
     } finally {
-      // Clean up temp files
-      await unlink(codePath).catch(() => {});
+      // Clean up temp directory and all files
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   },
 };

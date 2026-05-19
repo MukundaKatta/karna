@@ -22,7 +22,10 @@ export const JsonSchemaPropertySchema: z.ZodType<JsonSchemaProperty> = z.lazy(()
     minLength: z.number().int().nonnegative().optional(),
     maxLength: z.number().int().nonnegative().optional(),
     pattern: z.string().optional(),
-  })
+  }).refine(
+    (data) => data.minimum == null || data.maximum == null || data.minimum <= data.maximum,
+    { message: "minimum must be less than or equal to maximum" },
+  )
 );
 
 export interface JsonSchemaProperty {

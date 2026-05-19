@@ -86,6 +86,17 @@ export async function executeHandoff(
     };
   }
 
+  // ─── Guard: self-delegation ──────────────────────────────────────────
+  if (visited.size === 1 && visited.has(payload.targetAgentId)) {
+    return {
+      success: false,
+      response: "Cannot delegate to self",
+      agentId: payload.targetAgentId,
+      model: undefined,
+      tokenUsage: { inputTokens: 0, outputTokens: 0 },
+    };
+  }
+
   // ─── Guard: depth ─────────────────────────────────────────────────────
   if (depth >= maxDepth) {
     logger.warn(

@@ -9,7 +9,7 @@ export type GroupActivationMode = z.infer<typeof GroupActivationModeSchema>;
 export const PairingRequestSchema = z.object({
   code: z.string().min(1),
   userId: z.string().min(1),
-  expiresAt: z.number().int(),
+  expiresAt: z.number().int().positive(),
 });
 export type PairingRequest = z.infer<typeof PairingRequestSchema>;
 

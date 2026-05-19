@@ -32,6 +32,9 @@ spec:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
             runAsUser: 1000
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
           ports:
             - containerPort: 18789
               protocol: TCP
@@ -74,6 +77,10 @@ spec:
               port: 18789
             failureThreshold: 30
             periodSeconds: 2
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 128Mi
 ---
 apiVersion: v1
 kind: Service

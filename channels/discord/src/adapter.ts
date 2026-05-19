@@ -652,7 +652,7 @@ export class DiscordAdapter {
     }
 
     const delay = Math.min(
-      (this.config.reconnectIntervalMs ?? 5_000) * Math.pow(2, this.reconnectAttempts),
+      (this.config.reconnectIntervalMs ?? 5_000) * Math.min(Math.pow(2, Math.min(this.reconnectAttempts, 10)), 60_000),
       60_000,
     );
 
@@ -811,11 +811,12 @@ export function buildDiscordToolResultEmbed(
   message: ToolResultMessage,
 ): EmbedBuilder {
   const result = formatToolResult(message.payload.result);
+  const toolNameValue = `\`${message.payload.toolName}\``;
   const embed = new EmbedBuilder()
     .setColor(message.payload.isError ? DISCORD_COLOR_ERROR : DISCORD_COLOR_SUCCESS)
     .setTitle(message.payload.isError ? "Tool Error" : "Tool Result")
     .addFields(
-      { name: "Tool", value: `\`${message.payload.toolName}\``, inline: true },
+      { name: "Tool", value: toolNameValue.length > MAX_EMBED_FIELD_LENGTH ? toolNameValue.slice(0, MAX_EMBED_FIELD_LENGTH - 3) + "..." : toolNameValue, inline: true },
       {
         name: "Status",
         value: message.payload.isError ? "Error" : "Success",

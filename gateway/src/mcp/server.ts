@@ -162,11 +162,17 @@ export class KarnaMCPServer {
    * Create an SSE transport for a Fastify request/response pair.
    * This is used when the MCP server runs alongside the gateway on
    * a dedicated HTTP endpoint.
+   *
+   * @param endpoint - The URL path clients will POST messages to.
+   * @param res - The Node.js ServerResponse for the SSE stream.
+   * @param options - Optional SSEServerTransport configuration.
    */
   async createSSETransport(
     endpoint: string,
+    res: import("node:http").ServerResponse,
+    options?: ConstructorParameters<typeof SSEServerTransport>[2],
   ): Promise<SSEServerTransport> {
-    const transport = new SSEServerTransport(endpoint, {} as never);
+    const transport = new SSEServerTransport(endpoint, res, options);
     return transport;
   }
 

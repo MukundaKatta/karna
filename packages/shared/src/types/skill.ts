@@ -31,7 +31,7 @@ export const SkillMetadataSchema = z.object({
     .regex(/^[a-zA-Z_][a-zA-Z0-9_.-]*$/, "Skill ID must be a valid identifier"),
   name: z.string().min(1).max(128),
   description: z.string().min(1).max(2048),
-  version: z.string().regex(/^\d+\.\d+\.\d+$/, "Version must be semver format"),
+  version: z.string().regex(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?$/, "Version must be semver format"),
   author: z.string().optional(),
   tags: z.array(z.string()).default([]),
   category: z.string().optional(),
@@ -45,7 +45,7 @@ export const SkillMetadataSchema = z.object({
   // Runtime
   enabled: z.boolean().default(true),
   singleton: z.boolean().default(false),
-  maxConcurrency: z.number().int().positive().default(5),
+  maxConcurrency: z.number().int().positive().max(100).default(5),
 
   // Dependencies
   dependencies: z.array(z.string()).default([]),

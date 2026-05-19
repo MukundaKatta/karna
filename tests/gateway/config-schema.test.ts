@@ -30,13 +30,18 @@ describe("Config Schema", () => {
       expect(GatewayConfigSchema.safeParse({ port: 8080 }).success).toBe(true);
     });
 
-    it("accepts optional authToken", () => {
-      const result = GatewayConfigSchema.parse({ authToken: "secret-token" });
-      expect(result.authToken).toBe("secret-token");
+    it("accepts optional authToken with at least 16 characters", () => {
+      const result = GatewayConfigSchema.parse({ authToken: "secret-token-that-is-definitely-long-enough" });
+      expect(result.authToken).toBe("secret-token-that-is-definitely-long-enough");
     });
 
     it("rejects empty authToken", () => {
       expect(GatewayConfigSchema.safeParse({ authToken: "" }).success).toBe(false);
+    });
+
+    it("rejects authToken shorter than 16 characters", () => {
+      expect(GatewayConfigSchema.safeParse({ authToken: "short" }).success).toBe(false);
+      expect(GatewayConfigSchema.safeParse({ authToken: "exactly15chars!" }).success).toBe(false);
     });
   });
 

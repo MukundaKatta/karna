@@ -342,13 +342,24 @@ export default function ChatScreen() {
             placeholder="Message Karna..."
             placeholderTextColor={colors.textTertiary}
             multiline
-            maxLength={4000}
+            maxLength={5000}
             onSubmitEditing={handleSend}
             returnKeyType="send"
             blurOnSubmit={false}
             accessibilityLabel="Chat message input"
             accessibilityHint="Type your message to Karna"
           />
+
+          {inputText.length >= 4500 && (
+            <Text
+              style={[
+                styles.charCounter,
+                { color: inputText.length >= 5000 ? colors.error : colors.warning },
+              ]}
+            >
+              {inputText.length}/5000
+            </Text>
+          )}
 
           {inputText.trim() ? (
             <Pressable
@@ -443,6 +454,13 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     paddingTop: Platform.OS === "ios" ? 8 : 4,
     paddingBottom: Platform.OS === "ios" ? 8 : 4,
+  },
+  charCounter: {
+    ...Typography.caption,
+    fontWeight: "600",
+    position: "absolute",
+    top: -18,
+    right: Spacing.md,
   },
   sendButton: {
     width: 36,
