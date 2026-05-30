@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { registerChatCommand } from "./commands/chat.js";
+import { registerRunCommand } from "./commands/run.js";
 import { registerOnboardCommand } from "./commands/onboard.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerGatewayCommand } from "./commands/gateway.js";
@@ -44,6 +45,7 @@ async function main(): Promise<void> {
   // Register all commands
   registerOnboardCommand(program);
   registerChatCommand(program);
+  registerRunCommand(program);
   registerStatusCommand(program);
   registerGatewayCommand(program);
   registerSkillsCommand(program);
