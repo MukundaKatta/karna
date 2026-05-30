@@ -339,3 +339,164 @@ export const mcpDisconnectServerTool: ToolDefinitionRuntime = {
     return { disconnected: true, serverId: parsed.serverId };
   },
 };
+
+// ─── Transport-agnostic client core (#543, #546) ───────────────────────────
+//
+// ADDITIVE: the tool objects above keep using the optional SDK transport. The
+// types/class below provide a pure, SDK-free MCP JSON-RPC client over an
+// injectable transport so the protocol logic is unit-testable with a mock
+// transport (no network/process/SDK). Nothing above is modified.
+
+/** Client-side JSON-RPC request shape (notifications omit `id`). */
+export interface AgentJsonRpcRequest {
+  jsonrpc: "2.0";
+  id?: number | string | null;
+  method: string;
+  params?: unknown;
+}
+
+/** Client-side JSON-RPC response shape. */
+export interface AgentJsonRpcResponse {
+  jsonrpc: "2.0";
+  id: number | string | null;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+/**
+ * Injectable bidirectional MCP transport. `send` correlates a request with its
+ * response by `id`; notifications resolve `undefined`.
+ */
+export interface McpTransport {
+  send(request: AgentJsonRpcRequest): Promise<AgentJsonRpcResponse | undefined>;
+  onNotification?(handler: (notification: AgentJsonRpcRequest) => void): void;
+  close?(): Promise<void> | void;
+}
+
+export interface AgentMcpToolInfo {
+  name: string;
+  description?: string;
+  inputSchema?: Record<string, unknown>;
+}
+
+export interface AgentMcpContentBlock {
+  type: string;
+  text?: string;
+  [k: string]: unknown;
+}
+
+export interface AgentMcpCallToolResult {
+  content: AgentMcpContentBlock[];
+  isError: boolean;
+}
+
+export class AgentMcpRpcError extends Error {
+  constructor(
+    readonly code: number,
+    message: string,
+    readonly data?: unknown,
+  ) {
+    super(message);
+    this.name = "AgentMcpRpcError";
+  }
+}
+
+/**
+ * Pure MCP client over an {@link McpTransport}. Supports initialize, listTools,
+ * callTool, listResources/readResource, and getPrompt — all SDK-free.
+ */
+export class AgentMcpClient {
+  private readonly transport: McpTransport;
+  private nextId = 1;
+  private initialized = false;
+
+  constructor(transport: McpTransport) {
+    this.transport = transport;
+  }
+
+  get isInitialized(): boolean {
+    return this.initialized;
+  }
+
+  async initialize(): Promise<unknown> {
+    const result = await this.request("initialize", {
+      protocolVersion: "2024-11-05",
+      capabilities: {},
+      clientInfo: { name: "karna-agent", version: "1.0.0" },
+    });
+    this.initialized = true;
+    await this.notify("notifications/initialized", {});
+    return result;
+  }
+
+  async listTools(): Promise<AgentMcpToolInfo[]> {
+    const result = (await this.request("tools/list", {})) as {
+      tools?: AgentMcpToolInfo[];
+    };
+    return result.tools ?? [];
+  }
+
+  async callTool(
+    name: string,
+    args: Record<string, unknown> = {},
+  ): Promise<AgentMcpCallToolResult> {
+    const result = (await this.request("tools/call", {
+      name,
+      arguments: args,
+    })) as { content?: AgentMcpContentBlock[]; isError?: boolean };
+    return { content: result.content ?? [], isError: result.isError ?? false };
+  }
+
+  async listResources(): Promise<
+    Array<{ uri: string; name?: string; mimeType?: string }>
+  > {
+    const result = (await this.request("resources/list", {})) as {
+      resources?: Array<{ uri: string; name?: string; mimeType?: string }>;
+    };
+    return result.resources ?? [];
+  }
+
+  async readResource(
+    uri: string,
+  ): Promise<Array<{ uri: string; text?: string; blob?: string; mimeType?: string }>> {
+    const result = (await this.request("resources/read", { uri })) as {
+      contents?: Array<{ uri: string; text?: string; blob?: string; mimeType?: string }>;
+    };
+    return result.contents ?? [];
+  }
+
+  async getPrompt(
+    name: string,
+    args: Record<string, unknown> = {},
+  ): Promise<{ description?: string; messages: Array<{ role: string; content: AgentMcpContentBlock }> }> {
+    const result = (await this.request("prompts/get", {
+      name,
+      arguments: args,
+    })) as {
+      description?: string;
+      messages?: Array<{ role: string; content: AgentMcpContentBlock }>;
+    };
+    return { description: result.description, messages: result.messages ?? [] };
+  }
+
+  async close(): Promise<void> {
+    this.initialized = false;
+    await this.transport.close?.();
+  }
+
+  private async request(method: string, params: unknown): Promise<unknown> {
+    const id = this.nextId++;
+    const res = await this.transport.send({ jsonrpc: "2.0", id, method, params });
+    if (!res) {
+      throw new AgentMcpRpcError(-32603, `no response for method "${method}"`);
+    }
+    if (res.error) {
+      throw new AgentMcpRpcError(res.error.code, res.error.message, res.error.data);
+    }
+    return res.result;
+  }
+
+  private async notify(method: string, params: unknown): Promise<void> {
+    await this.transport.send({ jsonrpc: "2.0", method, params });
+  }
+}

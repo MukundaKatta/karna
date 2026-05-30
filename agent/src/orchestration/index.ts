@@ -21,3 +21,14 @@ export {
 // Additive phase-gating (#522) and map-reduce aggregation (#531) modules.
 export * from "./phase-gate.js";
 export * from "./aggregation.js";
+
+// Additive orchestration extensions:
+//  - #526 pluggable orchestration strategies
+//  - #530 hierarchical task decomposition + agent run state machine
+//  - #532 per-phase budget caps
+//  - #527 multi-sandbox parallel sub-agent execution
+export * from "./strategies.js";
+export * from "./task-tree.js";
+export * from "./run-state.js";
+export * from "./budget.js";
+export * from "./parallel-subagents.js";

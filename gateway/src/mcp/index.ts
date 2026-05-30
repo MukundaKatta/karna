@@ -6,3 +6,8 @@
  * (e.g. on an HTTP route) only when `McpExposeConfig.enabled` is true.
  */
 export * from './server.js';
+
+// Client-side MCP modules (#543, #545, #546, #553) — additive, transport-agnostic.
+export * from './client-core.js';
+export * from './registry-bridge.js';
+export * from './health.js';
