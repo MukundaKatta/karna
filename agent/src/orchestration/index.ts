@@ -17,3 +17,7 @@ export {
   type OrchestratorConfig,
   type DelegationCallback,
 } from "./orchestrator.js";
+
+// Additive phase-gating (#522) and map-reduce aggregation (#531) modules.
+export * from "./phase-gate.js";
+export * from "./aggregation.js";

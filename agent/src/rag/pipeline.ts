@@ -6,6 +6,7 @@ import pino from "pino";
 import { nanoid } from "nanoid";
 import { chunkText, type ChunkOptions, type TextChunk } from "./chunker.js";
 import { RAGRetriever, type RetrieveOptions, type RetrievalResult } from "./retriever.js";
+import type { Reranker } from "./rerank.js";
 import type { MemoryBackend, SaveMemoryInput } from "../memory/store.js";
 
 const logger = pino({ name: "rag-pipeline" });
@@ -38,17 +39,35 @@ export interface QueryOptions extends RetrieveOptions {
   agentId: string;
 }
 
+export interface PipelineOptions {
+  /**
+   * Optional reranker applied to retrieval results before formatting context.
+   * When omitted, retrieval behaviour is unchanged (default).
+   */
+  reranker?: Reranker;
+  /** topK passed to the reranker (defaults to the query's topK / all results). */
+  rerankTopK?: number;
+}
+
 // ─── RAG Pipeline ──────────────────────────────────────────────────────────
 
 export class RAGPipeline {
   private readonly backend: MemoryBackend;
   private readonly embedFn: EmbedFunction | null;
   private readonly retriever: RAGRetriever;
+  private readonly reranker: Reranker | null;
+  private readonly rerankTopK: number | undefined;
 
-  constructor(backend: MemoryBackend, embedFn?: EmbedFunction) {
+  constructor(
+    backend: MemoryBackend,
+    embedFn?: EmbedFunction,
+    options: PipelineOptions = {},
+  ) {
     this.backend = backend;
     this.embedFn = embedFn ?? null;
     this.retriever = new RAGRetriever(backend);
+    this.reranker = options.reranker ?? null;
+    this.rerankTopK = options.rerankTopK;
   }
 
   /**
@@ -142,12 +161,19 @@ export class RAGPipeline {
       }
     }
 
-    const results = await this.retriever.retrieve(
+    let results = await this.retriever.retrieve(
       question,
       embedding,
       options.agentId,
       options,
     );
+
+    // Optional reranking stage (Issue #599). Non-breaking: only runs when a
+    // reranker was supplied at construction time.
+    if (this.reranker) {
+      const topK = this.rerankTopK ?? options.topK;
+      results = await this.reranker.rerank(question, results, topK);
+    }
 
     const context = this.formatContext(results);
 

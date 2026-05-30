@@ -2,10 +2,30 @@
 
 import pino from "pino";
 import type { ToolDefinitionRuntime, ToolExecutionContext, ToolResult } from "./registry.js";
+import { validateToolInput, validateToolOutput } from "./validation.js";
+import type { ToolRateLimiter } from "./rate-limiter.js";
+import type { ToolResultCache } from "./result-cache.js";
 
 const logger = pino({ name: "tool-executor" });
 
+/**
+ * Optional execution features. All are opt-in: when omitted, `executeTool`
+ * behaves exactly as before. (Issues #547, #552, #548)
+ */
+export interface ExecuteToolOptions {
+  /** Per-tool rate limiter / concurrency gate (Issue #552). */
+  rateLimiter?: ToolRateLimiter;
+  /** Per-tool TTL result cache (Issue #548). */
+  cache?: ToolResultCache;
+  /**
+   * When true, validate the tool output against `outputSchema` and treat a
+   * mismatch as an error (Issue #547). Default false (no behavior change).
+   */
+  validateOutput?: boolean;
+}
+
 export const TOOL_TIMEOUT_ERROR_CODE = "TOOL_TIMEOUT";
+export const TOOL_RATE_LIMITED_ERROR_CODE = "TOOL_RATE_LIMITED";
 
 const RISK_TIMEOUT_MS = {
   low: 10_000,
@@ -25,7 +45,8 @@ const toolTimeoutCounts = new Map<string, { count: number; timestamp: number }>(
 export async function executeTool(
   tool: ToolDefinitionRuntime,
   input: Record<string, unknown>,
-  context: ToolExecutionContext
+  context: ToolExecutionContext,
+  options: ExecuteToolOptions = {}
 ): Promise<ToolResult> {
   const startTime = Date.now();
   const timeout = resolveToolTimeout(tool);
@@ -35,18 +56,45 @@ export async function executeTool(
     "Executing tool"
   );
 
-  // Validate input against Zod schema if available
+  // Validate input against Zod schema if available (Issue #547).
+  // Structured validation returns a model-friendly message; behavior is
+  // unchanged for tools without an inputSchema (pass-through).
   if (tool.inputSchema) {
-    const parseResult = tool.inputSchema.safeParse(input);
-    if (!parseResult.success) {
-      const errorMessage = parseResult.error.issues
-        .map((i) => `${i.path.join(".")}: ${i.message}`)
-        .join("; ");
-      logger.warn({ tool: tool.name, errors: errorMessage }, "Input validation failed");
+    const validation = validateToolInput(tool, input);
+    if (!validation.ok) {
       return {
         output: null,
         isError: true,
-        errorMessage: `Invalid input: ${errorMessage}`,
+        errorMessage: validation.error,
+        durationMs: Date.now() - startTime,
+      };
+    }
+  }
+
+  // Result cache lookup (Issue #548). No-op unless the tool opted in.
+  if (options.cache?.isEnabled(tool.name)) {
+    const cached = options.cache.get(tool.name, input);
+    if (cached.hit) {
+      const durationMs = Date.now() - startTime;
+      logger.info({ tool: tool.name, durationMs }, "Tool result cache hit");
+      return { output: cached.value, isError: false, durationMs };
+    }
+  }
+
+  // Acquire a rate-limit token / concurrency slot (Issue #552). Returns a
+  // no-op lease for unconfigured tools.
+  let lease: { release(): void } | undefined;
+  if (options.rateLimiter) {
+    try {
+      lease = await options.rateLimiter.acquire(tool.name, context.signal);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.warn({ tool: tool.name, error: errorMessage }, "Rate limit acquire failed");
+      return {
+        output: null,
+        isError: true,
+        errorMessage,
+        errorCode: TOOL_RATE_LIMITED_ERROR_CODE,
         durationMs: Date.now() - startTime,
       };
     }
@@ -59,8 +107,26 @@ export async function executeTool(
       tool.name
     );
 
+    // Optional output validation (Issue #547).
+    if (options.validateOutput && tool.outputSchema) {
+      const outValidation = validateToolOutput(tool, result);
+      if (!outValidation.ok) {
+        return {
+          output: null,
+          isError: true,
+          errorMessage: outValidation.error,
+          durationMs: Date.now() - startTime,
+        };
+      }
+    }
+
     const durationMs = Date.now() - startTime;
     logger.info({ tool: tool.name, durationMs }, "Tool execution completed");
+
+    // Store in cache on success (Issue #548). No-op unless opted in.
+    if (options.cache?.isEnabled(tool.name)) {
+      options.cache.set(tool.name, input, result);
+    }
 
     return {
       output: result,
@@ -105,6 +171,9 @@ export async function executeTool(
       errorCode: error instanceof ToolTimeoutError ? TOOL_TIMEOUT_ERROR_CODE : undefined,
       durationMs,
     };
+  } finally {
+    // Always release the rate-limit/concurrency slot if one was acquired.
+    lease?.release();
   }
 }
 

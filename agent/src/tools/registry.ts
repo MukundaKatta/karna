@@ -47,6 +47,8 @@ export interface ToolDefinitionRuntime {
   };
   /** Zod schema for input validation (optional but recommended). */
   inputSchema?: ZodType;
+  /** Zod schema for output validation (optional; enables opt-in output checks, Issue #547). */
+  outputSchema?: ZodType;
   /** Risk level governs approval requirements. */
   riskLevel: ToolRiskLevel;
   /** Whether this tool requires human approval before execution. */

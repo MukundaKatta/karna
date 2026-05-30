@@ -49,3 +49,59 @@ export {
   type TokenUsage,
   type CostBreakdown,
 } from "./utils/cost.js";
+
+// --- Additive exports: Issues #523, #562, #596, #579 ---
+// Issue #523 — Control plane configuration layer
+export {
+  ApprovalActionSchema,
+  ApprovalPolicySchema,
+  ToolAccessConfigSchema,
+  MemoryTierSettingsSchema,
+  ModelRoutingPrefsSchema,
+  BudgetConfigSchema,
+  ControlPlaneConfigSchema,
+  defaultControlPlaneConfig,
+  mergeControlPlaneConfig,
+} from "./types/control-plane.js";
+export type {
+  ApprovalAction,
+  ApprovalPolicy,
+  ToolAccessConfig,
+  MemoryTierSettings,
+  ModelRoutingPrefs,
+  BudgetConfig,
+  ControlPlaneConfig,
+  DeepPartial,
+} from "./types/control-plane.js";
+
+// Issue #562 — Capability-based access tokens
+export {
+  CapabilityTokenSchema,
+  issueCapability,
+  isCapabilityExpired,
+  capabilityAllowsTool,
+  capabilityAllowsSkill,
+  capabilityAllowsScope,
+} from "./types/capability.js";
+export type {
+  CapabilityToken,
+  IssueCapabilityOptions,
+} from "./types/capability.js";
+
+// Issue #596 — Streaming token budget
+export { TokenBudget } from "./utils/budget.js";
+export type {
+  TokenBudgetLimits,
+  TokenBudgetSnapshot,
+  BudgetStopReason,
+} from "./utils/budget.js";
+
+// Issue #579 — Cost tracking per user/session/tool
+export { CostAttributor, COST_UNATTRIBUTED } from "./utils/cost-attribution.js";
+export type {
+  CostEvent,
+  RecordCostInput,
+  CostDimension,
+  CostAggregate,
+} from "./utils/cost-attribution.js";
+

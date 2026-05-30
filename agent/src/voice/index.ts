@@ -17,6 +17,11 @@ export {
   type TranscriptionSegment,
 } from "./stt.js";
 
+// Additive streaming / barge-in / VAD-tuning modules (issues #603/#604/#605).
+export * from "./streaming.js";
+export * from "./barge-in.js";
+export * from "./vad-config.js";
+
 const logger = pino({ name: "voice-pipeline" });
 
 // ─── Types ──────────────────────────────────────────────────────────────────

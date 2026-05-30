@@ -1,332 +1,265 @@
-// ─── MCP Server ─────────────────────────────────────────────────────────────
-//
-// Model Context Protocol server that exposes Karna's registered tools
-// to external AI agents. Uses the @modelcontextprotocol/sdk.
-//
-// ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Gateway MCP server (#544).
+ *
+ * Exposes selected karna tools as MCP tools over the JSON-RPC protocol
+ * (tools/list + tools/call), respecting an allowlist. This is transport-
+ * agnostic: it consumes parsed JSON-RPC request objects and returns JSON-RPC
+ * responses, so it can be mounted on any transport (HTTP route, stdio, WS)
+ * without changing the gateway's default startup behavior.
+ *
+ * It is OFF by default (`enabled: false`) and only exposes tools named in the
+ * allowlist.
+ */
+import { z } from 'zod';
+import type { Logger } from 'pino';
 
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
-import pino from "pino";
+export const McpExposeConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  /** Only these tool names are exposed. Empty allowlist => nothing exposed. */
+  allowlist: z.array(z.string()).default([]),
+  /** Server identity advertised in the `initialize` handshake. */
+  serverName: z.string().default('karna-gateway'),
+  serverVersion: z.string().default('1.0.0'),
+});
 
-const logger = pino({ name: "mcp-server" });
+export type McpExposeConfig = z.infer<typeof McpExposeConfigSchema>;
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// JSON-RPC shapes
+// ---------------------------------------------------------------------------
 
-export interface MCPToolDefinition {
+export interface JsonRpcRequest {
+  jsonrpc: '2.0';
+  id?: number | string | null;
+  method: string;
+  params?: unknown;
+}
+
+export interface JsonRpcResponse {
+  jsonrpc: '2.0';
+  id: number | string | null;
+  result?: unknown;
+  error?: { code: number; message: string; data?: unknown };
+}
+
+export const JsonRpcErrorCodes = {
+  ParseError: -32700,
+  InvalidRequest: -32600,
+  MethodNotFound: -32601,
+  InvalidParams: -32602,
+  InternalError: -32603,
+} as const;
+
+// ---------------------------------------------------------------------------
+// Tool source abstraction
+// ---------------------------------------------------------------------------
+
+/** Shape of a tool the server can expose. Matches the agent ToolDefinition. */
+export interface ExposableTool {
   name: string;
   description: string;
-  parameters: {
-    type: "object";
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
+  inputSchema: Record<string, unknown>;
+  execute: (input: unknown) => Promise<unknown>;
+  available?: boolean;
 }
 
-export interface MCPResource {
-  uri: string;
-  name: string;
-  description: string;
-  mimeType?: string;
+/** Minimal provider interface (satisfied by the agent's ToolRegistry). */
+export interface ToolProvider {
+  list(): ExposableTool[];
+  get(name: string): ExposableTool | undefined;
 }
 
-/**
- * Callback to execute a tool via the Karna agent runtime.
- */
-export type ToolExecutor = (
-  toolName: string,
-  args: Record<string, unknown>,
-) => Promise<{ output: unknown; isError: boolean; errorMessage?: string }>;
-
-/**
- * Callback to list available tools from the Karna registry.
- */
-export type ToolLister = () => MCPToolDefinition[];
-
-/**
- * Callback to list available resources.
- */
-export type ResourceLister = () => MCPResource[];
-
-/**
- * Callback to read a resource by URI.
- */
-export type ResourceReader = (uri: string) => Promise<{ content: string; mimeType: string }>;
-
-export interface MCPServerConfig {
-  /** Server name for MCP identification. */
-  name?: string;
-  /** Server version. */
-  version?: string;
-  /** Transport type. */
-  transport?: "stdio" | "sse";
-  /** Callback to list tools. */
-  listTools: ToolLister;
-  /** Callback to execute a tool. */
-  executeTool: ToolExecutor;
-  /** Callback to list resources (optional). */
-  listResources?: ResourceLister;
-  /** Callback to read a resource (optional). */
-  readResource?: ResourceReader;
+export interface McpServerOptions {
+  logger?: Logger;
 }
 
-// ─── MCP Server ─────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Server
+// ---------------------------------------------------------------------------
 
-export class KarnaMCPServer {
-  private readonly server: Server;
-  private readonly config: MCPServerConfig;
-  private running = false;
+export class McpServer {
+  private readonly config: McpExposeConfig;
+  private readonly provider: ToolProvider;
+  private readonly logger?: Logger;
+  private readonly allowSet: Set<string>;
 
-  constructor(config: MCPServerConfig) {
-    this.config = config;
-
-    this.server = new Server(
-      {
-        name: config.name ?? "karna-mcp",
-        version: config.version ?? "0.1.0",
-      },
-      {
-        capabilities: {
-          tools: {},
-          resources: config.listResources ? {} : undefined,
-        },
-      },
-    );
-
-    this.registerHandlers();
-    this.registerErrorHandler();
-
-    logger.info(
-      { name: config.name ?? "karna-mcp", version: config.version ?? "0.1.0" },
-      "MCP server created",
-    );
+  constructor(
+    provider: ToolProvider,
+    config: Partial<McpExposeConfig> = {},
+    options: McpServerOptions = {},
+  ) {
+    this.provider = provider;
+    this.config = McpExposeConfigSchema.parse(config);
+    this.logger = options.logger;
+    this.allowSet = new Set(this.config.allowlist);
   }
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────
+  get enabled(): boolean {
+    return this.config.enabled;
+  }
 
-  /**
-   * Start the MCP server with the configured transport.
-   */
-  async start(): Promise<void> {
-    if (this.running) {
-      logger.warn("MCP server is already running");
-      return;
-    }
-
-    const transportType = this.config.transport ?? "stdio";
-
-    if (transportType === "stdio") {
-      const transport = new StdioServerTransport();
-      await this.server.connect(transport);
-      logger.info("MCP server started with stdio transport");
-    } else {
-      // SSE transport requires Fastify integration — handled in index.ts
-      logger.info("MCP server created for SSE transport (register with Fastify)");
-    }
-
-    this.running = true;
+  /** Tools currently exposed (allowlisted + available). */
+  exposedTools(): ExposableTool[] {
+    if (!this.config.enabled) return [];
+    return this.provider
+      .list()
+      .filter((t) => this.allowSet.has(t.name) && t.available !== false);
   }
 
   /**
-   * Stop the MCP server.
+   * Handle a single JSON-RPC request and produce a response. Returns
+   * `undefined` for notifications (requests without an id), per JSON-RPC.
    */
-  async stop(): Promise<void> {
-    if (!this.running) return;
+  async handleRequest(req: JsonRpcRequest): Promise<JsonRpcResponse | undefined> {
+    const isNotification = req.id === undefined || req.id === null;
+    const id = (req.id ?? null) as number | string | null;
+
+    if (!this.config.enabled) {
+      if (isNotification) return undefined;
+      return this.error(id, JsonRpcErrorCodes.InvalidRequest, 'mcp server disabled');
+    }
+
+    if (req.jsonrpc !== '2.0' || typeof req.method !== 'string') {
+      return this.error(id, JsonRpcErrorCodes.InvalidRequest, 'invalid request');
+    }
 
     try {
-      await this.server.close();
-      this.running = false;
-      logger.info("MCP server stopped");
-    } catch (error) {
-      logger.error({ error }, "Error stopping MCP server");
-    }
-  }
-
-  /**
-   * Get the underlying MCP Server instance (for SSE transport integration).
-   */
-  getServer(): Server {
-    return this.server;
-  }
-
-  // ─── SSE Transport ────────────────────────────────────────────────────
-
-  /**
-   * Create an SSE transport for a Fastify request/response pair.
-   * This is used when the MCP server runs alongside the gateway on
-   * a dedicated HTTP endpoint.
-   */
-  async createSSETransport(
-    endpoint: string,
-  ): Promise<SSEServerTransport> {
-    const transport = new SSEServerTransport(endpoint, {} as never);
-    return transport;
-  }
-
-  // ─── Handler Registration ─────────────────────────────────────────────
-
-  private registerHandlers(): void {
-    this.registerToolHandlers();
-    if (this.config.listResources) {
-      this.registerResourceHandlers();
-    }
-  }
-
-  private registerToolHandlers(): void {
-    // List tools
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const tools = this.config.listTools();
-
-      logger.debug({ toolCount: tools.length }, "Listing MCP tools");
-
-      return {
-        tools: tools.map((tool) => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: {
-            type: "object" as const,
-            properties: tool.parameters.properties,
-            required: tool.parameters.required,
-          },
-        })),
-      };
-    });
-
-    // Call tool
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
-      const { name, arguments: args } = request.params;
-
-      logger.info({ toolName: name }, "MCP tool invocation");
-
-      try {
-        const result = await this.config.executeTool(
-          name,
-          (args ?? {}) as Record<string, unknown>,
-        );
-
-        if (result.isError) {
-          logger.warn(
-            { toolName: name, error: result.errorMessage },
-            "MCP tool execution failed",
+      switch (req.method) {
+        case 'initialize':
+          return this.ok(id, this.initializeResult());
+        case 'notifications/initialized':
+        case 'initialized':
+          return undefined; // notification — no response
+        case 'ping':
+          return this.ok(id, {});
+        case 'tools/list':
+          return this.ok(id, { tools: this.toolList() });
+        case 'tools/call':
+          return this.ok(id, await this.callTool(req.params));
+        default:
+          if (isNotification) return undefined;
+          return this.error(
+            id,
+            JsonRpcErrorCodes.MethodNotFound,
+            `method not found: ${req.method}`,
           );
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error: ${result.errorMessage ?? "Unknown error"}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-
-        const outputText = typeof result.output === "string"
-          ? result.output
-          : JSON.stringify(result.output, null, 2);
-
-        logger.info(
-          { toolName: name, outputLength: outputText.length },
-          "MCP tool execution succeeded",
-        );
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: outputText,
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error({ toolName: name, error: errorMessage }, "MCP tool invocation error");
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error invoking tool "${name}": ${errorMessage}`,
-            },
-          ],
-          isError: true,
-        };
       }
-    });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger?.warn({ err, method: req.method }, 'mcp server request failed');
+      if (isNotification) return undefined;
+      const code =
+        err instanceof RpcError ? err.code : JsonRpcErrorCodes.InternalError;
+      return this.error(id, code, message);
+    }
   }
 
-  private registerResourceHandlers(): void {
-    // List resources
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      const resources = this.config.listResources?.() ?? [];
-
-      logger.debug({ resourceCount: resources.length }, "Listing MCP resources");
-
-      return {
-        resources: resources.map((r) => ({
-          uri: r.uri,
-          name: r.name,
-          description: r.description,
-          mimeType: r.mimeType,
-        })),
-      };
-    });
-
-    // Read resource
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const { uri } = request.params;
-
-      if (!this.config.readResource) {
-        return {
-          contents: [
-            {
-              uri,
-              text: "Resource reading not supported",
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      }
-
-      try {
-        const { content, mimeType } = await this.config.readResource(uri);
-
-        return {
-          contents: [
-            {
-              uri,
-              text: content,
-              mimeType,
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        logger.error({ uri, error: errorMessage }, "Resource read error");
-
-        return {
-          contents: [
-            {
-              uri,
-              text: `Error reading resource: ${errorMessage}`,
-              mimeType: "text/plain",
-            },
-          ],
-        };
-      }
-    });
+  /** Handle a raw JSON string (or batch). Convenience for HTTP/stdio mounts. */
+  async handleRaw(raw: string): Promise<string | undefined> {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return JSON.stringify(
+        this.error(null, JsonRpcErrorCodes.ParseError, 'parse error'),
+      );
+    }
+    if (Array.isArray(parsed)) {
+      const responses = (
+        await Promise.all(parsed.map((r) => this.handleRequest(r as JsonRpcRequest)))
+      ).filter((r): r is JsonRpcResponse => r !== undefined);
+      return responses.length > 0 ? JSON.stringify(responses) : undefined;
+    }
+    const res = await this.handleRequest(parsed as JsonRpcRequest);
+    return res ? JSON.stringify(res) : undefined;
   }
 
-  private registerErrorHandler(): void {
-    this.server.onerror = (error) => {
-      logger.error({ error }, "MCP server error");
+  // -------------------------------------------------------------------------
+
+  private initializeResult() {
+    return {
+      protocolVersion: '2024-11-05',
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: {
+        name: this.config.serverName,
+        version: this.config.serverVersion,
+      },
     };
+  }
+
+  private toolList() {
+    return this.exposedTools().map((t) => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    }));
+  }
+
+  private async callTool(params: unknown): Promise<unknown> {
+    const parsed = z
+      .object({ name: z.string(), arguments: z.record(z.unknown()).optional() })
+      .safeParse(params);
+    if (!parsed.success) {
+      throw new RpcError(
+        JsonRpcErrorCodes.InvalidParams,
+        'invalid tools/call params',
+      );
+    }
+    const { name, arguments: args } = parsed.data;
+    if (!this.allowSet.has(name)) {
+      throw new RpcError(JsonRpcErrorCodes.InvalidParams, `tool not exposed: ${name}`);
+    }
+    const tool = this.provider.get(name);
+    if (!tool || tool.available === false) {
+      throw new RpcError(JsonRpcErrorCodes.InvalidParams, `tool unavailable: ${name}`);
+    }
+    try {
+      const result = await tool.execute(args ?? {});
+      return {
+        content: [{ type: 'text', text: stringifyResult(result) }],
+        isError: false,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return {
+        content: [{ type: 'text', text: message }],
+        isError: true,
+      };
+    }
+  }
+
+  private ok(id: number | string | null, result: unknown): JsonRpcResponse {
+    return { jsonrpc: '2.0', id, result };
+  }
+
+  private error(
+    id: number | string | null,
+    code: number,
+    message: string,
+    data?: unknown,
+  ): JsonRpcResponse {
+    return { jsonrpc: '2.0', id, error: { code, message, data } };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+class RpcError extends Error {
+  constructor(
+    readonly code: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function stringifyResult(result: unknown): string {
+  if (typeof result === 'string') return result;
+  try {
+    return JSON.stringify(result);
+  } catch {
+    return String(result);
   }
 }
