@@ -32,6 +32,11 @@ export class AnthropicProvider implements ModelProvider {
     const messages = this.buildMessages(params);
     const tools = params.tools ? this.buildTools(params.tools) : undefined;
 
+    // Prompt caching (#592): when a cache directive is present, mark the stable
+    // prefix (tools block + system prompt) with `cache_control`. Cache reads are
+    // ~0.1x input price, so this pays off across multi-turn / multi-tool loops.
+    const { system } = this.applyPromptCache(params, tools);
+
     let attempt = 0;
 
     while (attempt < MAX_RETRIES) {
@@ -40,7 +45,7 @@ export class AnthropicProvider implements ModelProvider {
           model,
           max_tokens: maxTokens,
           messages,
-          system: params.systemPrompt ?? undefined,
+          system: system as never,
           temperature: params.temperature ?? undefined,
           stop_sequences: params.stopSequences ?? undefined,
           tools: tools && tools.length > 0 ? tools : undefined,
@@ -140,6 +145,35 @@ export class AnthropicProvider implements ModelProvider {
     }
 
     return messages;
+  }
+
+  /**
+   * Apply prompt-cache breakpoints (#592) to the stable prefix. Mutates the
+   * passed `tools` array in place (attaching `cache_control` to the last tool,
+   * which caches the whole tools block) and returns the `system` value to send
+   * — either the plain string, or a cache-annotated text block array.
+   *
+   * When no cache directive is present this is a pass-through (returns the plain
+   * system prompt), so behavior is unchanged.
+   */
+  private applyPromptCache(
+    params: ChatParams,
+    tools: Tool[] | undefined,
+  ): { system: string | Array<{ type: "text"; text: string; cache_control?: unknown }> | undefined } {
+    const cache = params.cache;
+    if (!cache) {
+      return { system: params.systemPrompt ?? undefined };
+    }
+    const cacheControl = { type: "ephemeral" as const, ttl: cache.ttl ?? "5m" };
+
+    if (tools && tools.length > 0 && (cache.tools ?? true)) {
+      (tools[tools.length - 1] as Tool & { cache_control?: unknown }).cache_control = cacheControl;
+    }
+
+    if (params.systemPrompt && (cache.system ?? true)) {
+      return { system: [{ type: "text", text: params.systemPrompt, cache_control: cacheControl }] };
+    }
+    return { system: params.systemPrompt ?? undefined };
   }
 
   private buildTools(tools: ChatTool[]): Tool[] {

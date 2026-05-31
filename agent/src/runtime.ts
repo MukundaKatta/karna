@@ -49,6 +49,11 @@ export interface RuntimeFeatures {
   toolPolicyRules?: PolicyRule[];
   /** Validate tool outputs against their `outputSchema` when present (Issue #547). */
   validateToolOutput?: boolean;
+  /**
+   * Enable Anthropic prompt caching on the stable prefix (system + tools).
+   * Inert for providers that don't support it. (Issue #592)
+   */
+  promptCache?: { enabled: boolean; ttl?: "5m" | "1h" };
 }
 
 export interface RuntimeConfig {
@@ -426,11 +431,13 @@ export class AgentRuntime {
     const toolUses: Array<{ id: string; name: string; input: Record<string, unknown> }> = [];
     let usage = { inputTokens: 0, outputTokens: 0 };
 
+    const promptCache = this.config.features.promptCache;
     const stream = provider.chat({
       messages,
       systemPrompt,
       model,
       tools: tools.length > 0 ? tools : undefined,
+      cache: promptCache?.enabled ? { ttl: promptCache.ttl ?? "5m" } : undefined,
     });
 
     for await (const event of stream) {
