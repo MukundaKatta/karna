@@ -4,75 +4,18 @@ import { useMemo } from "react";
 import { Activity, CheckCircle2, Coins, XCircle } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
+import {
+  currentPhase,
+  kindColor,
+  sortRuns,
+  type AgentRun,
+  type RunSpan,
+  type RunSpanKind,
+} from "@/components/run-timeline";
 
-export type RunSpanKind =
-  | "context"
-  | "model"
-  | "tool"
-  | "memory"
-  | "skill"
-  | "handoff"
-  | "custom";
-
-export interface RunSpan {
-  spanId: string;
-  name: string;
-  kind: RunSpanKind;
-  startedAt: number;
-  endedAt?: number;
-  durationMs?: number;
-  status: "ok" | "error" | "cancelled";
-}
-
-export interface AgentRun {
-  traceId: string;
-  sessionId: string;
-  agentId: string;
-  startedAt: number;
-  endedAt?: number;
-  durationMs?: number;
-  model: string;
-  inputTokens: number;
-  outputTokens: number;
-  costUsd: number;
-  toolCalls: number;
-  success: boolean;
-  error?: string;
-  spans: RunSpan[];
-}
-
-const kindColor: Record<RunSpanKind, string> = {
-  context: "bg-blue-500/60",
-  model: "bg-purple-500/60",
-  tool: "bg-green-500/60",
-  memory: "bg-amber-500/60",
-  skill: "bg-cyan-500/60",
-  handoff: "bg-pink-500/60",
-  custom: "bg-dark-500/60",
-};
-
-/**
- * Derive the human-readable current "phase" for a run from its spans.
- * For an active run the phase is the kind of the last still-open span (or the
- * most recent span). For a finished run we report a terminal phase.
- */
-export function currentPhase(run: AgentRun): { label: string; tool?: string; kind?: RunSpanKind } {
-  if (run.endedAt !== undefined) {
-    return { label: run.success ? "completed" : "failed" };
-  }
-  const openSpan = [...run.spans]
-    .reverse()
-    .find((span) => span.endedAt === undefined);
-  const span = openSpan ?? run.spans[run.spans.length - 1];
-  if (!span) {
-    return { label: "starting" };
-  }
-  return {
-    label: span.kind,
-    tool: span.kind === "tool" ? span.name : undefined,
-    kind: span.kind,
-  };
-}
+// Re-export the pure logic/types so existing importers of this component keep working.
+export { currentPhase, sortRuns };
+export type { AgentRun, RunSpan, RunSpanKind };
 
 export function RunTimeline({
   runs,
@@ -81,17 +24,7 @@ export function RunTimeline({
   runs: AgentRun[];
   className?: string;
 }) {
-  const sorted = useMemo(
-    () =>
-      [...runs].sort((a, b) => {
-        // Active runs first, then by most recent start.
-        const aActive = a.endedAt === undefined ? 1 : 0;
-        const bActive = b.endedAt === undefined ? 1 : 0;
-        if (aActive !== bActive) return bActive - aActive;
-        return b.startedAt - a.startedAt;
-      }),
-    [runs],
-  );
+  const sorted = useMemo(() => sortRuns(runs), [runs]);
 
   if (sorted.length === 0) {
     return (

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { currentPhase, type AgentRun } from "../../apps/web/components/RunTimeline";
+import { currentPhase, type AgentRun } from "../../apps/web/components/run-timeline";
 
 function makeRun(overrides: Partial<AgentRun>): AgentRun {
   return {
