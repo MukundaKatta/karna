@@ -193,15 +193,32 @@ PRs: #622 (wave 1), #623 (wave 2), #624 (wave 3), #625 (wave 4), #626 (wave 5 UI
 
 ## Wiring status
 
-Everything above is **merged and tested**, but most modules are **not yet active
-in the runtime**. The recommended adoption order (highest value, lowest risk):
+Everything above is **merged and tested**. Wiring into the live runtime varies by
+module — here is the accurate state as of the audit:
 
-1. **Tool input validation (#547)** → enforce in `agent/src/tools/executor.ts`
-   (already opt-in when a tool has a Zod `inputSchema`).
-2. **Prompt caching (#592)** → route Anthropic requests through `planPromptCache`.
-3. **Per-tool rate limiting (#552) + result caching (#548)** → wrap executor calls.
-4. **Security policy engine (#556) + passport (#555)** → pre-execution hook.
-5. **MCP client (#543)** → register discovered tools at gateway startup behind config.
+**Already active**
+- **Tool input validation (#547)** — `executeTool` (`agent/src/tools/executor.ts`)
+  validates against a tool's Zod `inputSchema` on every call (a no-op for tools
+  without one), and `runtime.ts` calls `executeTool` on the tool-execution path.
+
+**Wired into the executor but not yet passed from `runtime.ts`** (opt-in via
+`ExecuteToolOptions`; `runtime.ts:executeTool(...)` currently passes no options)
+- **Per-tool rate limiting (#552)** — `options.rateLimiter`
+- **Tool result caching (#548)** — `options.cache`
+- **Output validation (#547)** — `options.validateOutput`
+
+**Not yet wired (pure/standalone modules)** — everything else above. These are
+imported nowhere in the runtime yet.
+
+### Recommended adoption order (highest value, lowest risk)
+
+1. **Prompt caching (#592)** → route Anthropic requests through `planPromptCache`.
+2. **Per-tool rate limiting (#552) + result caching (#548)** → construct the
+   limiter/cache in `runtime.ts` and pass them via `ExecuteToolOptions`.
+3. **Security policy engine (#556) + passport (#555)** → pre-execution hook.
+4. **MCP client (#543)** → register discovered tools at gateway startup behind config.
 
 Each should land as its own small PR with an integration test, behind a default-off
-flag so production behavior stays unchanged until explicitly enabled.
+flag so production behavior stays unchanged until explicitly enabled. (Note:
+merging to `main` auto-deploys, so behavior-changing wiring should be flagged off
+by default.)
