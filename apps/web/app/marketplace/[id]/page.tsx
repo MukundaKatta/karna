@@ -18,8 +18,11 @@ import {
   Mail,
   Shield,
   Terminal,
+  Download,
+  Check,
 } from "lucide-react";
 import { Badge } from "@/components/Badge";
+import { Modal } from "@/components/Modal";
 
 interface SkillDetail {
   id: string;
@@ -92,12 +95,30 @@ function riskVariant(riskLevel?: string) {
   }
 }
 
+// Surface the permissions an install would grant: tools it requires + the
+// distinct risk levels of the actions it can perform.
+function derivePermissions(skill: SkillDetail): Array<{ label: string; risk?: string }> {
+  const perms: Array<{ label: string; risk?: string }> = [];
+  for (const tool of skill.requiredTools) {
+    perms.push({ label: `tool: ${tool}` });
+  }
+  for (const action of skill.actionDefinitions) {
+    if (action.riskLevel && action.riskLevel !== "low") {
+      perms.push({ label: `action: ${action.name}`, risk: action.riskLevel });
+    }
+  }
+  return perms;
+}
+
 export default function SkillDetailPage() {
   const params = useParams();
   const id = params.id as string;
   const [skill, setSkill] = useState<SkillDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [confirmInstall, setConfirmInstall] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,6 +158,31 @@ export default function SkillDetailPage() {
     };
   }, [id]);
 
+  async function performInstall(enabled: boolean) {
+    if (!skill) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/marketplace/${skill.id}/install`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: skill.id, enabled }),
+      });
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? `Request failed with ${response.status}`);
+      }
+      setSkill((prev) => (prev ? { ...prev, enabled } : prev));
+      setConfirmInstall(false);
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const permissions = skill ? derivePermissions(skill) : [];
+
   return (
     <div className="p-4 sm:p-6 space-y-6 overflow-y-auto h-full">
       <Link
@@ -150,6 +196,12 @@ export default function SkillDetailPage() {
       {error && (
         <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-300">
           {error}
+        </div>
+      )}
+
+      {actionError && (
+        <div className="rounded-lg border border-danger-500/30 bg-danger-500/10 px-4 py-3 text-sm text-danger-400">
+          {actionError}
         </div>
       )}
 
@@ -175,7 +227,7 @@ export default function SkillDetailPage() {
                   {skill.source}
                 </Badge>
                 <Badge variant={skill.enabled ? "success" : "default"}>
-                  {skill.enabled ? "enabled" : "disabled"}
+                  {skill.enabled ? "installed" : "available"}
                 </Badge>
                 {skill.category && <Badge variant="default">{skill.category}</Badge>}
               </div>
@@ -184,16 +236,59 @@ export default function SkillDetailPage() {
               </p>
               <p className="text-sm text-dark-300 leading-relaxed">{skill.description}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3 shrink-0 w-full sm:w-auto">
-              <div className="rounded-lg bg-dark-700/50 px-4 py-3">
-                <p className="text-xs text-dark-400">Actions</p>
-                <p className="text-lg font-semibold text-white">{skill.actions}</p>
-              </div>
-              <div className="rounded-lg bg-dark-700/50 px-4 py-3">
-                <p className="text-xs text-dark-400">Triggers</p>
-                <p className="text-lg font-semibold text-white">{skill.triggers}</p>
+            <div className="flex flex-col items-stretch gap-3 shrink-0 w-full sm:w-48">
+              {skill.enabled ? (
+                <button
+                  onClick={() => performInstall(false)}
+                  disabled={busy}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-dark-700 px-4 py-2 text-sm font-medium text-white hover:bg-dark-600 disabled:opacity-50 transition-colors"
+                >
+                  <Check size={16} />
+                  {busy ? "Working..." : "Disable"}
+                </button>
+              ) : (
+                <button
+                  onClick={() => setConfirmInstall(true)}
+                  disabled={busy}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50 transition-colors"
+                >
+                  <Download size={16} />
+                  Install &amp; Enable
+                </button>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg bg-dark-700/50 px-4 py-3">
+                  <p className="text-xs text-dark-400">Actions</p>
+                  <p className="text-lg font-semibold text-white">{skill.actions}</p>
+                </div>
+                <div className="rounded-lg bg-dark-700/50 px-4 py-3">
+                  <p className="text-xs text-dark-400">Triggers</p>
+                  <p className="text-lg font-semibold text-white">{skill.triggers}</p>
+                </div>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-dark-700 bg-dark-800 p-6">
+            <h2 className="text-sm font-medium text-white mb-3">Permissions</h2>
+            {permissions.length ? (
+              <ul className="space-y-2">
+                {permissions.map((perm) => (
+                  <li key={perm.label} className="flex items-center gap-2 text-sm text-dark-300">
+                    {perm.risk ? (
+                      <Badge variant={riskVariant(perm.risk)}>{perm.risk}</Badge>
+                    ) : (
+                      <Badge variant="info">required</Badge>
+                    )}
+                    <code className="text-xs text-dark-200">{perm.label}</code>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-dark-400">
+                This skill requests no elevated permissions.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-dark-700 bg-dark-800 p-6">
@@ -307,6 +402,50 @@ export default function SkillDetailPage() {
               <p className="text-sm text-dark-400">No tags published.</p>
             )}
           </div>
+
+          <Modal
+            open={confirmInstall}
+            onClose={() => setConfirmInstall(false)}
+            title={`Install ${skill.name}?`}
+            size="md"
+          >
+            <p className="text-sm text-dark-300 mb-4">
+              This skill will be installed and enabled for your agent
+              {permissions.length > 0
+                ? ", granting the permissions below."
+                : "."}
+            </p>
+            {permissions.length > 0 && (
+              <ul className="mb-4 space-y-2">
+                {permissions.map((perm) => (
+                  <li key={perm.label} className="flex items-center gap-2 text-sm text-dark-300">
+                    {perm.risk ? (
+                      <Badge variant={riskVariant(perm.risk)}>{perm.risk}</Badge>
+                    ) : (
+                      <Badge variant="info">required</Badge>
+                    )}
+                    <code className="text-xs text-dark-200">{perm.label}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmInstall(false)}
+                disabled={busy}
+                className="rounded-lg bg-dark-700 px-4 py-2 text-sm text-white hover:bg-dark-600 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => performInstall(true)}
+                disabled={busy}
+                className="rounded-lg bg-accent-600 px-4 py-2 text-sm font-medium text-white hover:bg-accent-500 disabled:opacity-50 transition-colors"
+              >
+                {busy ? "Installing..." : "Confirm install"}
+              </button>
+            </div>
+          </Modal>
         </>
       )}
     </div>

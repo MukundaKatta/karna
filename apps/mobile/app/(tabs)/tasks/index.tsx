@@ -16,6 +16,7 @@ import { playHaptic } from '@/lib/haptics';
 import { gatewayClient } from '@/lib/gateway-client';
 import { getColors, Typography, Spacing, BorderRadius } from '@/lib/theme';
 import { TaskCard } from '@/components/TaskCard';
+import { PendingApprovals } from '@/components/PendingApprovals';
 
 export default function TasksScreen() {
   const darkMode = useAppStore((s) => s.darkMode);
@@ -124,13 +125,19 @@ export default function TasksScreen() {
             />
           }
           ListHeaderComponent={
-            pendingReminders.length > 0 ? (
-              <Text
-                style={[styles.sectionHeader, { color: colors.textSecondary }]}
-              >
-                Active ({pendingReminders.length})
-              </Text>
-            ) : null
+            <>
+              <PendingApprovals />
+              {pendingReminders.length > 0 ? (
+                <Text
+                  style={[
+                    styles.sectionHeader,
+                    { color: colors.textSecondary },
+                  ]}
+                >
+                  Active ({pendingReminders.length})
+                </Text>
+              ) : null}
+            </>
           }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>

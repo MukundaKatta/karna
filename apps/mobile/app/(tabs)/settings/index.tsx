@@ -25,6 +25,10 @@ export default function SettingsScreen() {
   const setDarkMode = useAppStore((s) => s.setDarkMode);
   const notifications = useAppStore((s) => s.notifications);
   const setNotifications = useAppStore((s) => s.setNotifications);
+  const notifyApprovals = useAppStore((s) => s.notifyApprovals);
+  const setNotifyApprovals = useAppStore((s) => s.setNotifyApprovals);
+  const notifyRunCompletion = useAppStore((s) => s.notifyRunCompletion);
+  const setNotifyRunCompletion = useAppStore((s) => s.setNotifyRunCompletion);
   const hapticsEnabled = useAppStore((s) => s.hapticsEnabled);
   const setHapticsEnabled = useAppStore((s) => s.setHapticsEnabled);
   const agentName = useAppStore((s) => s.agentName);
@@ -428,6 +432,76 @@ export default function SettingsScreen() {
               }}
               thumbColor={
                 notifications ? colors.primary : colors.textTertiary
+              }
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.row}>
+            <View style={styles.rowLabel}>
+              <Feather name="shield" size={18} color={colors.textSecondary} />
+              <View>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  Approval Requests
+                </Text>
+                <Text style={[styles.helpText, { color: colors.textSecondary }]}>
+                  Alert me when Karna needs approval to run a tool.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={notifyApprovals}
+              disabled={!notifications}
+              onValueChange={(val) => {
+                setNotifyApprovals(val);
+                void playHaptic('selection');
+              }}
+              trackColor={{
+                false: colors.surfaceAlt,
+                true: colors.primary + '60',
+              }}
+              thumbColor={
+                notifyApprovals && notifications
+                  ? colors.primary
+                  : colors.textTertiary
+              }
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <View style={styles.row}>
+            <View style={styles.rowLabel}>
+              <Feather
+                name="check-circle"
+                size={18}
+                color={colors.textSecondary}
+              />
+              <View>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  Task Completion
+                </Text>
+                <Text style={[styles.helpText, { color: colors.textSecondary }]}>
+                  Alert me when a long-running task finishes.
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={notifyRunCompletion}
+              disabled={!notifications}
+              onValueChange={(val) => {
+                setNotifyRunCompletion(val);
+                void playHaptic('selection');
+              }}
+              trackColor={{
+                false: colors.surfaceAlt,
+                true: colors.primary + '60',
+              }}
+              thumbColor={
+                notifyRunCompletion && notifications
+                  ? colors.primary
+                  : colors.textTertiary
               }
             />
           </View>

@@ -44,6 +44,23 @@ vi.mock("expo-av", () => ({
   },
 }));
 
+vi.mock("expo-notifications", () => ({
+  setNotificationHandler: vi.fn(),
+  scheduleNotificationAsync: vi.fn().mockResolvedValue("notif-id"),
+  cancelScheduledNotificationAsync: vi.fn().mockResolvedValue(undefined),
+  cancelAllScheduledNotificationsAsync: vi.fn().mockResolvedValue(undefined),
+  getPermissionsAsync: vi.fn(),
+  requestPermissionsAsync: vi.fn(),
+  getExpoPushTokenAsync: vi.fn(),
+  addNotificationReceivedListener: vi.fn(),
+  addNotificationResponseReceivedListener: vi.fn(),
+  setNotificationChannelAsync: vi.fn(),
+  AndroidImportance: { HIGH: 4 },
+  SchedulableTriggerInputTypes: { TIME_INTERVAL: "timeInterval" },
+}));
+
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+
 type TestGatewayClient = {
   handleProtocolMessage: (message: {
     type: string;

@@ -14,6 +14,7 @@ import { gatewayClient } from '@/lib/gateway-client';
 import {
   addNotificationReceivedListener,
   addNotificationResponseListener,
+  parseKarnaNotificationData,
 } from '@/lib/notifications';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
@@ -211,10 +212,15 @@ function RootLayoutInner() {
 
     responseListenerRef.current = addNotificationResponseListener(
       (response) => {
-        const data = response.notification.request.content.data as
+        const rawData = response.notification.request.content.data as
           | { tab?: string }
           | undefined;
-        const route = getMobileTabRoute(data?.tab);
+
+        // Prefer the typed Karna payload (approval-needed / run-complete) so
+        // those notifications deep-link to the right surface; fall back to the
+        // generic `tab` field for any other notification.
+        const karnaData = parseKarnaNotificationData(rawData);
+        const route = getMobileTabRoute(karnaData?.tab ?? rawData?.tab);
         if (route) {
           router.push(route as never);
         }
