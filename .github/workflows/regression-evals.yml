@@ -1,0 +1,39 @@
+name: Regression Evals
+
+# Regression eval gate (#568). Runs the deterministic, offline eval suite on
+# every PR and push to main; a score regression below EVAL_THRESHOLD fails the
+# build. The suite lives at tests/evals/regression.test.ts and is built on the
+# in-repo evals framework (agent/src/evals). It is model-free so it needs no API
+# keys and is fully reproducible.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression-evals:
+    name: Regression Evals
+    runs-on: ubuntu-latest
+    env:
+      EVAL_THRESHOLD: "1.0"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run regression eval suite
+        run: pnpm exec vitest run tests/evals/regression.test.ts
