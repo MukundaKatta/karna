@@ -16,15 +16,40 @@ import type { AgentPersona } from "./context/system-prompt.js";
 import type { ChatMessage, ModelProvider, StreamEvent } from "./models/provider.js";
 import { routeModel, type AgentConfig } from "./models/router.js";
 import { ToolRegistry, type ToolDefinitionRuntime, type ToolPolicy, type ToolResult } from "./tools/registry.js";
-import { executeTool } from "./tools/executor.js";
+import { executeTool, type ExecuteToolOptions } from "./tools/executor.js";
 import { requiresApproval, requestApproval, type ApprovalCallback } from "./tools/approval.js";
 import { selectRelevantChatTools } from "./tools/selection.js";
+import { ToolRateLimiter, type ToolLimitConfig } from "./tools/rate-limiter.js";
+import { ToolResultCache, type ToolCacheConfig } from "./tools/result-cache.js";
+import { PolicyEngine, type PolicyRule } from "./tools/security/policy-engine.js";
 import { MemoryStore, type SaveMemoryInput } from "./memory/store.js";
 import type { Embedder } from "./memory/embedder.js";
 
 const logger = pino({ name: "agent-runtime" });
 
 // ─── Types ──────────────────────────────────────────────────────────────────
+
+/**
+ * Opt-in runtime feature wiring (trends-2026 modules).
+ *
+ * All fields are optional and default to inert values, so an unconfigured
+ * runtime behaves exactly as before:
+ *  - `toolRateLimits` empty  → limiter returns a no-op lease for every tool.
+ *  - `toolResultCache` empty → cache is disabled for every tool.
+ *  - `toolPolicyRules` empty → policy engine defaults to "allow" (but every
+ *    decision is still audited, so the hook is live and observable).
+ *  - `validateToolOutput` off → outputs are not schema-checked.
+ */
+export interface RuntimeFeatures {
+  /** Per-tool rate limit / concurrency config (Issue #552). */
+  toolRateLimits?: Record<string, ToolLimitConfig>;
+  /** Per-tool result-cache config (Issue #548). */
+  toolResultCache?: Record<string, ToolCacheConfig>;
+  /** Pre-execution policy rules (Issue #556). Default decision is "allow". */
+  toolPolicyRules?: PolicyRule[];
+  /** Validate tool outputs against their `outputSchema` when present (Issue #547). */
+  validateToolOutput?: boolean;
+}
 
 export interface RuntimeConfig {
   /** Context builder configuration. */
@@ -35,6 +60,8 @@ export interface RuntimeConfig {
   maxHistoryMessages?: number;
   /** Whether to extract and store memories automatically. */
   autoMemory?: boolean;
+  /** Opt-in feature wiring; inert by default. */
+  features?: RuntimeFeatures;
 }
 
 export interface AgentTurnInput {
@@ -122,6 +149,12 @@ export class AgentRuntime {
   private readonly memoryStore: MemoryStore | null;
   private readonly embedder: Embedder | null;
   private readonly config: Required<RuntimeConfig>;
+  /** Per-tool rate limiter (Issue #552). No-op for unconfigured tools. */
+  private readonly rateLimiter: ToolRateLimiter;
+  /** Per-tool result cache (Issue #548). Disabled for unconfigured tools. */
+  private readonly resultCache: ToolResultCache;
+  /** Pre-execution policy engine (Issue #556). Defaults to "allow", audited. */
+  private readonly policyEngine: PolicyEngine;
   private approvalCallback: ApprovalCallback | null = null;
   private streamCallback: StreamCallback | null = null;
   private running = false;
@@ -136,12 +169,24 @@ export class AgentRuntime {
     this.toolRegistry = toolRegistry;
     this.memoryStore = memoryStore ?? null;
     this.embedder = embedder ?? null;
+    const features = config?.features ?? {};
     this.config = {
       context: config?.context ?? {},
       maxToolIterations: config?.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS,
       maxHistoryMessages: config?.maxHistoryMessages ?? DEFAULT_MAX_HISTORY,
       autoMemory: config?.autoMemory ?? true,
+      features,
     };
+    this.rateLimiter = new ToolRateLimiter(features.toolRateLimits ?? {});
+    this.resultCache = new ToolResultCache(features.toolResultCache ?? {});
+    this.policyEngine = new PolicyEngine(features.toolPolicyRules ?? [], {
+      defaultDecision: "allow",
+    });
+  }
+
+  /** Access the policy engine's audit log (Issue #556 observability). */
+  getPolicyAuditLog(): ReturnType<PolicyEngine["getAudit"]> {
+    return this.policyEngine.getAudit();
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────
@@ -446,9 +491,40 @@ export class AgentRuntime {
         continue;
       }
 
-      // Check approval
+      // Pre-execution policy check (Issue #556). Default decision is "allow",
+      // so behavior is unchanged unless rules are configured; every decision is
+      // audited regardless.
+      const policyEval = this.policyEngine.evaluate({
+        toolName: tool.name,
+        args: toolUse.input,
+        riskLevel: tool.riskLevel,
+        user: session.userId,
+        context: { sessionId: session.id, agentId: agent.id },
+      });
+      if (policyEval.decision === "deny") {
+        logger.warn({ toolName: tool.name, toolCallId: toolUse.id }, "Tool call denied by policy");
+        messages.push({
+          role: "tool",
+          content: JSON.stringify({ error: "Tool call denied by policy" }),
+          toolCallId: toolUse.id,
+          toolName: toolUse.name,
+        });
+        records.push({
+          id: toolUse.id,
+          name: toolUse.name,
+          input: toolUse.input,
+          result: { output: null, isError: true, errorMessage: "Denied by policy", durationMs: 0 },
+          approved: false,
+        });
+        continue;
+      }
+
+      // Check approval. The policy engine can also force approval for a tool
+      // that would otherwise auto-run.
+      const policyForcesApproval =
+        policyEval.decision === "require-approval" || policyEval.decision === "dry-run";
       let approved = true;
-      if (requiresApproval(tool, policy)) {
+      if (policyForcesApproval || requiresApproval(tool, policy)) {
         approved = await this.handleApproval(toolUse.id, tool, toolUse.input, session, agent);
       }
 
@@ -470,14 +546,26 @@ export class AgentRuntime {
         continue;
       }
 
-      // Execute tool
-      const result = await executeTool(tool, toolUse.input, {
-        sessionId: session.id,
-        agentId: agent.id,
-        userId: session.userId,
-        workingDirectory: undefined,
-        signal: this.abortController?.signal,
-      });
+      // Execute tool, threading the opt-in rate limiter / result cache /
+      // output validation (Issues #552, #548, #547). All are inert unless the
+      // corresponding tool is configured, so default behavior is unchanged.
+      const execOptions: ExecuteToolOptions = {
+        rateLimiter: this.rateLimiter,
+        cache: this.resultCache,
+        validateOutput: this.config.features.validateToolOutput ?? false,
+      };
+      const result = await executeTool(
+        tool,
+        toolUse.input,
+        {
+          sessionId: session.id,
+          agentId: agent.id,
+          userId: session.userId,
+          workingDirectory: undefined,
+          signal: this.abortController?.signal,
+        },
+        execOptions,
+      );
 
       messages.push({
         role: "tool",
