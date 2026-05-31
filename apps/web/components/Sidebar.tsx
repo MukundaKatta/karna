@@ -28,6 +28,8 @@ import {
   CreditCard,
   KeyRound,
   UserCircle,
+  Coins,
+  ClipboardCheck,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
@@ -58,6 +60,9 @@ export const navGroups: NavGroup[] = [
           { label: "Overview", href: "/dashboard", icon: <BarChart3 size={16} /> },
           { label: "Sessions", href: "/dashboard/sessions", icon: <History size={16} /> },
           { label: "Analytics", href: "/dashboard/analytics", icon: <BarChart3 size={16} /> },
+          { label: "Usage", href: "/dashboard/usage", icon: <Coins size={16} /> },
+          { label: "Evals", href: "/dashboard/evals", icon: <ClipboardCheck size={16} /> },
+          { label: "Timeline", href: "/dashboard/timeline", icon: <Activity size={16} /> },
         ],
       },
       { label: "Workflows", href: "/workflows", icon: <GitBranch size={18} /> },

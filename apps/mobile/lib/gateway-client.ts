@@ -13,6 +13,11 @@ import {
   deriveMobileGatewayHealthUrl,
   normalizeMobileGatewayWsUrl,
 } from "./runtime-config";
+import {
+  notifyApprovalNeeded,
+  notifyRunComplete,
+  type KarnaNotificationPreferences,
+} from "./notifications";
 
 // ── Protocol Types ───────────────────────────────────────────────────────────
 
@@ -660,6 +665,12 @@ class GatewayClient {
 
         this.clearApprovalTimeout(toolCallId);
         store.setPendingToolApproval(request);
+        void notifyApprovalNeeded(
+          { toolName, toolCallId, riskLevel },
+          readNotificationPreferences(),
+        ).catch((err) =>
+          console.warn("[GatewayClient] Approval notification failed:", err),
+        );
         this.approvalTimeouts.set(
           toolCallId,
           setTimeout(() => {
@@ -754,12 +765,46 @@ class GatewayClient {
       }
 
       case "orchestration.status": {
+        const state = payload.state as string | undefined;
+        if (state === "completed" || state === "failed") {
+          this.handleRunComplete(payload, state === "failed");
+        }
+        break;
+      }
+
+      case "orchestration.complete":
+      case "run.complete": {
+        this.handleRunComplete(payload, Boolean(payload.isError));
         break;
       }
 
       default:
         break;
     }
+  }
+
+  private handleRunComplete(
+    payload: Record<string, unknown>,
+    failed: boolean,
+  ): void {
+    const title =
+      (typeof payload.title === "string" && payload.title) ||
+      (typeof payload.name === "string" && payload.name) ||
+      (typeof payload.goal === "string" && payload.goal) ||
+      "Background task";
+    const runId =
+      (typeof payload.runId === "string" && payload.runId) ||
+      (typeof payload.orchestrationId === "string" &&
+        payload.orchestrationId) ||
+      (typeof payload.id === "string" && payload.id) ||
+      undefined;
+
+    void notifyRunComplete(
+      { title, runId, success: !failed },
+      readNotificationPreferences(),
+    ).catch((err) =>
+      console.warn("[GatewayClient] Run-complete notification failed:", err),
+    );
   }
 
   private addSystemMessage(content: string): void {
@@ -876,6 +921,15 @@ class GatewayClient {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function readNotificationPreferences(): KarnaNotificationPreferences {
+  const state = useAppStore.getState();
+  return {
+    enabled: state.notifications,
+    approvalsEnabled: state.notifyApprovals,
+    runCompletionEnabled: state.notifyRunCompletion,
+  };
 }
 
 function isChatRole(role: unknown): role is ChatMessage["role"] {

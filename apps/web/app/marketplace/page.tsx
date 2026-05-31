@@ -70,6 +70,7 @@ export default function MarketplacePage() {
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [sourceFilter, setSourceFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -121,6 +122,8 @@ export default function MarketplacePage() {
       skills.filter((skill) => {
         if (categoryFilter && skill.category !== categoryFilter) return false;
         if (sourceFilter && skill.source !== sourceFilter) return false;
+        if (statusFilter === "enabled" && !skill.enabled) return false;
+        if (statusFilter === "available" && skill.enabled) return false;
         if (search) {
           const q = search.toLowerCase();
           return (
@@ -131,7 +134,7 @@ export default function MarketplacePage() {
         }
         return true;
       }),
-    [categoryFilter, search, skills, sourceFilter],
+    [categoryFilter, search, skills, sourceFilter, statusFilter],
   );
 
   return (
@@ -145,7 +148,7 @@ export default function MarketplacePage() {
       <div>
         <h1 className="text-xl font-semibold text-white">KarnaHub Skill Catalog</h1>
         <p className="text-sm text-dark-400 mt-1">
-          Browse the live built-in and community skill inventory from the gateway
+          Browse, install, and enable built-in and community skills for your agent
         </p>
       </div>
 
@@ -202,6 +205,15 @@ export default function MarketplacePage() {
           <option value="">All Sources</option>
           <option value="builtin">Built-in</option>
           <option value="community">Community</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="px-3 py-2 text-sm bg-dark-800 border border-dark-700 rounded-lg text-dark-200 focus:outline-none focus:border-accent-500"
+        >
+          <option value="">All Status</option>
+          <option value="enabled">Enabled</option>
+          <option value="available">Available</option>
         </select>
       </div>
 
@@ -262,7 +274,7 @@ export default function MarketplacePage() {
                   <span className="text-dark-500">v{skill.version}</span>
                 </div>
                 <Badge variant={skill.enabled ? "success" : "default"}>
-                  {skill.enabled ? "enabled" : "disabled"}
+                  {skill.enabled ? "installed" : "available"}
                 </Badge>
               </div>
             </Link>
