@@ -53,6 +53,23 @@ export interface ChatParams {
   temperature?: number;
   maxTokens?: number;
   stopSequences?: string[];
+  /**
+   * Optional prompt-caching directive (Issue #592). Providers that support
+   * prompt caching (currently Anthropic) place `cache_control` breakpoints on
+   * the stable prefix (system prompt + tool definitions). Ignored by providers
+   * that don't support it, so it is fully non-breaking.
+   */
+  cache?: PromptCacheDirective;
+}
+
+/** Where a provider should place prompt-cache breakpoints (Issue #592). */
+export interface PromptCacheDirective {
+  /** Cache the system prompt block. Default true when `cache` is set. */
+  system?: boolean;
+  /** Cache the tool-definitions block. Default true when `cache` is set. */
+  tools?: boolean;
+  /** Cache lifetime hint. Default "5m". */
+  ttl?: "5m" | "1h";
 }
 
 /**
