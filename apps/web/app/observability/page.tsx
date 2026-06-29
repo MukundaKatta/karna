@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { StatsCard } from "@/components/StatsCard";
+import { SkeletonStatsRow, SkeletonList } from "@/components/Skeleton";
 import { cn, formatCost, formatDate, formatRelativeTime, formatTokens } from "@/lib/utils";
 
 type StatusFilter = "all" | "ok" | "error" | "active";
@@ -241,8 +242,9 @@ export default function ObservabilityPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-dark-400">
-        Loading traces...
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
+        <SkeletonStatsRow count={4} />
+        <SkeletonList count={6} />
       </div>
     );
   }

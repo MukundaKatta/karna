@@ -96,3 +96,28 @@ export function SkeletonList({ count = 4 }: { count?: number }) {
     </div>
   );
 }
+
+/**
+ * SkeletonStatsRow — a placeholder row of stat cards, matching the
+ * `StatsCard` strip many analytics/usage pages lead with.
+ */
+export function SkeletonStatsRow({ count = 4 }: { count?: number }) {
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+    >
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          className="rounded-xl border border-dark-700 bg-dark-800 p-5 space-y-3"
+        >
+          <Skeleton className="h-3 w-1/2" />
+          <Skeleton className="h-7 w-2/3" />
+        </div>
+      ))}
+    </div>
+  );
+}
