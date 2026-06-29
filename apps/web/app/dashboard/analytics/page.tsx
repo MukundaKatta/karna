@@ -16,6 +16,7 @@ import { BarChart, LineChart, PieChart } from "@/components/Chart";
 import { StatsCard } from "@/components/StatsCard";
 import { formatCost, formatTokens } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
+import { SkeletonStatsRow, SkeletonList } from "@/components/Skeleton";
 
 type DateRange = "7d" | "14d" | "30d";
 
@@ -210,8 +211,9 @@ export default function AnalyticsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-dark-400">
-        Loading analytics...
+      <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-y-auto h-full">
+        <SkeletonStatsRow count={4} />
+        <SkeletonList count={4} />
       </div>
     );
   }

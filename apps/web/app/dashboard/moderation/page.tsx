@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Flag, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { formatDate } from "@/lib/utils";
+import { SkeletonList } from "@/components/Skeleton";
 
 interface ModerationItem {
   kind: "filtered" | "reported";
@@ -91,7 +92,7 @@ export default function ModerationPage() {
 
       <div className="space-y-3">
         {isLoading ? (
-          <div className="text-sm text-dark-400">Loading moderation queue...</div>
+          <SkeletonList count={3} />
         ) : visibleItems.length === 0 ? (
           <div className="rounded-md border border-dark-800 bg-dark-900 p-6 text-sm text-dark-400">
             No moderation items match this view.
