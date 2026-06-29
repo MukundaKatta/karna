@@ -24,16 +24,26 @@ export function StatsCard({ title, value, icon, trend, className }: StatsCardPro
   return (
     <div
       className={cn(
-        "rounded-xl border border-dark-700 bg-dark-800 p-5",
+        "group rounded-xl border border-dark-700 bg-dark-800 p-5",
+        "transition-all duration-200 hover:border-dark-600 hover:bg-dark-800/80",
+        "hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5",
         className,
       )}
     >
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <p className="text-sm text-dark-400">{title}</p>
-          <p className="text-2xl font-semibold text-white">{value}</p>
+          <p className="text-2xl font-semibold text-white tabular-nums tracking-tight">
+            {value}
+          </p>
         </div>
-        <div className="flex items-center justify-center w-10 h-10 rounded-lg bg-dark-700 text-dark-300">
+        <div
+          className={cn(
+            "flex items-center justify-center w-10 h-10 rounded-lg",
+            "bg-dark-700 text-dark-300 transition-colors duration-200",
+            "group-hover:bg-accent-600/15 group-hover:text-accent-400",
+          )}
+        >
           {icon}
         </div>
       </div>

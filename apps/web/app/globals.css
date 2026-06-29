@@ -67,6 +67,26 @@ body {
   overscroll-behavior-y: contain;
 }
 
+/* Consistent, accessible focus ring for keyboard users across the app.
+   Uses :focus-visible so it never shows on mouse clicks. */
+:focus-visible {
+  outline: 2px solid var(--color-accent-500);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Inputs/buttons get a softer ring that respects their own corners. */
+button:focus-visible,
+a:focus-visible,
+[role="button"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--color-dark-900),
+    0 0 0 4px var(--color-accent-500);
+}
+
 /* Dynamic viewport height for mobile browsers */
 .h-dvh {
   height: 100dvh;
@@ -246,4 +266,21 @@ body.landing-active main {
   .landing-page .footer-inner { flex-direction: column; text-align: center; }
   .landing-page .arch-flow { flex-direction: column; }
   .landing-page .arch-arrow { transform: rotate(90deg); }
+}
+
+/* Accessibility: honor the OS "reduce motion" preference. Disables the
+   landing-page orb drift, pulse, and hover lifts for users prone to motion
+   sickness, while leaving instantaneous state changes intact. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .landing-page .orb { animation: none !important; }
+  .landing-page .feature-card:hover,
+  .landing-page .btn-primary:hover { transform: none !important; }
 }
