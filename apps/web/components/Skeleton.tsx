@@ -63,3 +63,36 @@ export function SkeletonCardGrid({ count = 6 }: { count?: number }) {
     </div>
   );
 }
+
+/**
+ * SkeletonListRow — a placeholder shaped like the full-width row cards used in
+ * list views (icon + title/subtitle + trailing action).
+ */
+export function SkeletonListRow({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={cn("rounded-xl border border-dark-700 bg-dark-800 p-5", className)}
+    >
+      <div className="flex items-center gap-3">
+        <Skeleton className="w-10 h-10 rounded-lg shrink-0" />
+        <div className="flex-1 space-y-2">
+          <Skeleton className="h-3.5 w-1/3" />
+          <Skeleton className="h-3 w-1/2" />
+        </div>
+        <Skeleton className="h-8 w-20 rounded-md shrink-0" />
+      </div>
+    </div>
+  );
+}
+
+/** SkeletonList — a stack of {@link SkeletonListRow}s for vertical list views. */
+export function SkeletonList({ count = 4 }: { count?: number }) {
+  return (
+    <div role="status" aria-label="Loading" className="space-y-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <SkeletonListRow key={i} />
+      ))}
+    </div>
+  );
+}
