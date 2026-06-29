@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { Plus, Play, Pause, Clock, Zap, GitBranch, Trash2 } from "lucide-react";
 import { SkeletonList } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Workflow {
   id: string;
@@ -336,9 +337,11 @@ export default function WorkflowsPage() {
           })}
         </div>
       ) : (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          No workflows are registered yet.
-        </div>
+        <EmptyState
+          icon={<GitBranch size={22} />}
+          title="No workflows yet"
+          description="Workflows you register will appear here, ready to run and schedule."
+        />
       )}
     </div>
   );
