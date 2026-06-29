@@ -5,6 +5,7 @@ import { Puzzle, Search, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
+import { SkeletonCardGrid } from "@/components/Skeleton";
 
 interface Skill {
   id: string;
@@ -136,9 +137,7 @@ export default function SkillsPage() {
 
       {/* Skill grid */}
       {isLoading ? (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          Loading skill catalog...
-        </div>
+        <SkeletonCardGrid count={6} />
       ) : filtered.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((skill) => (
