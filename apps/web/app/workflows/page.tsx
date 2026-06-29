@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { Plus, Play, Pause, Clock, Zap, GitBranch, Trash2 } from "lucide-react";
+import { SkeletonList } from "@/components/Skeleton";
 
 interface Workflow {
   id: string;
@@ -260,9 +261,7 @@ export default function WorkflowsPage() {
       </div>
 
       {isLoading ? (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          Loading live workflows...
-        </div>
+        <SkeletonList count={4} />
       ) : workflows.length > 0 ? (
         <div className="space-y-3">
           {workflows.map((workflow) => {

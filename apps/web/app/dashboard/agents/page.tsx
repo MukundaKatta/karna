@@ -10,6 +10,7 @@ import {
 import { formatRelativeTime } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
+import { SkeletonCardGrid } from "@/components/Skeleton";
 
 interface Agent {
   id: string;
@@ -87,9 +88,7 @@ export default function AgentsPage() {
 
       {/* Agent grid */}
       {isLoading ? (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          Loading agent catalog...
-        </div>
+        <SkeletonCardGrid count={6} />
       ) : agents.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {agents.map((agent) => (
