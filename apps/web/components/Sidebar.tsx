@@ -191,6 +191,8 @@ export function Sidebar() {
                   <>
                     <button
                       onClick={() => toggleSection(item.label)}
+                      title={sidebarCollapsed ? item.label : undefined}
+                      aria-label={sidebarCollapsed ? item.label : undefined}
                       className={cn(
                         "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                         pathname.startsWith("/dashboard") && item.label === "Dashboard"
@@ -217,6 +219,7 @@ export function Sidebar() {
                           <Link
                             key={child.href}
                             href={child.href}
+                            aria-current={isActive(child.href) ? "page" : undefined}
                             className={cn(
                               "flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors",
                               isActive(child.href)
@@ -234,6 +237,9 @@ export function Sidebar() {
                 ) : (
                   <Link
                     href={item.href}
+                    aria-current={isActive(item.href) ? "page" : undefined}
+                    title={sidebarCollapsed ? item.label : undefined}
+                    aria-label={sidebarCollapsed ? item.label : undefined}
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
                       isActive(item.href)
@@ -260,6 +266,9 @@ export function Sidebar() {
         <div className="space-y-1">
           <Link
             href="/status"
+            aria-current={isActive("/status") ? "page" : undefined}
+            title={sidebarCollapsed ? "Status" : undefined}
+            aria-label={sidebarCollapsed ? "Status" : undefined}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 transition-colors"
           >
             <Activity size={18} />
@@ -267,6 +276,9 @@ export function Sidebar() {
           </Link>
           <Link
             href="/support"
+            aria-current={isActive("/support") ? "page" : undefined}
+            title={sidebarCollapsed ? "Support" : undefined}
+            aria-label={sidebarCollapsed ? "Support" : undefined}
             className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-dark-300 hover:text-white hover:bg-dark-700/50 transition-colors"
           >
             <LifeBuoy size={18} />
@@ -343,6 +355,8 @@ export function Sidebar() {
 
       {/* Mobile sidebar — slides in from left */}
       <aside
+        aria-label="Sidebar"
+        aria-hidden={!mobileOpen}
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex flex-col bg-dark-800 border-r border-dark-700 w-72 transition-transform duration-200 ease-out md:hidden",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
@@ -353,6 +367,7 @@ export function Sidebar() {
 
       {/* Desktop sidebar — always visible */}
       <aside
+        aria-label="Sidebar"
         className={cn(
           "hidden md:flex flex-col h-screen bg-dark-800 border-r border-dark-700 transition-all duration-200",
           sidebarCollapsed ? "w-16" : "w-60",
