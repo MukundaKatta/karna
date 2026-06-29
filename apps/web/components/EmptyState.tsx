@@ -9,6 +9,11 @@ interface EmptyStateProps {
   description?: string;
   /** Optional call-to-action (button / link). */
   action?: React.ReactNode;
+  /**
+   * Drop the card chrome (border + dark surface). Use when nesting inside an
+   * existing card/panel so the empty state doesn't render a card-in-a-card.
+   */
+  bare?: boolean;
   className?: string;
 }
 
@@ -20,12 +25,12 @@ interface EmptyStateProps {
  * an optional action. Keeps the existing card chrome (rounded border + dark
  * surface) so it drops into the same slots without layout changes.
  */
-export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, bare, className }: EmptyStateProps) {
   return (
     <div
       className={cn(
-        "rounded-xl border border-dark-700 bg-dark-800 px-5 py-12",
-        "flex flex-col items-center justify-center text-center",
+        "px-5 py-12 flex flex-col items-center justify-center text-center",
+        !bare && "rounded-xl border border-dark-700 bg-dark-800",
         className,
       )}
     >
