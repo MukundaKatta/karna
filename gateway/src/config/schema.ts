@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { McpExposeConfigSchema } from "../mcp/server.js";
 
 // ─── Gateway Config ─────────────────────────────────────────────────────────
 
@@ -24,6 +25,11 @@ export const GatewayConfigSchema = z.object({
       origins: z.array(z.string()).default([]),
     })
     .default({}),
+  /**
+   * Expose selected built-in tools as an MCP server over HTTP (Issue #544).
+   * OFF by default; even when enabled, only allowlisted tools are exposed.
+   */
+  mcp: McpExposeConfigSchema.optional(),
 });
 
 export type GatewayConfig = z.infer<typeof GatewayConfigSchema>;

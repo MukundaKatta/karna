@@ -69,8 +69,15 @@ export interface ToolProvider {
   get(name: string): ExposableTool | undefined;
 }
 
+/**
+ * Minimal logger surface used by the server. Structurally satisfied by both a
+ * pino `Logger` and Fastify's `FastifyBaseLogger`, so the server can be mounted
+ * on the gateway without a nominal-type clash.
+ */
+export type McpLogger = Pick<Logger, "warn">;
+
 export interface McpServerOptions {
-  logger?: Logger;
+  logger?: McpLogger;
 }
 
 // ---------------------------------------------------------------------------
@@ -80,7 +87,7 @@ export interface McpServerOptions {
 export class McpServer {
   private readonly config: McpExposeConfig;
   private readonly provider: ToolProvider;
-  private readonly logger?: Logger;
+  private readonly logger?: McpLogger;
   private readonly allowSet: Set<string>;
 
   constructor(

@@ -38,6 +38,9 @@ import { registerApiRoutes } from "./routes/api.js";
 import { registerControlRoutes } from "./routes/control.js";
 import { registerWorkflowRoutes } from "./routes/workflows.js";
 import { registerRuntimeRoutes } from "./routes/runtime.js";
+import { registerMcpRoutes } from "./routes/mcp.js";
+import { McpServer } from "./mcp/server.js";
+import { createRegistryToolProvider } from "./mcp/tool-provider.js";
 import { AuditLogger } from "./audit/logger.js";
 import { TraceCollector } from "./observability/trace-collector.js";
 import {
@@ -266,6 +269,26 @@ async function main(): Promise<void> {
   registerWorkflowRoutes(server, workflowEngine);
   registerControlRoutes(server, { sessionManager, connectedClients, auditLogger, traceCollector });
   registerOpenApiRoutes(server);
+
+  // ─── MCP Server (Issue #544) — OFF by default ───────────────────────────
+  // When enabled, expose allowlisted built-in tools over JSON-RPC-over-HTTP.
+  // Tools are loaded lazily so the agent stays out of the static import graph.
+  if (config.gateway.mcp?.enabled) {
+    const { ToolRegistry } = await import("@karna/agent/tools/registry.js");
+    const { registerBuiltinTools } = await import("@karna/agent/tools/builtin/index.js");
+    const mcpRegistry = new ToolRegistry();
+    registerBuiltinTools(mcpRegistry);
+    const provider = createRegistryToolProvider(mcpRegistry, () => ({
+      sessionId: `mcp-${nanoid()}`,
+      agentId: "mcp-server",
+    }));
+    const mcpServer = new McpServer(provider, config.gateway.mcp, { logger: server.log });
+    registerMcpRoutes(server, mcpServer);
+    server.log.info(
+      { allowlisted: config.gateway.mcp.allowlist.length },
+      "MCP server mounted at POST /mcp",
+    );
+  }
 
   // ─── WebSocket Route ────────────────────────────────────────────────────
 
