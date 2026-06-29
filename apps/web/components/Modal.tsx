@@ -41,27 +41,35 @@ export function Modal({ open, onClose, title, children, className, size = "md" }
 
   if (!open) return null;
 
+  const titleId = title ? "modal-title" : undefined;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
         onClick={onClose}
       />
 
       {/* Dialog */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         className={cn(
-          "relative w-full mx-4 rounded-xl border border-dark-700 bg-dark-800 shadow-2xl",
+          "relative w-full mx-4 rounded-xl border border-dark-700 bg-dark-800 shadow-2xl animate-modal-in",
           sizeClasses[size],
           className,
         )}
       >
         {title && (
           <div className="flex items-center justify-between px-5 py-4 border-b border-dark-700">
-            <h3 className="text-base font-semibold text-white">{title}</h3>
+            <h3 id={titleId} className="text-base font-semibold text-white">
+              {title}
+            </h3>
             <button
               onClick={onClose}
+              aria-label="Close dialog"
               className="p-1 rounded-md text-dark-400 hover:text-white hover:bg-dark-700 transition-colors"
             >
               <X size={18} />
