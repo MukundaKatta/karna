@@ -11,6 +11,7 @@ import { formatRelativeTime } from "@/lib/utils";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
 import { SkeletonCardGrid } from "@/components/Skeleton";
+import { EmptyState } from "@/components/EmptyState";
 
 interface Agent {
   id: string;
@@ -180,9 +181,11 @@ export default function AgentsPage() {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          No agents discovered yet.
-        </div>
+        <EmptyState
+          icon={<Bot size={22} />}
+          title="No agents discovered yet"
+          description="Agents become visible here once they connect to the gateway."
+        />
       )}
 
       {/* Edit modal */}
