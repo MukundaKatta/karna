@@ -12,6 +12,7 @@ import {
 import { StatsCard } from "@/components/StatsCard";
 import { LineChart } from "@/components/Chart";
 import { Badge } from "@/components/Badge";
+import { EmptyState } from "@/components/EmptyState";
 import { formatCost, formatTokens, formatRelativeTime } from "@/lib/utils";
 
 interface DashboardData {
@@ -265,9 +266,13 @@ export default function DashboardPage() {
               height={260}
             />
           ) : (
-            <div className="flex items-center justify-center h-[260px] rounded-lg bg-dark-700/30 text-sm text-dark-400">
-              No message history yet.
-            </div>
+            <EmptyState
+              bare
+              icon={<MessageSquare size={22} />}
+              title="No message history yet"
+              description="Conversations will chart here as your agents start handling messages."
+              className="h-[260px] rounded-lg bg-dark-700/30 py-0"
+            />
           )}
         </div>
 
@@ -295,9 +300,11 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <div className="rounded-lg bg-dark-700/30 px-3 py-8 text-center text-sm text-dark-400">
-              No active channels yet.
-            </div>
+            <EmptyState
+              bare
+              title="No active channels yet"
+              className="rounded-lg bg-dark-700/30 py-8"
+            />
           )}
         </div>
       </div>
@@ -321,9 +328,11 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : (
-          <div className="rounded-lg bg-dark-700/30 px-3 py-8 text-center text-sm text-dark-400">
-            No recent activity captured yet.
-          </div>
+          <EmptyState
+            bare
+            title="No recent activity captured yet"
+            className="rounded-lg bg-dark-700/30 py-8"
+          />
         )}
       </div>
     </div>
