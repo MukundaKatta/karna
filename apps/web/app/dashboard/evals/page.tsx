@@ -14,6 +14,7 @@ import { LineChart } from "@/components/Chart";
 import { StatsCard } from "@/components/StatsCard";
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
+import { SkeletonList } from "@/components/Skeleton";
 import { cn, formatCost, formatDate } from "@/lib/utils";
 
 type EvalStatus = "passed" | "failed" | "running" | "error";
@@ -267,9 +268,7 @@ export default function EvalsPage() {
       </div>
 
       {isLoading ? (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          Loading eval runs...
-        </div>
+        <SkeletonList count={6} />
       ) : (
         <DataTable
           columns={columns}
