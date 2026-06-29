@@ -5,6 +5,7 @@ import { Activity, Coins, Hash, Pause, Play, Sparkles } from "lucide-react";
 import { StatsCard } from "@/components/StatsCard";
 import { RunTimeline, type AgentRun } from "@/components/RunTimeline";
 import { cn, formatCost, formatTokens } from "@/lib/utils";
+import { SkeletonList } from "@/components/Skeleton";
 
 interface TraceListResponse {
   traces?: AgentRun[];
@@ -73,8 +74,8 @@ export default function TimelinePage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-dark-400">
-        Loading timeline...
+      <div className="p-4 sm:p-6 space-y-3 overflow-y-auto h-full">
+        <SkeletonList count={6} />
       </div>
     );
   }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/Badge";
 import { Modal } from "@/components/Modal";
+import { SkeletonList } from "@/components/Skeleton";
 import {
   formatArgs,
   normalizeApprovals,
@@ -112,9 +113,7 @@ export default function ApprovalsPage() {
       </div>
 
       {isLoading ? (
-        <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
-          Loading pending approvals...
-        </div>
+        <SkeletonList count={3} />
       ) : approvals.length === 0 ? (
         <div className="rounded-xl border border-dark-700 bg-dark-800 px-5 py-12 text-center text-sm text-dark-400">
           <ShieldAlert size={28} className="mx-auto mb-3 text-success-400" />
