@@ -87,6 +87,23 @@ textarea:focus-visible {
     0 0 0 4px var(--color-accent-500);
 }
 
+/* ===== Shared entrance animations ===== */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes messageIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fadeIn 160ms ease-out; }
+.animate-modal-in { animation: modalIn 180ms cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-message-in { animation: messageIn 200ms ease-out; }
+
 /* Dynamic viewport height for mobile browsers */
 .h-dvh {
   height: 100dvh;

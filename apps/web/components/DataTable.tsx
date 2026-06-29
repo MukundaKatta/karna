@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronUp, ChevronDown, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react";
 import { useState, useMemo } from "react";
 
 export interface Column<T> {
@@ -68,24 +68,48 @@ export function DataTable<T extends Record<string, any>>({
         <table className="w-full text-sm whitespace-nowrap">
           <thead>
             <tr className="border-b border-dark-700">
-              {columns.map((col) => (
-                <th
-                  key={col.key}
-                  className={cn(
-                    "px-4 py-3 text-left text-xs font-medium text-dark-400 uppercase tracking-wider",
-                    col.sortable && "cursor-pointer select-none hover:text-dark-200",
-                    col.className,
-                  )}
-                  onClick={col.sortable ? () => handleSort(col.key) : undefined}
-                >
-                  <div className="flex items-center gap-1">
-                    {col.label}
-                    {col.sortable && sortKey === col.key && (
-                      sortDir === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />
+              {columns.map((col) => {
+                const isSorted = col.sortable && sortKey === col.key;
+                const ariaSort = isSorted
+                  ? sortDir === "asc"
+                    ? "ascending"
+                    : "descending"
+                  : col.sortable
+                    ? "none"
+                    : undefined;
+                return (
+                  <th
+                    key={col.key}
+                    scope="col"
+                    aria-sort={ariaSort}
+                    className={cn(
+                      "sticky top-0 z-10 bg-dark-800 px-4 py-3 text-left text-xs font-medium text-dark-400 uppercase tracking-wider",
+                      col.className,
                     )}
-                  </div>
-                </th>
-              ))}
+                  >
+                    {col.sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSort(col.key)}
+                        className="flex items-center gap-1 select-none uppercase tracking-wider hover:text-dark-200 transition-colors"
+                      >
+                        {col.label}
+                        {isSorted ? (
+                          sortDir === "asc" ? (
+                            <ChevronUp size={14} />
+                          ) : (
+                            <ChevronDown size={14} />
+                          )
+                        ) : (
+                          <ChevronsUpDown size={14} className="opacity-40" />
+                        )}
+                      </button>
+                    ) : (
+                      <span className="flex items-center gap-1">{col.label}</span>
+                    )}
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody className="divide-y divide-dark-700/50">

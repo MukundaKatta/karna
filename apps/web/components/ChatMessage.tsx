@@ -25,6 +25,8 @@ function ToolCallDisplay({
     <div className="mt-2 rounded-lg border border-dark-600 bg-dark-800/50 overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "Collapse" : "Expand"} tool call ${toolCall.toolName}`}
         className="flex items-center gap-2 w-full px-3 py-2 text-sm text-dark-300 hover:bg-dark-700/50 transition-colors"
       >
         <Wrench size={14} />
@@ -69,12 +71,14 @@ function ToolCallDisplay({
             <div className="flex gap-2 pt-1">
               <button
                 onClick={() => onApproval(toolCall.id, true)}
+                aria-label={`Approve tool call ${toolCall.toolName}`}
                 className="px-3 py-1 text-xs font-medium rounded bg-success-500 text-white hover:bg-success-400 transition-colors"
               >
                 Approve
               </button>
               <button
                 onClick={() => onApproval(toolCall.id, false)}
+                aria-label={`Reject tool call ${toolCall.toolName}`}
                 className="px-3 py-1 text-xs font-medium rounded bg-danger-500 text-white hover:bg-danger-400 transition-colors"
               >
                 Reject
@@ -95,7 +99,7 @@ export function ChatMessage({ message, onToolApproval }: ChatMessageProps) {
   return (
     <div
       className={cn(
-        "flex gap-3 px-4 py-3",
+        "flex gap-3 px-4 py-3 animate-message-in",
         isUser && "flex-row-reverse",
       )}
     >
