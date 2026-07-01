@@ -155,26 +155,56 @@ export function calculateTotalCost(model: string, usage: TokenUsage): number {
 // ─── Model Registry ──────────────────────────────────────────────────────────
 
 /**
- * Get the pricing for a model. Supports partial matching for model families
- * (e.g., "claude-sonnet-4" matches "claude-sonnet-4-20250514").
+ * Get the pricing for a model.
+ *
+ * Resolution order:
+ * 1. Exact match on the model id.
+ * 2. Full-id match: a provider id with a date/version suffix resolves to its
+ *    registered family base (e.g. "gpt-4o-mini-2024-07-18" -> "gpt-4o-mini",
+ *    "claude-3-5-sonnet-latest" -> "claude-3-5-sonnet-20241022"). The longest
+ *    (most specific) registered key that the model id starts with wins.
+ * 3. Family-prefix match: a shorter family id resolves to its registered full
+ *    id (e.g. "claude-sonnet-4" -> "claude-sonnet-4-20250514"). To avoid
+ *    silently mispricing ambiguous prefixes, the prefix must be unambiguous —
+ *    if it matches more than one registered model it is treated as unknown.
+ *
+ * An empty or whitespace-only model id always returns `undefined` rather than
+ * matching an arbitrary entry.
  */
 export function getModelPricing(model: string): ModelPricing | undefined {
-  // Exact match first
-  if (MODEL_PRICING[model]) {
-    return MODEL_PRICING[model];
+  const id = model.trim();
+  if (!id) {
+    return undefined;
   }
 
-  // Partial match: find the longest key that the model string starts with
-  let bestMatch: string | undefined;
-  for (const key of Object.keys(MODEL_PRICING)) {
-    if (key.startsWith(model)) {
-      if (!bestMatch || key.length > bestMatch.length) {
-        bestMatch = key;
-      }
+  // 1. Exact match first.
+  if (MODEL_PRICING[id]) {
+    return MODEL_PRICING[id];
+  }
+
+  const keys = Object.keys(MODEL_PRICING);
+
+  // 2. Full-id match: the model id is more specific than (starts with) a
+  // registered family base. Prefer the longest matching key.
+  let baseMatch: string | undefined;
+  for (const key of keys) {
+    if (id.startsWith(key) && (!baseMatch || key.length > baseMatch.length)) {
+      baseMatch = key;
     }
   }
+  if (baseMatch) {
+    return MODEL_PRICING[baseMatch];
+  }
 
-  return bestMatch ? MODEL_PRICING[bestMatch] : undefined;
+  // 3. Family-prefix match: a shorter family id is a prefix of registered
+  // full ids. Only resolve when exactly one registered model matches so an
+  // ambiguous prefix (e.g. "claude") does not silently pick the wrong price.
+  const prefixMatches = keys.filter((key) => key.startsWith(id));
+  if (prefixMatches.length === 1) {
+    return MODEL_PRICING[prefixMatches[0]];
+  }
+
+  return undefined;
 }
 
 /**
